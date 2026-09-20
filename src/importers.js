@@ -41,6 +41,97 @@ const date = (row, names) => {
 
 const rawSource = (row) => row
 
+const HEADER_HINTS = new Set([
+  'prf', 'prf2', 'prfipfnumber', 'srnumber', 'srnumberwonumber',
+  'assetvessel', 'assetservice', 'section', 'from', 'type',
+  'prno', 'ponumber', 'priority', 'itemid', 'productname',
+  'quantity', 'unit', 'category', 'onhand', 'erpstatus',
+  'podeliverydate', 'paymentstatus', 'deliverystatus',
+  'mtr', 'mtrno', 'mrn', 'mrnno', 'itemcode'
+])
+
+export function normalizeSheetRows(matrix) {
+  if (!Array.isArray(matrix) || !matrix.length) return []
+
+  const rows = matrix
+    .map((row) => Array.isArray(row) ? row : [])
+    .filter((row) => row.some((cell) => clean(cell) !== ''))
+
+  if (!rows.length) return []
+
+  let bestIndex = 0
+  let bestScore = -1
+
+  rows.slice(0, 12).forEach((row, index) => {
+    let score = 0
+    row.forEach((cell) => {
+      const key = normalized(cell)
+      if (HEADER_HINTS.has(key)) score += 3
+      else if (
+        key.includes('status') ||
+        key.includes('number') ||
+        key.includes('quantity') ||
+        key.includes('item') ||
+        key.includes('asset') ||
+        key.includes('date')
+      ) score += 1
+    })
+    if (score > bestScore) {
+      bestScore = score
+      bestIndex = index
+    }
+  })
+
+  const headerRow = rows[bestIndex]
+  const seen = new Map()
+  const headers = headerRow.map((value, index) => {
+    const base = clean(value) || `Column ${index + 1}`
+    const key = normalized(base) || `column${index + 1}`
+    const count = seen.get(key) || 0
+    seen.set(key, count + 1)
+    return count ? `${base} ${count + 1}` : base
+  })
+
+  return rows
+    .slice(bestIndex + 1)
+    .map((row) => {
+      const obj = {}
+      headers.forEach((header, index) => {
+        obj[header] = row[index] ?? ''
+      })
+      return obj
+    })
+    .filter((row) => Object.values(row).some((value) => clean(value) !== ''))
+}
+
+export function detectSource(rows, fileName = '', sheetName = '') {
+  const sample = rows[0] || {}
+  const keys = Object.keys(sample).map(normalized)
+  const context = normalized(fileName + ' ' + sheetName)
+
+  const has = (...names) => names.some((name) => keys.includes(normalized(name)))
+
+  if (
+    context.includes('purchaserequisition') ||
+    (has('PR No.', 'PR No') && has('PO Number') && has('ERP Status'))
+  ) return 'PR'
+
+  if (
+    context.includes('purchaseorder') ||
+    (has('PO Number', 'PO No') && has('Supplier') && !has('PRF/IPF Number'))
+  ) return 'PO'
+
+  if (
+    has('PRF/IPF Number', 'PRF / IPF Number') ||
+    context.includes('prfipfregister')
+  ) return 'PRF'
+
+  if (context.includes('mtr') || has('MTR', 'MTR No')) return 'MTR'
+  if (context.includes('mrn') || has('MRN', 'MRN No')) return 'MRN'
+
+  return ''
+}
+
 export const SOURCE_OPTIONS = [
   ['PRF', 'PRF / IPF Register'],
   ['PR', 'ERP PR Lines'],
@@ -116,18 +207,18 @@ export function mapRows(source, rows) {
 
   if (source === 'PR' || source === 'PO') {
     return rows.map((r) => ({
-      prf_no: text(r, ['PRF', 'PRF No', 'PRF/IPF', 'IPF', 'PRF Number']),
-      pr_no: text(r, ['PR', 'PR No', 'PR Number']),
+      prf_no: text(r, ['PRF', 'PRF2', 'PRF No', 'PRF/IPF', 'PRF/IPF Number', 'IPF', 'PRF Number']),
+      pr_no: text(r, ['PR', 'PR No', 'PR No.', 'PR Number', 'Purchase Requisition']),
       po_no: text(r, ['PO', 'PO No', 'PO Number', 'Purchase Order']),
       linked_pr_mtr: text(r, ['PR/MTR Number', 'PR / MTR Number']),
       section: text(r, ['Section', 'Department']),
       workshop: text(r, ['Workshop', 'Workshop/Section']),
-      vessel: text(r, ['Vessel', 'Asset Name', 'Vessel Name']),
-      asset: text(r, ['Asset', 'Asset/Service', 'Asset / Service', 'Service']),
-      sr_wo: text(r, ['SR/WO', 'SR / WO', 'SR Number / WO Number', 'SR', 'WO', 'Service Request', 'Work Order']),
+      vessel: text(r, ['Vessel', 'Asset Name', 'Vessel Name', 'Asset / Vessel', 'Asset/Vessel']),
+      asset: text(r, ['Asset', 'Asset/Service', 'Asset / Service', 'Asset / Vessel', 'Asset/Vessel', 'Service']),
+      sr_wo: text(r, ['SR/WO', 'SR / WO', 'SR Number / WO Number', 'SR Number', 'SR', 'WO', 'Service Request', 'Work Order']),
       work_order_type: text(r, ['Work Order Type']),
-      purchase_from: text(r, ['Purchase From']),
-      purchase_type: text(r, ['Purchase Type']),
+      purchase_from: text(r, ['Purchase From', 'From']),
+      purchase_type: text(r, ['Purchase Type', 'Type']),
       priority: text(r, ['Priority', 'Urgency']),
       supplier: text(r, ['Supplier', 'Vendor', 'Supplier Name']),
       item_code: text(r, ['Item', 'Item Code', 'Item Number', 'Item ID']),
@@ -143,14 +234,14 @@ export function mapRows(source, rows) {
       po_date: date(r, ['PO Date', 'Purchase Order Date']),
       required_date: date(r, ['Required Date', 'Need By Date']),
       processed_date: date(r, ['Processed Date']),
-      expected_delivery: date(r, ['Delivery Date', 'Expected Delivery', 'ETA']),
+      expected_delivery: date(r, ['Delivery Date', 'Expected Delivery', 'ETA', 'PO Delivery Date']),
       payment_status: text(r, ['Payment Status', 'Payment']),
-      delivery_status: text(r, ['Delivery Status', 'Delivery']),
+      delivery_status: text(r, ['Delivery Status', 'Delivery', 'PO ERP InvStatus', 'PO ERP Inventory Status']),
       requested_by: text(r, ['Requested By', 'Requester']),
       modified_by: text(r, ['Modified By']),
       cancel_reject_reason: text(r, ['CANCEL / REJECT REASON', 'Cancel / Reject Reason']),
       latest_updates: text(r, ['Latest Updates', 'Latest Update']),
-      status: text(r, ['Status', 'PR Status', 'PO Status']),
+      status: text(r, ['Status', 'PR Status', 'PO Status', 'ERP Status']),
       remarks: text(r, ['Remarks', 'Remark', 'Comments', 'Latest Updates']),
       source_type: source,
       source_updated_at: new Date().toISOString(),
