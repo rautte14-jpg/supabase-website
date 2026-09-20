@@ -365,10 +365,10 @@ function ImportPanel({ onApplied, email }) {
   }
 
   async function applyLld() {
-    const lines = lldText.split(/[procurementData, query]?[procurementData, query]/).map((x) => x.trim()).filter(Boolean)
+    const lines = lldText.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
     const records = []
     for (const line of lines) {
-      const parts = line.split(/[procurementData, query]|\||,/).map((x) => x.trim())
+      const parts = line.split(/\t|\||,/).map((x) => x.trim())
       if (!parts[0] || lower(parts[0]).includes('reference')) continue
       const reference = parts[0]
       const upper = reference.toUpperCase()
@@ -625,12 +625,12 @@ export default function App() {
   )
 
   const prfRows = useMemo(
-    () => data.procurement.filter((r) => r.source_type === 'PRF' && matches(r)),
-    [data.procurement, query],
+    () => procurementData.filter((r) => r.source_type === 'PRF' && matches(r)),
+    [procurementData, query],
   )
   const prpoRows = useMemo(
-    () => data.procurement.filter((r) => ['PR', 'PO'].includes(r.source_type) && matches(r)),
-    [data.procurement, query],
+    () => procurementData.filter((r) => ['PR', 'PO'].includes(r.source_type) && matches(r)),
+    [procurementData, query],
   )
   const mtrRows = useMemo(
     () => data.material.filter((r) => r.document_type === 'MTR' && matches(r)),
@@ -649,9 +649,9 @@ export default function App() {
   const todayIso = today.toISOString().slice(0, 10)
 
   const metrics = useMemo(() => {
-    const pendingPr = data.procurement.filter((r) => ['PR', 'PO'].includes(r.source_type) && !isClosed(r.status || r.delivery_status))
-    const urgent = data.procurement.filter((r) => isUrgent(r.priority) && !isClosed(r.status || r.delivery_status))
-    const overdue = data.procurement.filter((r) =>
+    const pendingPr = procurementData.filter((r) => ['PR', 'PO'].includes(r.source_type) && !isClosed(r.status || r.delivery_status))
+    const urgent = procurementData.filter((r) => isUrgent(r.priority) && !isClosed(r.status || r.delivery_status))
+    const overdue = procurementData.filter((r) =>
       r.expected_delivery && r.expected_delivery < todayIso && !isClosed(r.delivery_status || r.status),
     )
     const recent = data.transactions.filter((r) => r.physical_date && new Date(r.physical_date) >= sevenDaysAgo)
@@ -660,7 +660,7 @@ export default function App() {
     const value = data.stock.reduce((sum, r) => sum + Number(r.stock_value || 0), 0)
     const aged = data.stock.filter((r) => /12|24|36|over|old|year/i.test(r.age_band || ''))
     return {
-      prf: new Set(data.procurement.map((r) => r.prf_no).filter(Boolean)).size,
+      prf: new Set(procurementData.map((r) => r.prf_no).filter(Boolean)).size,
       mrn: new Set(data.material.filter((r) => r.document_type === 'MRN').map((r) => r.document_no).filter(Boolean)).size,
       pending: pendingPr.length,
       urgent: urgent.length,
@@ -683,7 +683,7 @@ export default function App() {
   const globalHits = useMemo(() => {
     if (query.length < 2) return []
     const hits = []
-    for (const r of data.procurement) if (matches(r)) hits.push({ type: 'PR / PO / PRF', ref: r.po_no || r.pr_no || r.prf_no, detail: r.item_description || r.item_code, view: r.source_type === 'PRF' ? 'prf' : 'prpo' })
+    for (const r of procurementData) if (matches(r)) hits.push({ type: 'PR / PO / PRF', ref: r.po_no || r.pr_no || r.prf_no, detail: r.item_description || r.item_code, view: r.source_type === 'PRF' ? 'prf' : 'prpo' })
     for (const r of data.material) if (matches(r)) hits.push({ type: r.document_type, ref: r.document_no, detail: r.item_description || r.item_code, view: r.document_type === 'MTR' ? 'mtr' : 'mrn' })
     for (const r of data.stock) if (matches(r)) hits.push({ type: 'Stock', ref: r.item_code, detail: r.item_description, view: 'stock' })
     for (const r of data.transactions) if (matches(r)) hits.push({ type: 'Transaction', ref: r.po_no || r.sales_order || r.journal_no, detail: r.item_description || r.item_code, view: 'transactions' })
@@ -724,7 +724,7 @@ export default function App() {
   ]
 
   async function saveSnapshot() {
-    const urgentCases = data.procurement
+    const urgentCases = procurementData
       .filter((r) => isUrgent(r.priority) || (r.expected_delivery && r.expected_delivery < todayIso))
       .slice(0, 30)
       .map((r) => ({
@@ -745,7 +745,7 @@ export default function App() {
   }
 
   const vesselTerm = lower(vesselSearch).trim()
-  const vesselProc = data.procurement.filter((r) => !vesselTerm || [r.vessel, r.asset, r.sr_wo, r.prf_no, r.pr_no, r.po_no].some((v) => lower(v).includes(vesselTerm)))
+  const vesselProc = procurementData.filter((r) => !vesselTerm || [r.vessel, r.asset, r.sr_wo, r.prf_no, r.pr_no, r.po_no].some((v) => lower(v).includes(vesselTerm)))
   const vesselMat = data.material.filter((r) => !vesselTerm || [r.vessel, r.asset, r.sr_wo, r.document_no].some((v) => lower(v).includes(vesselTerm)))
   const vesselTx = data.transactions.filter((r) => !vesselTerm || [r.vessel, r.sr_wo, r.delivery_name, r.sales_order].some((v) => lower(v).includes(vesselTerm)))
 
@@ -779,10 +779,10 @@ export default function App() {
       title: 'Pending PR / PO / MTR',
       body: (
         <div className="meeting-list">
-          {data.procurement.filter((r) => !isClosed(r.status || r.delivery_status)).slice(0, 8).map((r, i) => (
+          {procurementData.filter((r) => !isClosed(r.status || r.delivery_status)).slice(0, 8).map((r, i) => (
             <div key={i}><b>{r.po_no || r.pr_no || r.prf_no || 'No reference'}</b><span>{r.item_description || r.item_code || '—'}</span><StatusPill value={r.priority || r.status} /></div>
           ))}
-          {!data.procurement.length && <EmptyState title="No procurement data loaded" />}
+          {!procurementData.length && <EmptyState title="No procurement data loaded" />}
         </div>
       ),
     },
