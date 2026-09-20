@@ -772,6 +772,18 @@ export default function App() {
   const vesselMat = data.material.filter((r) => !vesselTerm || [r.vessel, r.asset, r.sr_wo, r.document_no].some((v) => lower(v).includes(vesselTerm)))
   const vesselTx = data.transactions.filter((r) => !vesselTerm || [r.vessel, r.sr_wo, r.delivery_name, r.sales_order].some((v) => lower(v).includes(vesselTerm)))
 
+  const meetingPrfStatuses = (() => {
+    const statusMap = new Map(prfStatusCounts)
+    const preferred = ['PRF NOT RAISED', 'ITEM CREATION PENDING']
+      .filter((status) => statusMap.has(status))
+      .map((status) => [status, statusMap.get(status)])
+
+    const preferredSet = new Set(preferred.map(([status]) => status))
+    const remaining = prfStatusCounts.filter(([status]) => !preferredSet.has(status))
+
+    return [...preferred, ...remaining].slice(0, 12)
+  })()
+
   const meetingSlides = [
     {
       kicker: 'WEEKLY CONTROL VIEW',
@@ -798,15 +810,33 @@ export default function App() {
       ),
     },
     {
-      kicker: 'PROCUREMENT & TRANSFER',
-      title: 'Pending PR / PO / MTR',
+      kicker: 'PRF STATUS CONTROL',
+      title: 'PRF Status Breakdown',
       body: (
-        <div className="meeting-list">
-          {procurementData.filter((r) => !isClosed(r.status || r.delivery_status)).slice(0, 8).map((r, i) => (
-            <div key={i}><b>{r.po_no || r.pr_no || r.prf_no || 'No reference'}</b><span>{r.item_description || r.item_code || '—'}</span><StatusPill value={r.priority || r.status} /></div>
-          ))}
-          {!procurementData.length && <EmptyState title="No procurement data loaded" />}
-        </div>
+        <>
+          <div className="meeting-prf-total">
+            <span>Total PRFs in current register</span>
+            <strong>{fmt(allPrfRows.length)}</strong>
+          </div>
+          <div className="meeting-status-grid">
+            {meetingPrfStatuses.map(([status, count]) => (
+              <div
+                className={
+                  status === 'PRF NOT RAISED' || status === 'ITEM CREATION PENDING'
+                    ? 'meeting-status-card highlight'
+                    : 'meeting-status-card'
+                }
+                key={status}
+              >
+                <span>{status}</span>
+                <b>{fmt(count)}</b>
+              </div>
+            ))}
+          </div>
+          {!meetingPrfStatuses.length && (
+            <EmptyState title="No PRF status data loaded" text="Upload and apply the PRF / IPF register." />
+          )}
+        </>
       ),
     },
     {
