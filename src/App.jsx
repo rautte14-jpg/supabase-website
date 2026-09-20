@@ -365,10 +365,10 @@ function ImportPanel({ onApplied, email }) {
   }
 
   async function applyLld() {
-    const lines = lldText.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
+    const lines = lldText.split(/[procurementData, query]?[procurementData, query]/).map((x) => x.trim()).filter(Boolean)
     const records = []
     for (const line of lines) {
-      const parts = line.split(/\t|\||,/).map((x) => x.trim())
+      const parts = line.split(/[procurementData, query]|\||,/).map((x) => x.trim())
       if (!parts[0] || lower(parts[0]).includes('reference')) continue
       const reference = parts[0]
       const upper = reference.toUpperCase()
@@ -574,6 +574,27 @@ export default function App() {
   const noteMap = useMemo(
     () => new Map(data.notes.map((n) => [n.entity_type + '|' + n.entity_key, n])),
     [data.notes],
+  )
+
+  const lldMap = useMemo(
+    () => new Map(data.lld.map((x) => [String(x.reference_no || '').toUpperCase(), x])),
+    [data.lld],
+  )
+
+  const procurementData = useMemo(
+    () => data.procurement.map((row) => {
+      const reference = row.po_no || row.pr_no || row.prf_no
+      const update = reference ? lldMap.get(String(reference).toUpperCase()) : null
+      if (!update) return row
+      return {
+        ...row,
+        payment_status: update.payment_status || row.payment_status,
+        delivery_status: update.delivery_status || row.delivery_status,
+        expected_delivery: update.eta || row.expected_delivery,
+        lld_update: update.update_text || '',
+      }
+    }),
+    [data.procurement, lldMap],
   )
 
   function openNote(type, row) {
