@@ -945,17 +945,19 @@ export default function App() {
                 onUpdate={openNote}
                 columns={[
                   { key: 'prf_no', label: 'PRF / IPF' },
+                  { key: 'linked_pr_mtr', label: 'PR / MTR' },
                   { key: 'workshop', label: 'Workshop' },
-                  { key: 'vessel', label: 'Vessel / Asset', render: (v, r) => v || r.asset || '—' },
+                  { key: 'asset', label: 'Asset / Service', render: (v, r) => v || r.vessel || '—' },
                   { key: 'sr_wo', label: 'SR / WO' },
-                  { key: 'required_date', label: 'Required' },
-                  { key: 'priority', label: 'Priority', render: (v) => <StatusPill value={v} /> },
-                  { key: 'item_code', label: 'Item' },
-                  { key: 'item_description', label: 'Description' },
-                  { key: 'qty_requested', label: 'Qty' },
-                  { key: 'pr_no', label: 'PR' },
-                  { key: 'po_no', label: 'PO' },
+                  { key: 'work_order_type', label: 'Work Order Type' },
+                  { key: 'purchase_from', label: 'Purchase From' },
+                  { key: 'purchase_type', label: 'Purchase Type' },
+                  { key: 'required_date', label: 'Required Date' },
+                  { key: 'processed_date', label: 'Processed Date' },
+                  { key: 'requested_by', label: 'Requested By' },
                   { key: 'status', label: 'Status', render: (v) => <StatusPill value={v} /> },
+                  { key: 'latest_updates', label: 'Latest Updates' },
+                  { key: 'cancel_reject_reason', label: 'Cancel / Reject Reason' },
                 ]}
               />
             </>
