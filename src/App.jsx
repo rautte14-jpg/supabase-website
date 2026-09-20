@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from './lib/supabase'
-import { SOURCE_OPTIONS, entityKey, humanSource, mapRows } from './importers'
+import { SOURCE_OPTIONS, detectSource, entityKey, humanSource, mapRows, normalizeSheetRows } from './importers'
 
 const NAV = [
   ['overview', 'Overview', '⌂'],
@@ -289,11 +289,21 @@ function ImportPanel({ onApplied, email }) {
       const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
       const name = workbook.SheetNames[0]
       const sheet = workbook.Sheets[name]
-      const json = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false })
+      const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false })
+      const json = normalizeSheetRows(matrix)
+      const detected = detectSource(json, next.name, name)
+      const sourceToUse = detected || source
+
+      if (detected && detected !== source) setSource(detected)
+
       setRows(json)
-      setMapped(mapRows(source, json))
+      setMapped(mapRows(sourceToUse, json))
       setSheetName(name)
-      setMessage('')
+      setMessage(
+        detected && detected !== source
+          ? 'Detected ' + humanSource(detected) + ' from the workbook layout.'
+          : ''
+      )
     } catch (error) {
       setMessage(error.message || 'Could not read the file.')
       setRows([])
