@@ -1,10 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+const supabaseUrl =
+  import.meta.env.VITE_SUPABASE_URL ||
+  'https://cqimpmvaobrnpejokuvx.supabase.co'
 
-if (!supabaseUrl || !supabaseKey) {
-  console.warn('Missing Supabase environment variables.')
-}
+const supabaseKey =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  'sb_publishable_tAoik_yGhIhp3VCE2qnf4g_GAviUG_B'
 
-export const supabase = createClient(supabaseUrl ?? '', supabaseKey ?? '')
+export const supabase = createClient(supabaseUrl, supabaseKey)
