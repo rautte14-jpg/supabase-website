@@ -30,3 +30,6 @@ npm run dev
 7. Deploy.
 
 Browser -> Cloudflare Pages -> Supabase
+
+
+<!-- Cloudflare rebuild trigger after API token setup -->
