@@ -43,6 +43,11 @@ function isUrgent(value) {
   return ['urgent', 'critical', 'high'].some((x) => s.includes(x))
 }
 
+function prfStatusLabel(value) {
+  const text = String(value ?? '').trim()
+  return text ? text.toUpperCase() : 'PRF NOT RAISED'
+}
+
 function AuthScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -503,6 +508,7 @@ export default function App() {
   const [noteState, setNoteState] = useState(null)
   const [vesselSearch, setVesselSearch] = useState('')
   const [slide, setSlide] = useState(0)
+  const [prfStatusFilter, setPrfStatusFilter] = useState('ALL')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -624,9 +630,26 @@ export default function App() {
     typeof v !== 'object' && lower(v).includes(query),
   )
 
+  const allPrfRows = useMemo(
+    () => procurementData.filter((r) => r.source_type === 'PRF'),
+    [procurementData],
+  )
+
+  const prfStatusCounts = useMemo(() => {
+    const counts = new Map()
+    allPrfRows.forEach((row) => {
+      const status = prfStatusLabel(row.status)
+      counts.set(status, (counts.get(status) || 0) + 1)
+    })
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])
+  }, [allPrfRows])
+
   const prfRows = useMemo(
-    () => procurementData.filter((r) => r.source_type === 'PRF' && matches(r)),
-    [procurementData, query],
+    () => allPrfRows.filter((r) =>
+      matches(r) &&
+      (prfStatusFilter === 'ALL' || prfStatusLabel(r.status) === prfStatusFilter)
+    ),
+    [allPrfRows, query, prfStatusFilter],
   )
   const prpoRows = useMemo(
     () => procurementData.filter((r) => ['PR', 'PO'].includes(r.source_type) && matches(r)),
@@ -938,6 +961,45 @@ export default function App() {
           {view === 'prf' && (
             <>
               <PageHeader title="PRF Tracker" subtitle="PRF / IPF requests and their movement into PR, MTR and PO." />
+
+              <section className="prf-status-summary">
+                <div className="prf-status-head">
+                  <div>
+                    <span className="eyebrow">STATUS SUMMARY</span>
+                    <h3>PRF quantity by status</h3>
+                  </div>
+                  <span>{fmt(allPrfRows.length)} total PRFs</span>
+                </div>
+
+                <div className="prf-status-grid">
+                  <button
+                    className={prfStatusFilter === 'ALL' ? 'prf-status-card active' : 'prf-status-card'}
+                    onClick={() => setPrfStatusFilter('ALL')}
+                  >
+                    <span>ALL PRFs</span>
+                    <strong>{fmt(allPrfRows.length)}</strong>
+                  </button>
+
+                  {prfStatusCounts.map(([status, count]) => (
+                    <button
+                      key={status}
+                      className={prfStatusFilter === status ? 'prf-status-card active' : 'prf-status-card'}
+                      onClick={() => setPrfStatusFilter(status)}
+                    >
+                      <span>{status}</span>
+                      <strong>{fmt(count)}</strong>
+                    </button>
+                  ))}
+                </div>
+
+                {prfStatusFilter !== 'ALL' && (
+                  <div className="prf-filter-note">
+                    Showing <b>{prfStatusFilter}</b>
+                    <button onClick={() => setPrfStatusFilter('ALL')}>Clear filter</button>
+                  </div>
+                )}
+              </section>
+
               <DataTable
                 rows={prfRows}
                 noteType="procurement"
@@ -955,7 +1017,7 @@ export default function App() {
                   { key: 'required_date', label: 'Required Date' },
                   { key: 'processed_date', label: 'Processed Date' },
                   { key: 'requested_by', label: 'Requested By' },
-                  { key: 'status', label: 'Status', render: (v) => <StatusPill value={v} /> },
+                  { key: 'status', label: 'Status', render: (v) => <StatusPill value={prfStatusLabel(v)} /> },
                   { key: 'latest_updates', label: 'Latest Updates' },
                   { key: 'cancel_reject_reason', label: 'Cancel / Reject Reason' },
                 ]}
