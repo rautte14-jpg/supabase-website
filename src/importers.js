@@ -56,7 +56,7 @@ export function mapRows(source, rows) {
   if (source === 'PRF') {
     return rows.map((r) => {
       const linked = text(r, ['PR/MTR Number', 'PR / MTR Number', 'PR-MTR Number', 'Linked PR/MTR'])
-      const directPrf = text(r, ['PRF', 'PRF No', 'PRF/IPF', 'IPF', 'PRF Number', 'PRF ID', 'Request Number', 'Title'])
+      const directPrf = text(r, ['PRF', 'PRF No', 'PRF/IPF', 'PRF/IPF Number', 'PRF / IPF Number', 'IPF', 'PRF Number', 'PRF ID', 'Request Number', 'Title'])
       const linkedPrf = linked.match(/\b(?:[A-Z]{2,6}\s+)?PRF\s*-?\s*\d+\b/i)?.[0] || ''
       const linkedPr = linked.match(/\bPR\s*-?\s*\d+\b/i)?.[0] || ''
 
@@ -87,7 +87,7 @@ export function mapRows(source, rows) {
         balance_qty: number(r, ['Balance', 'Balance Qty', 'Remaining Qty']),
         currency: text(r, ['Currency']),
         amount: number(r, ['Amount', 'PO Amount', 'Total Amount', 'Value']),
-        pr_date: date(r, ['PR Date', 'Created Date', 'PR Created Date']),
+        pr_date: date(r, ['PR Date', 'Created Date', 'PR Created Date', 'Created']),
         po_date: date(r, ['PO Date', 'Purchase Order Date']),
         required_date: date(r, ['Required Date', 'Need By Date']),
         processed_date: date(r, ['Processed Date', 'Processing Date']),
