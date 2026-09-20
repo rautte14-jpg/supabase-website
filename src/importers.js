@@ -53,16 +53,81 @@ export const SOURCE_OPTIONS = [
 ]
 
 export function mapRows(source, rows) {
-  if (source === 'PRF' || source === 'PR' || source === 'PO') {
+  if (source === 'PRF') {
+    return rows.map((r) => {
+      const linked = text(r, ['PR/MTR Number', 'PR / MTR Number', 'PR-MTR Number', 'Linked PR/MTR'])
+      const directPrf = text(r, ['PRF', 'PRF No', 'PRF/IPF', 'IPF', 'PRF Number', 'PRF ID', 'Request Number', 'Title'])
+      const linkedPrf = linked.match(/\b(?:[A-Z]{2,6}\s+)?PRF\s*-?\s*\d+\b/i)?.[0] || ''
+      const linkedPr = linked.match(/\bPR\s*-?\s*\d+\b/i)?.[0] || ''
+
+      const latest = text(r, ['Latest Updates', 'Latest Update', 'Updates'])
+      const cancelReason = text(r, ['CANCEL / REJECT REASON', 'Cancel / Reject Reason', 'Cancel Reject Reason'])
+
+      return {
+        prf_no: directPrf || linkedPrf,
+        pr_no: linkedPr,
+        po_no: text(r, ['PO', 'PO No', 'PO Number', 'Purchase Order']),
+        linked_pr_mtr: linked,
+        section: text(r, ['Section', 'Department']),
+        workshop: text(r, ['Workshop', 'Workshop/Section']),
+        vessel: text(r, ['Vessel', 'Asset Name', 'Vessel Name']),
+        asset: text(r, ['Asset / Service', 'Asset/Service', 'Asset', 'Service']),
+        sr_wo: text(r, ['SR Number / WO Number', 'SR/WO', 'SR / WO', 'SR Number', 'WO Number', 'Service Request', 'Work Order']),
+        work_order_type: text(r, ['Work Order Type']),
+        purchase_from: text(r, ['Purchase From']),
+        purchase_type: text(r, ['Purchase Type']),
+        priority: text(r, ['Priority', 'Urgency']),
+        supplier: text(r, ['Supplier', 'Vendor', 'Supplier Name']),
+        item_code: text(r, ['Item', 'Item Code', 'Item Number', 'Item ID']),
+        item_description: text(r, ['Description', 'Item Description', 'Product Name', 'Request Description']),
+        unit: text(r, ['Unit', 'UOM']),
+        qty_requested: number(r, ['Requested Qty', 'Request Qty', 'Quantity', 'PR Qty']),
+        qty_ordered: number(r, ['Ordered Qty', 'PO Qty', 'Order Qty']),
+        qty_received: number(r, ['Received', 'Received Qty', 'Receipt Qty']),
+        balance_qty: number(r, ['Balance', 'Balance Qty', 'Remaining Qty']),
+        currency: text(r, ['Currency']),
+        amount: number(r, ['Amount', 'PO Amount', 'Total Amount', 'Value']),
+        pr_date: date(r, ['PR Date', 'Created Date', 'PR Created Date']),
+        po_date: date(r, ['PO Date', 'Purchase Order Date']),
+        required_date: date(r, ['Required Date', 'Need By Date']),
+        processed_date: date(r, ['Processed Date', 'Processing Date']),
+        expected_delivery: date(r, ['Delivery Date', 'Expected Delivery', 'ETA']),
+        payment_status: text(r, ['Payment Status', 'Payment']),
+        delivery_status: text(r, ['Delivery Status', 'Delivery']),
+        requested_by: text(r, ['Requested By', 'Requester', 'Created By']),
+        modified_by: text(r, ['Modified By']),
+        cancel_reject_reason: cancelReason,
+        latest_updates: latest,
+        status: text(r, ['Status', 'PRF Status']),
+        remarks: latest || cancelReason || text(r, ['Remarks', 'Remark', 'Comments']),
+        source_type: source,
+        source_updated_at: new Date().toISOString(),
+        raw_source: rawSource(r),
+      }
+    }).filter((r) =>
+      r.prf_no ||
+      r.linked_pr_mtr ||
+      r.sr_wo ||
+      r.asset ||
+      r.workshop ||
+      r.status
+    )
+  }
+
+  if (source === 'PR' || source === 'PO') {
     return rows.map((r) => ({
       prf_no: text(r, ['PRF', 'PRF No', 'PRF/IPF', 'IPF', 'PRF Number']),
       pr_no: text(r, ['PR', 'PR No', 'PR Number']),
       po_no: text(r, ['PO', 'PO No', 'PO Number', 'Purchase Order']),
+      linked_pr_mtr: text(r, ['PR/MTR Number', 'PR / MTR Number']),
       section: text(r, ['Section', 'Department']),
       workshop: text(r, ['Workshop', 'Workshop/Section']),
       vessel: text(r, ['Vessel', 'Asset Name', 'Vessel Name']),
-      asset: text(r, ['Asset', 'Asset/Service', 'Service']),
-      sr_wo: text(r, ['SR/WO', 'SR', 'WO', 'Service Request', 'Work Order']),
+      asset: text(r, ['Asset', 'Asset/Service', 'Asset / Service', 'Service']),
+      sr_wo: text(r, ['SR/WO', 'SR / WO', 'SR Number / WO Number', 'SR', 'WO', 'Service Request', 'Work Order']),
+      work_order_type: text(r, ['Work Order Type']),
+      purchase_from: text(r, ['Purchase From']),
+      purchase_type: text(r, ['Purchase Type']),
       priority: text(r, ['Priority', 'Urgency']),
       supplier: text(r, ['Supplier', 'Vendor', 'Supplier Name']),
       item_code: text(r, ['Item', 'Item Code', 'Item Number', 'Item ID']),
@@ -77,11 +142,16 @@ export function mapRows(source, rows) {
       pr_date: date(r, ['PR Date', 'Created Date', 'PR Created Date']),
       po_date: date(r, ['PO Date', 'Purchase Order Date']),
       required_date: date(r, ['Required Date', 'Need By Date']),
+      processed_date: date(r, ['Processed Date']),
       expected_delivery: date(r, ['Delivery Date', 'Expected Delivery', 'ETA']),
       payment_status: text(r, ['Payment Status', 'Payment']),
       delivery_status: text(r, ['Delivery Status', 'Delivery']),
+      requested_by: text(r, ['Requested By', 'Requester']),
+      modified_by: text(r, ['Modified By']),
+      cancel_reject_reason: text(r, ['CANCEL / REJECT REASON', 'Cancel / Reject Reason']),
+      latest_updates: text(r, ['Latest Updates', 'Latest Update']),
       status: text(r, ['Status', 'PR Status', 'PO Status']),
-      remarks: text(r, ['Remarks', 'Remark', 'Comments']),
+      remarks: text(r, ['Remarks', 'Remark', 'Comments', 'Latest Updates']),
       source_type: source,
       source_updated_at: new Date().toISOString(),
       raw_source: rawSource(r),
