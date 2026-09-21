@@ -48,6 +48,28 @@ function prfStatusLabel(value) {
   return text ? text.toUpperCase() : 'PRF NOT RAISED'
 }
 
+function weekStartSunday(dateLike) {
+  if (!dateLike) return ''
+  const date = new Date(String(dateLike).slice(0, 10) + 'T12:00:00')
+  if (Number.isNaN(date.valueOf())) return ''
+  date.setDate(date.getDate() - date.getDay())
+  return date.toISOString().slice(0, 10)
+}
+
+function addDaysIso(iso, days) {
+  const date = new Date(iso + 'T12:00:00')
+  date.setDate(date.getDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+function formatShortDate(iso) {
+  if (!iso) return '—'
+  return new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+  })
+}
+
 function AuthScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -547,6 +569,7 @@ export default function App() {
   const [vesselSearch, setVesselSearch] = useState('')
   const [slide, setSlide] = useState(0)
   const [prfStatusFilter, setPrfStatusFilter] = useState('ALL')
+  const [prfWeekFilter, setPrfWeekFilter] = useState('ALL')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -686,12 +709,31 @@ export default function App() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1])
   }, [allPrfRows])
 
+  const prfWeekCounts = useMemo(() => {
+    const counts = new Map()
+    allPrfRows.forEach((row) => {
+      const weekStart = weekStartSunday(row.pr_date)
+      if (weekStart) counts.set(weekStart, (counts.get(weekStart) || 0) + 1)
+    })
+
+    const currentWeek = weekStartSunday(new Date().toISOString().slice(0, 10))
+    return Array.from({ length: 8 }, (_, index) => {
+      const weekStart = addDaysIso(currentWeek, index * -7)
+      return {
+        weekStart,
+        weekEnd: addDaysIso(weekStart, 6),
+        count: counts.get(weekStart) || 0,
+      }
+    })
+  }, [allPrfRows])
+
   const prfRows = useMemo(
     () => allPrfRows.filter((r) =>
       matches(r) &&
-      (prfStatusFilter === 'ALL' || prfStatusLabel(r.status) === prfStatusFilter)
+      (prfStatusFilter === 'ALL' || prfStatusLabel(r.status) === prfStatusFilter) &&
+      (prfWeekFilter === 'ALL' || weekStartSunday(r.pr_date) === prfWeekFilter)
     ),
-    [allPrfRows, query, prfStatusFilter],
+    [allPrfRows, query, prfStatusFilter, prfWeekFilter],
   )
   const prpoRows = useMemo(
     () => procurementData.filter((r) => ['PR', 'PO'].includes(r.source_type) && matches(r)),
@@ -1068,6 +1110,44 @@ export default function App() {
                   <div className="prf-filter-note">
                     Showing <b>{prfStatusFilter}</b>
                     <button onClick={() => setPrfStatusFilter('ALL')}>Clear filter</button>
+                  </div>
+                )}
+              </section>
+
+              <section className="prf-weekly-summary">
+                <div className="prf-status-head">
+                  <div>
+                    <span className="eyebrow">WEEKLY SUBMISSIONS</span>
+                    <h3>Submitted PRFs by week</h3>
+                  </div>
+                  <span>Sunday–Saturday</span>
+                </div>
+
+                <div className="prf-week-grid">
+                  <button
+                    className={prfWeekFilter === 'ALL' ? 'prf-week-card active' : 'prf-week-card'}
+                    onClick={() => setPrfWeekFilter('ALL')}
+                  >
+                    <span>ALL WEEKS</span>
+                    <strong>{fmt(allPrfRows.filter((r) => r.pr_date).length)}</strong>
+                  </button>
+
+                  {prfWeekCounts.map((week) => (
+                    <button
+                      key={week.weekStart}
+                      className={prfWeekFilter === week.weekStart ? 'prf-week-card active' : 'prf-week-card'}
+                      onClick={() => setPrfWeekFilter(week.weekStart)}
+                    >
+                      <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
+                      <strong>{fmt(week.count)}</strong>
+                    </button>
+                  ))}
+                </div>
+
+                {prfWeekFilter !== 'ALL' && (
+                  <div className="prf-filter-note">
+                    Showing PRFs submitted {formatShortDate(prfWeekFilter)} – {formatShortDate(addDaysIso(prfWeekFilter, 6))}
+                    <button onClick={() => setPrfWeekFilter('ALL')}>Clear week</button>
                   </div>
                 )}
               </section>
