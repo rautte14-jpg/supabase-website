@@ -168,6 +168,28 @@ textarea { resize: vertical; }
 .metric-card.warn { border-left: 4px solid #d49b34; }
 .metric-card.bad { border-left: 4px solid #d55a5a; }
 
+.metric-card.clickable {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.metric-card.clickable:hover {
+  border-color: #8fd3c4;
+  transform: translateY(-1px);
+}
+.metric-card.clickable.active {
+  border-color: #159b80;
+  box-shadow: inset 0 0 0 1px #159b80, 0 8px 24px rgba(28,45,74,.05);
+  background: #f2fbf8;
+}
+.metric-card.clickable.active strong,
+.metric-card.clickable.active span {
+  color: #11735f;
+}
+.prpo-age-note {
+  margin-bottom: 10px;
+}
+
 .prpo-visible-count {
   display: flex;
   align-items: center;
