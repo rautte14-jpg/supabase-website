@@ -269,6 +269,34 @@ function NoteModal({ state, note, onClose, onSave }) {
   )
 }
 
+async function fetchAllRows(table, orderColumn, ascending = false) {
+  const pageSize = 1000
+  let from = 0
+  let all = []
+
+  while (true) {
+    let query = supabase
+      .from(table)
+      .select('*')
+      .range(from, from + pageSize - 1)
+
+    if (orderColumn) {
+      query = query.order(orderColumn, { ascending })
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+
+    const batch = data ?? []
+    all = all.concat(batch)
+
+    if (batch.length < pageSize) break
+    from += pageSize
+  }
+
+  return all
+}
+
 function ImportPanel({ onApplied, email }) {
   const [source, setSource] = useState('PRF')
   const [file, setFile] = useState(null)
@@ -550,36 +578,40 @@ export default function App() {
   async function loadAll() {
     if (!session || !access) return
     setLoading(true)
-    const [
-      procurement,
-      material,
-      stock,
-      transactions,
-      lld,
-      notes,
-      sourceUpdates,
-      snapshots,
-    ] = await Promise.all([
-      supabase.from('procurement_records').select('*').order('updated_at', { ascending: false }).range(0, 4999),
-      supabase.from('material_records').select('*').order('updated_at', { ascending: false }).range(0, 4999),
-      supabase.from('stock_items').select('*').order('item_code').range(0, 4999),
-      supabase.from('inventory_transactions').select('*').order('physical_date', { ascending: false }).range(0, 4999),
-      supabase.from('lld_updates').select('*').order('updated_at', { ascending: false }).range(0, 1999),
-      supabase.from('case_notes').select('*').order('updated_at', { ascending: false }).range(0, 1999),
-      supabase.from('source_updates').select('*').order('imported_at', { ascending: false }).range(0, 999),
-      supabase.from('weekly_snapshots').select('*').order('snapshot_date', { ascending: false }).range(0, 999),
-    ])
+    try {
+      const [
+        procurement,
+        material,
+        stock,
+        transactions,
+        lld,
+        notes,
+        sourceUpdates,
+        snapshots,
+      ] = await Promise.all([
+        fetchAllRows('procurement_records', 'updated_at', false),
+        fetchAllRows('material_records', 'updated_at', false),
+        fetchAllRows('stock_items', 'item_code', true),
+        fetchAllRows('inventory_transactions', 'physical_date', false),
+        fetchAllRows('lld_updates', 'updated_at', false),
+        fetchAllRows('case_notes', 'updated_at', false),
+        fetchAllRows('source_updates', 'imported_at', false),
+        fetchAllRows('weekly_snapshots', 'snapshot_date', false),
+      ])
 
-    setData({
-      procurement: procurement.data ?? [],
-      material: material.data ?? [],
-      stock: stock.data ?? [],
-      transactions: transactions.data ?? [],
-      lld: lld.data ?? [],
-      notes: notes.data ?? [],
-      sourceUpdates: sourceUpdates.data ?? [],
-      snapshots: snapshots.data ?? [],
-    })
+      setData({
+        procurement,
+        material,
+        stock,
+        transactions,
+        lld,
+        notes,
+        sourceUpdates,
+        snapshots,
+      })
+    } catch (error) {
+      console.error('Failed to load portal data', error)
+    }
     setLoading(false)
   }
 
