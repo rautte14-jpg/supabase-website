@@ -777,9 +777,9 @@ export default function App() {
   }
 
   const query = lower(search).trim()
-  const matches = (row) => !query || Object.values(row).some((v) =>
-    typeof v !== 'object' && lower(v).includes(query),
-  )
+  const matches = (row) => !query ||
+    Object.values(row).some((v) => typeof v !== 'object' && lower(v).includes(query)) ||
+    (row?.raw_source && lower(Object.values(row.raw_source).join(' ')).includes(query))
 
   const allPrfRows = useMemo(
     () => procurementData.filter((r) => r.source_type === 'PRF'),
@@ -1075,6 +1075,45 @@ export default function App() {
     { key: 'delivery_status', label: 'Delivery', render: (v) => <StatusPill value={v} /> },
     { key: 'expected_delivery', label: 'ETA' },
     { key: 'status', label: 'Status', render: (v) => <StatusPill value={v} /> },
+  ]
+
+  const prPoColumns = [
+    { key: 'raw_prf_description', label: 'PRF Description', render: (_v, r) => rawField(r, ['PRF Description']) || '—' },
+    { key: 'prf_no', label: 'PRF Number' },
+    { key: 'sr_wo', label: 'SR Number' },
+    { key: 'asset_vessel', label: 'Asset / Vessel', render: (_v, r) => rawField(r, ['Asset / Vessel']) || r.asset || r.vessel || '—' },
+    { key: 'section', label: 'Section' },
+    { key: 'purchase_from', label: 'From', render: (v, r) => v || rawField(r, ['From']) || '—' },
+    { key: 'purchase_type', label: 'Type', render: (v, r) => v || rawField(r, ['Type']) || '—' },
+    { key: 'raw_pr_name', label: 'PR Name', render: (_v, r) => rawField(r, ['PR Name']) || '—' },
+    { key: 'pr_no', label: 'PR No.' },
+    { key: 'po_no', label: 'PO Number' },
+    { key: 'priority', label: 'Priority', render: (v) => <StatusPill value={v} /> },
+    { key: 'raw_line_no', label: '#', render: (_v, r) => rawField(r, ['#']) || '—' },
+    { key: 'item_code', label: 'Item ID' },
+    { key: 'item_description', label: 'Product Name' },
+    { key: 'qty_requested', label: 'Quantity', render: (v, r) => v ?? rawField(r, ['Quantity']) ?? '—' },
+    { key: 'unit', label: 'Unit' },
+    { key: 'raw_category', label: 'Category', render: (_v, r) => rawField(r, ['Category']) || '—' },
+    { key: 'amount', label: 'PO Value', render: (v, r) => {
+      const value = v ?? numericRowField(r, 'amount', ['PO Value'])
+      return value === null || value === undefined || value === '' ? '—' : money(value)
+    } },
+    { key: 'raw_on_hand', label: 'On-Hand', render: (_v, r) => rawField(r, ['On-Hand', 'On Hand']) || '—' },
+    { key: 'status', label: 'ERP Status', render: (v, r) => <StatusPill value={v || rawField(r, ['ERP Status'])} /> },
+    { key: 'pr_date', label: 'Submitted Date', render: (v, r) => v || rawField(r, ['Submitted Date']) || '—' },
+    { key: 'expected_delivery', label: 'PO Delivery Date', render: (v, r) => v || rawField(r, ['PO Delivery Date']) || '—' },
+    { key: 'raw_po_erp_status', label: 'PO ERP Status', render: (_v, r) => <StatusPill value={rawField(r, ['PO ERP Status', 'PO ERP']) || '—'} /> },
+    { key: 'supplier', label: 'Supplier' },
+    { key: 'raw_received_date', label: 'Received Date', render: (_v, r) => rawField(r, ['Received Date']) || '—' },
+    { key: 'qty_received', label: 'Received Qty', render: (v, r) => v ?? rawField(r, ['Received Qty']) ?? '—' },
+    { key: 'balance_qty', label: 'Balance Qty', render: (v, r) => v ?? rawField(r, ['Balance Qty']) ?? '—' },
+    { key: 'delivery_status', label: 'Delivery Status', render: (v, r) => <StatusPill value={v || rawField(r, ['Delivery Status']) || '—'} /> },
+    { key: 'raw_delivery_note', label: 'Delivery Note', render: (_v, r) => rawField(r, ['Delivery Note']) || '—' },
+    { key: 'raw_receipt', label: 'Receipt', render: (_v, r) => rawField(r, ['Receipt']) || '—' },
+    { key: 'raw_age', label: 'Age (Months & Days)', render: (_v, r) => rawField(r, ['Age (Months & Days)', 'Age']) || '—' },
+    { key: 'raw_rec_week', label: 'Rec Week', render: (_v, r) => rawField(r, ['Rec Week']) || '—' },
+    { key: 'latest_updates', label: 'PD Status Updates', render: (v, r) => v || rawField(r, ['PD Status Updates']) || '—' },
   ]
 
   const materialColumns = [
@@ -1549,7 +1588,7 @@ export default function App() {
                 />
               </div>
 
-              <DataTable rows={prpoRows} columns={procurementColumns} noteType="procurement" noteMap={noteMap} onUpdate={openNote} />
+              <DataTable rows={prpoRows} columns={prPoColumns} noteType="procurement" noteMap={noteMap} onUpdate={openNote} />
             </>
           )}
 
