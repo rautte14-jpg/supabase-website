@@ -255,7 +255,8 @@ function mrnJournalNo(row) {
 }
 
 function mrnHasJournal(row) {
-  return !isPlaceholderValue(mrnJournalNo(row), true)
+  const value = mrnJournalNo(row)
+  return /\bMTCC-\d+\b/i.test(value)
 }
 
 function mrnWpType(row) {
