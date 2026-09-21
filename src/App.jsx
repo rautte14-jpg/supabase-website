@@ -770,6 +770,93 @@ export default function App() {
   const stockRows = useMemo(() => data.stock.filter(matches), [data.stock, query])
   const transactionRows = useMemo(() => data.transactions.filter(matches), [data.transactions, query])
 
+  const prPoSummary = useMemo(() => {
+    const prLines = procurementData.filter((r) => r.source_type === 'PR')
+    const prMap = new Map()
+
+    prLines.forEach((row) => {
+      const prNo = String(row.pr_no || '').trim()
+      if (!prNo) return
+
+      if (!prMap.has(prNo)) {
+        prMap.set(prNo, {
+          requested: 0,
+          received: 0,
+          balance: 0,
+          submitted: null,
+          cancelled: false,
+        })
+      }
+
+      const item = prMap.get(prNo)
+      item.requested += Number(row.qty_requested || 0)
+      item.received += Number(row.qty_received || 0)
+      item.balance += Number(row.balance_qty || 0)
+
+      if (row.pr_date) {
+        const d = new Date(row.pr_date + 'T12:00:00')
+        if (!Number.isNaN(d.valueOf()) && (!item.submitted || d < item.submitted)) {
+          item.submitted = d
+        }
+      }
+
+      const status = lower(row.status)
+      if (status.includes('cancel') || status.includes('reject')) {
+        item.cancelled = true
+      }
+    })
+
+    const prs = [...prMap.values()]
+    const fullyReceived = prs.filter((p) => p.requested > 0 && p.received >= p.requested)
+    const partReceived = prs.filter((p) => p.received > 0 && p.received < p.requested)
+
+    const now = new Date()
+    let oldestOpenDays = 0
+    let aged90Plus = 0
+
+    prs.forEach((p) => {
+      const complete = p.requested > 0 && p.received >= p.requested
+      if (p.cancelled || complete || !p.submitted) return
+      const days = Math.max(0, Math.floor((now - p.submitted) / 86400000))
+      oldestOpenDays = Math.max(oldestOpenDays, days)
+      if (days >= 90) aged90Plus += 1
+    })
+
+    const receivedItemQty = prLines.reduce(
+      (sum, row) => sum + Number(row.qty_received || 0),
+      0,
+    )
+
+    const poMap = new Map()
+    prLines.forEach((row) => {
+      const poNo = String(row.po_no || '').trim()
+      if (!poNo) return
+
+      if (!poMap.has(poNo)) {
+        poMap.set(poNo, { value: 0, requested: 0, received: 0 })
+      }
+
+      const po = poMap.get(poNo)
+      po.value = Math.max(po.value, Number(row.amount || 0))
+      po.requested += Number(row.qty_requested || 0)
+      po.received += Number(row.qty_received || 0)
+    })
+
+    const receivedItemValue = [...poMap.values()].reduce((sum, po) => {
+      if (!(po.value > 0) || !(po.requested > 0) || !(po.received > 0)) return sum
+      return sum + po.value * Math.min(1, po.received / po.requested)
+    }, 0)
+
+    return {
+      fullyReceivedPrs: fullyReceived.length,
+      partReceivedPrs: partReceived.length,
+      aged90Plus,
+      oldestOpenDays,
+      receivedItemQty,
+      receivedItemValue,
+    }
+  }, [procurementData])
+
   const today = new Date()
   const sevenDaysAgo = new Date()
   sevenDaysAgo.setDate(today.getDate() - 7)
@@ -1233,6 +1320,37 @@ export default function App() {
           {view === 'prpo' && (
             <>
               <PageHeader title="PR & PO Tracker" subtitle="Procurement line status from PR through payment, delivery and receipt." />
+
+              <div className="metric-grid prpo-metrics">
+                <MetricCard
+                  label="PRs Received All"
+                  value={fmt(prPoSummary.fullyReceivedPrs)}
+                  helper="Distinct PRs fully received"
+                />
+                <MetricCard
+                  label="PRs Part Received"
+                  value={fmt(prPoSummary.partReceivedPrs)}
+                  helper="Some quantity received, balance remains"
+                  tone="warn"
+                />
+                <MetricCard
+                  label="Aged PRs — 90+ Days"
+                  value={fmt(prPoSummary.aged90Plus)}
+                  helper={'Oldest open PR: ' + fmt(prPoSummary.oldestOpenDays) + ' days'}
+                  tone="bad"
+                />
+                <MetricCard
+                  label="Received Item Qty"
+                  value={fmt(prPoSummary.receivedItemQty, 2)}
+                  helper="Total quantity received"
+                />
+                <MetricCard
+                  label="Received Items Value"
+                  value={money(prPoSummary.receivedItemValue)}
+                  helper="PO value counted once; partial receipts proportioned"
+                />
+              </div>
+
               <DataTable rows={prpoRows} columns={procurementColumns} noteType="procurement" noteMap={noteMap} onUpdate={openNote} />
             </>
           )}
