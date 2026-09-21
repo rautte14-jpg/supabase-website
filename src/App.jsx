@@ -933,36 +933,6 @@ export default function App() {
     [allPrLines, prPoWeekFilter],
   )
 
-  const prpoRows = useMemo(
-    () => allPrPoRows.filter((row) => {
-      if (!matches(row)) return false
-      if (prPoWeekFilter !== 'ALL' && weekStartSunday(prSubmittedDate(row)) !== prPoWeekFilter) return false
-
-      const prNo = String(row.pr_no || '').trim()
-      if (prPoAgeFilter === '3TO6' && !prPoAgeing.agedThreeToSixPrNos.has(prNo)) return false
-      if (prPoAgeFilter === '6PLUS' && !prPoAgeing.agedSixPlusPrNos.has(prNo)) return false
-
-      return true
-    }),
-    [allPrPoRows, query, prPoWeekFilter, prPoAgeFilter, prPoAgeing],
-  )
-
-  const prPoVisibleCounts = useMemo(() => ({
-    prs: new Set(prpoRows.map((r) => r.pr_no).filter((v) => !isPlaceholderValue(v, true))).size,
-    lines: prpoRows.length,
-  }), [prpoRows])
-
-  const mtrRows = useMemo(
-    () => data.material.filter((r) => r.document_type === 'MTR' && matches(r)),
-    [data.material, query],
-  )
-  const mrnRows = useMemo(
-    () => data.material.filter((r) => r.document_type === 'MRN' && matches(r)),
-    [data.material, query],
-  )
-  const stockRows = useMemo(() => data.stock.filter(matches), [data.stock, query])
-  const transactionRows = useMemo(() => data.transactions.filter(matches), [data.transactions, query])
-
   const prPoAgeing = useMemo(() => {
     const prMap = new Map()
 
@@ -1032,6 +1002,36 @@ export default function App() {
       agedSixPlusPrNos,
     }
   }, [allPrLines])
+
+  const prpoRows = useMemo(
+    () => allPrPoRows.filter((row) => {
+      if (!matches(row)) return false
+      if (prPoWeekFilter !== 'ALL' && weekStartSunday(prSubmittedDate(row)) !== prPoWeekFilter) return false
+
+      const prNo = String(row.pr_no || '').trim()
+      if (prPoAgeFilter === '3TO6' && !prPoAgeing.agedThreeToSixPrNos.has(prNo)) return false
+      if (prPoAgeFilter === '6PLUS' && !prPoAgeing.agedSixPlusPrNos.has(prNo)) return false
+
+      return true
+    }),
+    [allPrPoRows, query, prPoWeekFilter, prPoAgeFilter, prPoAgeing],
+  )
+
+  const prPoVisibleCounts = useMemo(() => ({
+    prs: new Set(prpoRows.map((r) => r.pr_no).filter((v) => !isPlaceholderValue(v, true))).size,
+    lines: prpoRows.length,
+  }), [prpoRows])
+
+  const mtrRows = useMemo(
+    () => data.material.filter((r) => r.document_type === 'MTR' && matches(r)),
+    [data.material, query],
+  )
+  const mrnRows = useMemo(
+    () => data.material.filter((r) => r.document_type === 'MRN' && matches(r)),
+    [data.material, query],
+  )
+  const stockRows = useMemo(() => data.stock.filter(matches), [data.stock, query])
+  const transactionRows = useMemo(() => data.transactions.filter(matches), [data.transactions, query])
 
   const prPoSummary = useMemo(() => {
     const prMap = new Map()
