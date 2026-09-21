@@ -1504,6 +1504,24 @@ export default function App() {
     { key: 'raw_delivery_status_erp', label: 'Delivery Status ERP', render: (_v, r) => <StatusPill value={rawField(r, ['Delivery Status ERP']) || '—'} /> },
   ]
 
+  const mrnColumns = [
+    { key: 'raw_id', label: 'ID', render: (_v, r) => displayValue(rawField(r, ['ID'])) },
+    { key: 'document_date', label: 'Created', render: (v, r) => v || rawField(r, ['Created']) || '—' },
+    { key: 'workshop', label: 'Workshop Name', render: (v, r) => displayValue(v || rawField(r, ['WORKSHOP NAME', 'Workshop Name'])) },
+    { key: 'raw_wp_type', label: 'WP Type', render: (_v, r) => displayValue(rawField(r, ['WP TYPE'])) },
+    { key: 'document_no', label: 'MRN Number', render: (v, r) => displayValue(v || rawField(r, ['MRN NUMBER', 'MRN Number']), true) },
+    { key: 'raw_wp_number', label: 'WP Number', render: (_v, r) => displayValue(rawField(r, ['WP NUMBER'])) },
+    { key: 'sr_wo', label: 'SR Number', render: (v, r) => displayValue(v || rawField(r, ['SR NUMBER', 'SR Number']), true) },
+    { key: 'raw_boq_number', label: 'BOQ Number', render: (_v, r) => displayValue(rawField(r, ['BOQ NUMBER'])) },
+    { key: 'asset', label: 'Asset / Service', render: (v, r) => displayValue(v || r.vessel || rawField(r, ['ASSET / SERVICE', 'Asset / Service'])) },
+    { key: 'raw_svo_journal', label: 'SVO / Journal Number', render: (_v, r) => displayValue(rawField(r, ['SVO / JOURNAL NUMBER', 'SVO / Journal Number'])) },
+    { key: 'raw_submitted_by', label: 'Submitted By', render: (_v, r) => displayValue(rawField(r, ['SUBMITTED BY', 'Submitted By'])) },
+    { key: 'status', label: 'Issued Status', render: (v, r) => <StatusPill value={v || rawField(r, ['Issued Status']) || '—'} /> },
+    { key: 'raw_modified_by', label: 'Modified By', render: (_v, r) => displayValue(rawField(r, ['Modified by', 'Modified By'])) },
+    { key: 'raw_item_type', label: 'Item Type', render: (_v, r) => displayValue(rawField(r, ['Item Type'])) },
+    { key: 'raw_path', label: 'Path', render: (_v, r) => displayValue(rawField(r, ['Path'])) },
+  ]
+
   const materialColumns = [
     { key: 'document_no', label: 'Document' },
     { key: 'document_date', label: 'Date' },
@@ -2224,7 +2242,7 @@ export default function App() {
           {view === 'mrn' && (
             <>
               <PageHeader title="MRN & Issues" subtitle="Material requests and ERP issue progress against SR / work order." />
-              <DataTable rows={mrnRows} columns={materialColumns} noteType="material" noteMap={noteMap} onUpdate={openNote} />
+              <DataTable rows={mrnRows} columns={mrnColumns} noteType="material" noteMap={noteMap} onUpdate={openNote} />
             </>
           )}
 
