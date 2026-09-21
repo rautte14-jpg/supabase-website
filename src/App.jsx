@@ -913,6 +913,11 @@ export default function App() {
     [allPrPoRows, query, prPoWeekFilter],
   )
 
+  const prPoVisibleCounts = useMemo(() => ({
+    prs: new Set(prpoRows.map((r) => r.pr_no).filter((v) => !isPlaceholderValue(v, true))).size,
+    lines: prpoRows.length,
+  }), [prpoRows])
+
   const mtrRows = useMemo(
     () => data.material.filter((r) => r.document_type === 'MTR' && matches(r)),
     [data.material, query],
@@ -923,6 +928,69 @@ export default function App() {
   )
   const stockRows = useMemo(() => data.stock.filter(matches), [data.stock, query])
   const transactionRows = useMemo(() => data.transactions.filter(matches), [data.transactions, query])
+
+  const prPoAgeing = useMemo(() => {
+    const prMap = new Map()
+
+    allPrLines.forEach((row) => {
+      const prNo = String(row.pr_no || '').trim()
+      if (!prNo) return
+
+      if (!prMap.has(prNo)) {
+        prMap.set(prNo, {
+          requested: 0,
+          received: 0,
+          submitted: null,
+          lineCount: 0,
+          fullLines: 0,
+          activeLines: 0,
+        })
+      }
+
+      const item = prMap.get(prNo)
+      const requested = requestedQty(row)
+      const received = Math.min(requested > 0 ? requested : Number.MAX_SAFE_INTEGER, receivedQty(row))
+      const state = receiptState(row)
+      const status = lower(row.status)
+
+      item.requested += requested
+      item.received += received
+      item.lineCount += 1
+      if (state === 'full') item.fullLines += 1
+      if (!status.includes('cancel') && !status.includes('reject')) item.activeLines += 1
+
+      const dateIso = prSubmittedDate(row)
+      if (dateIso) {
+        const d = new Date(dateIso + 'T12:00:00')
+        if (!Number.isNaN(d.valueOf()) && (!item.submitted || d < item.submitted)) item.submitted = d
+      }
+    })
+
+    const now = new Date()
+    const threeMonthsAgo = new Date(now)
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+    const sixMonthsAgo = new Date(now)
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+
+    let agedThreeToSix = 0
+    let agedSixPlus = 0
+    let oldestOpenDays = 0
+
+    for (const p of prMap.values()) {
+      const fullyReceived =
+        (p.requested > 0 && p.received >= p.requested) ||
+        (p.lineCount > 0 && p.fullLines === p.lineCount)
+      if (p.activeLines <= 0 || fullyReceived || !p.submitted) continue
+
+      const days = Math.max(0, Math.floor((now - p.submitted) / 86400000))
+      oldestOpenDays = Math.max(oldestOpenDays, days)
+
+      if (p.submitted <= sixMonthsAgo) agedSixPlus += 1
+      else if (p.submitted <= threeMonthsAgo) agedThreeToSix += 1
+    }
+
+    return { agedThreeToSix, agedSixPlus, oldestOpenDays }
+  }, [allPrLines])
 
   const prPoSummary = useMemo(() => {
     const prMap = new Map()
@@ -973,24 +1041,6 @@ export default function App() {
       !isFullyReceived(p) && (p.received > 0 || p.partialLines > 0 || p.fullLines > 0)
     )
 
-    const now = new Date()
-    const threeMonthsAgo = new Date(now)
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
-    const sixMonthsAgo = new Date(now)
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
-
-    let agedThreeToSix = 0
-    let agedSixPlus = 0
-    let oldestOpenDays = 0
-
-    prs.forEach((p) => {
-      if (isFullyReceived(p) || !p.submitted) return
-      const days = Math.max(0, Math.floor((now - p.submitted) / 86400000))
-      oldestOpenDays = Math.max(oldestOpenDays, days)
-      if (p.submitted <= sixMonthsAgo) agedSixPlus += 1
-      else if (p.submitted <= threeMonthsAgo) agedThreeToSix += 1
-    })
-
     const receivedItemQty = weekFilteredPrLines.reduce(
       (sum, row) => sum + receivedQty(row),
       0,
@@ -1034,9 +1084,6 @@ export default function App() {
       totalPrs: prMap.size,
       fullyReceivedPrs: fullyReceived.length,
       partReceivedPrs: partReceived.length,
-      agedThreeToSix,
-      agedSixPlus,
-      oldestOpenDays,
       receivedItemQty,
       receivedItemValue,
     }
@@ -1597,14 +1644,18 @@ export default function App() {
                 />
                 <MetricCard
                   label="3–6 Month Aged PRs"
-                  value={fmt(prPoSummary.agedThreeToSix)}
+                  value={fmt(prPoAgeing.agedThreeToSix)}
                   helper="Open PRs aged 3 to under 6 months"
                   tone="warn"
                 />
                 <MetricCard
                   label="6+ Month Aged PRs"
-                  value={fmt(prPoSummary.agedSixPlus)}
-                  helper={'Open PRs aged 6+ months • oldest ' + fmt(prPoSummary.oldestOpenDays) + ' days'}
+                  value={fmt(prPoAgeing.agedSixPlus)}
+                  helper={
+                    prPoAgeing.agedSixPlus > 0
+                      ? 'Open PRs aged 6+ months • oldest open ' + fmt(prPoAgeing.oldestOpenDays) + ' days'
+                      : 'Open PRs aged 6+ months'
+                  }
                   tone="bad"
                 />
                 <MetricCard
@@ -1617,6 +1668,11 @@ export default function App() {
                   value={money(prPoSummary.receivedItemValue)}
                   helper="Received share of mapped PO value"
                 />
+              </div>
+
+              <div className="prpo-visible-count">
+                <strong>{fmt(prPoVisibleCounts.prs)} PR{prPoVisibleCounts.prs === 1 ? '' : 's'}</strong>
+                <span>{fmt(prPoVisibleCounts.lines)} item line{prPoVisibleCounts.lines === 1 ? '' : 's'} shown</span>
               </div>
 
               <DataTable rows={prpoRows} columns={prPoColumns} noteType="procurement" noteMap={noteMap} onUpdate={openNote} />
