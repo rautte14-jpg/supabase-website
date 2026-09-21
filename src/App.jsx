@@ -1185,22 +1185,28 @@ export default function App() {
       item.lines += 1
     })
 
-    const mtrs = [...mtrMap.values()]
-    const fullyTransferred = mtrs.filter((m) =>
-      m.requested > 0 && m.remaining <= 0 && m.transferred >= m.requested
-    ).length
-    const partiallyTransferred = mtrs.filter((m) =>
-      m.transferred > 0 && m.remaining > 0
-    ).length
-    const notTransferred = mtrs.filter((m) =>
-      m.requested > 0 && m.transferred <= 0 && m.remaining > 0
-    ).length
+    const fullyTransferredMtrs = new Set()
+    const partiallyTransferredMtrs = new Set()
+    const notTransferredMtrs = new Set()
+
+    for (const [mtrNo, m] of mtrMap.entries()) {
+      if (m.requested > 0 && m.remaining <= 0 && m.transferred >= m.requested) {
+        fullyTransferredMtrs.add(mtrNo)
+      } else if (m.transferred > 0 && m.remaining > 0) {
+        partiallyTransferredMtrs.add(mtrNo)
+      } else if (m.requested > 0 && m.transferred <= 0 && m.remaining > 0) {
+        notTransferredMtrs.add(mtrNo)
+      }
+    }
 
     return {
       totalMtrs: mtrMap.size,
-      fullyTransferred,
-      partiallyTransferred,
-      notTransferred,
+      fullyTransferred: fullyTransferredMtrs.size,
+      partiallyTransferred: partiallyTransferredMtrs.size,
+      notTransferred: notTransferredMtrs.size,
+      fullyTransferredMtrs,
+      partiallyTransferredMtrs,
+      notTransferredMtrs,
       requestedQty,
       transferredQty,
       remainingQty,
@@ -1240,26 +1246,9 @@ export default function App() {
       const pending = remaining > 0 || (requested > 0 && transferred < requested)
       const mtrNo = String(row.document_no || '').trim()
 
-      if (mtrControlFilter === 'FULL') {
-        const sameMtrRows = weekFilteredMtrRows.filter((x) => String(x.document_no || '').trim() === mtrNo)
-        const totalRequested = sameMtrRows.reduce((s, x) => s + mtrRequestedQty(x), 0)
-        const totalTransferred = sameMtrRows.reduce((s, x) => s + mtrTransferredQty(x), 0)
-        const totalRemaining = sameMtrRows.reduce((s, x) => s + mtrRemainingQty(x), 0)
-        if (!(totalRequested > 0 && totalRemaining <= 0 && totalTransferred >= totalRequested)) return false
-      }
-      if (mtrControlFilter === 'PARTIAL') {
-        const sameMtrRows = weekFilteredMtrRows.filter((x) => String(x.document_no || '').trim() === mtrNo)
-        const totalTransferred = sameMtrRows.reduce((s, x) => s + mtrTransferredQty(x), 0)
-        const totalRemaining = sameMtrRows.reduce((s, x) => s + mtrRemainingQty(x), 0)
-        if (!(totalTransferred > 0 && totalRemaining > 0)) return false
-      }
-      if (mtrControlFilter === 'NOT_TRANSFERRED') {
-        const sameMtrRows = weekFilteredMtrRows.filter((x) => String(x.document_no || '').trim() === mtrNo)
-        const totalRequested = sameMtrRows.reduce((s, x) => s + mtrRequestedQty(x), 0)
-        const totalTransferred = sameMtrRows.reduce((s, x) => s + mtrTransferredQty(x), 0)
-        const totalRemaining = sameMtrRows.reduce((s, x) => s + mtrRemainingQty(x), 0)
-        if (!(totalRequested > 0 && totalTransferred <= 0 && totalRemaining > 0)) return false
-      }
+      if (mtrControlFilter === 'FULL' && !mtrSummary.fullyTransferredMtrs.has(mtrNo)) return false
+      if (mtrControlFilter === 'PARTIAL' && !mtrSummary.partiallyTransferredMtrs.has(mtrNo)) return false
+      if (mtrControlFilter === 'NOT_TRANSFERRED' && !mtrSummary.notTransferredMtrs.has(mtrNo)) return false
       if (mtrControlFilter === 'STOCK_PENDING' && !(pending && mtrStockAvailable(row))) return false
       if (mtrControlFilter === 'NO_STOCK' && !(pending && !mtrStockAvailable(row))) return false
       if (mtrControlFilter === 'AGE7' && !(pending && mtrAgeDays(row) >= 7)) return false
@@ -1274,7 +1263,7 @@ export default function App() {
 
       return true
     }),
-    [weekFilteredMtrRows, query, mtrControlFilter, mtrStatusFilter, mtrDeliveryFilter],
+    [weekFilteredMtrRows, query, mtrControlFilter, mtrStatusFilter, mtrDeliveryFilter, mtrSummary],
   )
 
   const mtrVisibleCounts = useMemo(() => ({
