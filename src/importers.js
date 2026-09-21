@@ -59,7 +59,9 @@ const HEADER_HINTS = new Set([
   'mtr', 'mtrno', 'mtrnumber', 'mrn', 'mrnno', 'itemcode', 'itemnumber',
   'requestedquantity', 'transferedquantity', 'transferredquantity',
   'remainingquantity', 'requestdate', 'approveddate', 'fromwarehouse',
-  'onhandsrd', 'deliverystatuserp'
+  'onhandsrd', 'deliverystatuserp', 'workshopname', 'wptype',
+  'wpnumber', 'boqnumber', 'assetservice', 'svojournalnumber',
+  'submittedby', 'issuedstatus', 'modifiedby', 'itemtype'
 ])
 
 export function normalizeSheetRows(matrix) {
@@ -285,10 +287,11 @@ export function mapRows(source, rows) {
         'Date',
         'Request Date',
         'Request date',
+        'Created',
       ]),
-      workshop: text(r, ['Workshop', 'Section']),
-      vessel: text(r, ['Vessel', 'Asset Name', 'Vessel Name', 'Asset / Vessel', 'Asset/Vessel']),
-      asset: text(r, ['Asset', 'Asset/Service', 'Asset / Vessel', 'Asset/Vessel', 'Service']),
+      workshop: text(r, ['Workshop', 'Workshop Name', 'WORKSHOP NAME', 'Section']),
+      vessel: text(r, ['Vessel', 'Asset Name', 'Vessel Name', 'Asset / Vessel', 'Asset/Vessel', 'Asset / Service', 'ASSET / SERVICE']),
+      asset: text(r, ['Asset', 'Asset/Service', 'Asset / Service', 'ASSET / SERVICE', 'Asset / Vessel', 'Asset/Vessel', 'Service']),
       sr_wo: text(r, ['SR/WO', 'SR', 'SR Number', 'WO', 'Service Request', 'Work Order']),
       item_code: text(r, ['Item', 'Item Code', 'Item Number', 'Item number', 'Item ID']),
       item_description: text(r, ['Description', 'Item Description', 'Product Name', 'Item Name', 'Item name']),
@@ -311,8 +314,8 @@ export function mapRows(source, rows) {
         'Balance',
         'Balance Qty',
       ]),
-      status: text(r, ['ERP Status', 'Status']),
-      remarks: text(r, ['Note', 'Remarks', 'Remark', 'Comments']),
+      status: text(r, ['Issued Status', 'ERP Status', 'Status']),
+      remarks: text(r, ['Note', 'SVO / JOURNAL NUMBER', 'SVO / Journal Number', 'Remarks', 'Remark', 'Comments']),
       source_updated_at: new Date().toISOString(),
       raw_source: rawSource(r),
     })).filter((r) => r.document_no || r.item_code || r.sr_wo)
