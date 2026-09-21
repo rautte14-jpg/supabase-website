@@ -84,6 +84,33 @@ function rawField(row, names) {
   return ''
 }
 
+function isPlaceholderValue(value, zeroIsBlank = false) {
+  const text = String(value ?? '').trim()
+  if (!text) return true
+  if (/^[-–—_.]+$/.test(text)) return true
+  if (/^(null|undefined|n\/?a)$/i.test(text)) return true
+  if (zeroIsBlank && /^0(?:\.0+)?$/.test(text)) return true
+  return false
+}
+
+function displayValue(value, zeroIsBlank = false) {
+  return isPlaceholderValue(value, zeroIsBlank) ? '—' : value
+}
+
+function isUsefulPrPoRow(row) {
+  const core = [
+    row?.pr_no,
+    row?.po_no,
+    row?.item_code,
+    row?.item_description,
+    rawField(row, ['PR No.', 'PR No']),
+    rawField(row, ['PO Number']),
+    rawField(row, ['Item ID']),
+    rawField(row, ['Product Name']),
+  ]
+  return core.some((value) => !isPlaceholderValue(value, true))
+}
+
 function numericRowField(row, directKey, rawNames = []) {
   const direct = row?.[directKey]
   const value = direct !== null && direct !== undefined && String(direct).trim() !== ''
@@ -837,12 +864,16 @@ export default function App() {
     [weekFilteredPrfRows, query, prfStatusFilter],
   )
   const allPrPoRows = useMemo(
-    () => procurementData.filter((r) => ['PR', 'PO'].includes(r.source_type)),
+    () => procurementData.filter((r) => ['PR', 'PO'].includes(r.source_type) && isUsefulPrPoRow(r)),
     [procurementData],
   )
 
   const allPrLines = useMemo(
-    () => procurementData.filter((r) => r.source_type === 'PR' && String(r.pr_no || '').trim()),
+    () => procurementData.filter((r) =>
+      r.source_type === 'PR' &&
+      !isPlaceholderValue(r.pr_no, true) &&
+      isUsefulPrPoRow(r)
+    ),
     [procurementData],
   )
 
@@ -1078,20 +1109,20 @@ export default function App() {
   ]
 
   const prPoColumns = [
-    { key: 'raw_prf_description', label: 'PRF Description', render: (_v, r) => rawField(r, ['PRF Description']) || '—' },
-    { key: 'prf_no', label: 'PRF Number' },
-    { key: 'sr_wo', label: 'SR Number' },
+    { key: 'raw_prf_description', label: 'PRF Description', render: (_v, r) => displayValue(rawField(r, ['PRF Description'])) },
+    { key: 'prf_no', label: 'PRF Number', render: (v) => displayValue(v, true) },
+    { key: 'sr_wo', label: 'SR Number', render: (v) => displayValue(v, true) },
     { key: 'asset_vessel', label: 'Asset / Vessel', render: (_v, r) => rawField(r, ['Asset / Vessel']) || r.asset || r.vessel || '—' },
     { key: 'section', label: 'Section' },
     { key: 'purchase_from', label: 'From', render: (v, r) => v || rawField(r, ['From']) || '—' },
     { key: 'purchase_type', label: 'Type', render: (v, r) => v || rawField(r, ['Type']) || '—' },
-    { key: 'raw_pr_name', label: 'PR Name', render: (_v, r) => rawField(r, ['PR Name']) || '—' },
-    { key: 'pr_no', label: 'PR No.' },
-    { key: 'po_no', label: 'PO Number' },
+    { key: 'raw_pr_name', label: 'PR Name', render: (_v, r) => displayValue(rawField(r, ['PR Name']), true) },
+    { key: 'pr_no', label: 'PR No.', render: (v) => displayValue(v, true) },
+    { key: 'po_no', label: 'PO Number', render: (v) => displayValue(v, true) },
     { key: 'priority', label: 'Priority', render: (v) => <StatusPill value={v} /> },
-    { key: 'raw_line_no', label: '#', render: (_v, r) => rawField(r, ['#']) || '—' },
-    { key: 'item_code', label: 'Item ID' },
-    { key: 'item_description', label: 'Product Name' },
+    { key: 'raw_line_no', label: '#', render: (_v, r) => displayValue(rawField(r, ['#'])) },
+    { key: 'item_code', label: 'Item ID', render: (v) => displayValue(v, true) },
+    { key: 'item_description', label: 'Product Name', render: (v) => displayValue(v, true) },
     { key: 'qty_requested', label: 'Quantity', render: (v, r) => v ?? rawField(r, ['Quantity']) ?? '—' },
     { key: 'unit', label: 'Unit' },
     { key: 'raw_category', label: 'Category', render: (_v, r) => rawField(r, ['Category']) || '—' },
