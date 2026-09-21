@@ -1257,6 +1257,28 @@ export default function App() {
     { key: 'latest_updates', label: 'PD Status Updates', render: (v, r) => v || rawField(r, ['PD Status Updates']) || '—' },
   ]
 
+  const mtrColumns = [
+    { key: 'raw_prf_number', label: 'PRF Number', render: (_v, r) => displayValue(rawField(r, ['PRF Number'])) },
+    { key: 'sr_wo', label: 'SR Number', render: (v, r) => displayValue(v || rawField(r, ['SR Number']), true) },
+    { key: 'workshop', label: 'Section', render: (v, r) => displayValue(v || rawField(r, ['Section'])) },
+    { key: 'raw_from_warehouse', label: 'From Warehouse', render: (_v, r) => displayValue(rawField(r, ['From Warehouse'])) },
+    { key: 'remarks', label: 'Note', render: (v, r) => displayValue(v || rawField(r, ['Note'])) },
+    { key: 'asset_vessel', label: 'Asset / Vessel', render: (_v, r) => displayValue(rawField(r, ['Asset / Vessel']) || r.vessel || r.asset) },
+    { key: 'document_no', label: 'MTR number', render: (v, r) => displayValue(v || rawField(r, ['MTR number', 'MTR Number'])) },
+    { key: 'raw_line_number', label: 'Line number', render: (_v, r) => displayValue(rawField(r, ['Line number', 'Line Number'])) },
+    { key: 'item_code', label: 'Item number', render: (v, r) => displayValue(v || rawField(r, ['Item number', 'Item Number'])) },
+    { key: 'item_description', label: 'Item name', render: (v, r) => displayValue(v || rawField(r, ['Item name', 'Item Name'])) },
+    { key: 'requested_qty', label: 'Requested quantity', render: (v, r) => v ?? rawField(r, ['Requested quantity', 'Requested Quantity']) ?? '—' },
+    { key: 'unit', label: 'Unit', render: (v, r) => displayValue(v || rawField(r, ['Unit'])) },
+    { key: 'transferred_qty', label: 'Transfered quantity', render: (v, r) => v ?? rawField(r, ['Transfered quantity', 'Transferred quantity']) ?? '—' },
+    { key: 'remaining_qty', label: 'Remaining quantity', render: (v, r) => v ?? rawField(r, ['Remaining quantity', 'Remaining Quantity']) ?? '—' },
+    { key: 'document_date', label: 'Request date', render: (v, r) => v || rawField(r, ['Request date', 'Request Date']) || '—' },
+    { key: 'raw_approved_date', label: 'Approved Date', render: (_v, r) => displayValue(rawField(r, ['Approved Date'])) },
+    { key: 'raw_on_hand_srd', label: 'On-Hand SRD', render: (_v, r) => displayValue(rawField(r, ['On-Hand SRD', 'On Hand SRD'])) },
+    { key: 'status', label: 'ERP Status', render: (v, r) => <StatusPill value={v || rawField(r, ['ERP Status']) || '—'} /> },
+    { key: 'raw_delivery_status_erp', label: 'Delivery Status ERP', render: (_v, r) => <StatusPill value={rawField(r, ['Delivery Status ERP']) || '—'} /> },
+  ]
+
   const materialColumns = [
     { key: 'document_no', label: 'Document' },
     { key: 'document_date', label: 'Date' },
@@ -1771,7 +1793,7 @@ export default function App() {
           {view === 'mtr' && (
             <>
               <PageHeader title="MTR Tracker" subtitle="Requested, transferred and remaining quantities by vessel / SR." />
-              <DataTable rows={mtrRows} columns={materialColumns} noteType="material" noteMap={noteMap} onUpdate={openNote} />
+              <DataTable rows={mtrRows} columns={mtrColumns} noteType="material" noteMap={noteMap} onUpdate={openNote} />
             </>
           )}
 
