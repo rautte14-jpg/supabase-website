@@ -1129,7 +1129,7 @@ export default function App() {
                 {prfWeekFilter !== 'ALL' && (
                   <div className="prf-filter-note">
                     Showing PRFs submitted {formatShortDate(prfWeekFilter)} – {formatShortDate(addDaysIso(prfWeekFilter, 6))}
-                    <button onClick={() => setPrfWeekFilter('ALL')}>Clear week</button>
+                    <button onClick={() => selectPrfWeek('ALL')}>Clear week</button>
                   </div>
                 )}
               </section>
