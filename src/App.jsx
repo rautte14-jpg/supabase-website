@@ -690,6 +690,11 @@ export default function App() {
     }
   }
 
+  function selectPrfWeek(weekStart) {
+    setPrfWeekFilter(weekStart)
+    setPrfStatusFilter('ALL')
+  }
+
   const query = lower(search).trim()
   const matches = (row) => !query || Object.values(row).some((v) =>
     typeof v !== 'object' && lower(v).includes(query),
@@ -706,6 +711,15 @@ export default function App() {
     ),
     [allPrfRows, prfWeekFilter],
   )
+
+  const overallPrfStatusCounts = useMemo(() => {
+    const counts = new Map()
+    allPrfRows.forEach((row) => {
+      const status = prfStatusLabel(row.status)
+      counts.set(status, (counts.get(status) || 0) + 1)
+    })
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])
+  }, [allPrfRows])
 
   const prfStatusCounts = useMemo(() => {
     const counts = new Map()
@@ -863,13 +877,13 @@ export default function App() {
   const vesselTx = data.transactions.filter((r) => !vesselTerm || [r.vessel, r.sr_wo, r.delivery_name, r.sales_order].some((v) => lower(v).includes(vesselTerm)))
 
   const meetingPrfStatuses = (() => {
-    const statusMap = new Map(prfStatusCounts)
+    const statusMap = new Map(overallPrfStatusCounts)
     const preferred = ['PRF NOT RAISED', 'ITEM CREATION PENDING']
       .filter((status) => statusMap.has(status))
       .map((status) => [status, statusMap.get(status)])
 
     const preferredSet = new Set(preferred.map(([status]) => status))
-    const remaining = prfStatusCounts.filter(([status]) => !preferredSet.has(status))
+    const remaining = overallPrfStatusCounts.filter(([status]) => !preferredSet.has(status))
 
     return [...preferred, ...remaining].slice(0, 12)
   })()
@@ -1082,6 +1096,44 @@ export default function App() {
             <>
               <PageHeader title="PRF Tracker" subtitle="PRF / IPF requests and their movement into PR, MTR and PO." />
 
+              <section className="prf-weekly-summary">
+                <div className="prf-status-head">
+                  <div>
+                    <span className="eyebrow">WEEKLY SUBMISSIONS</span>
+                    <h3>Submitted PRFs by week</h3>
+                  </div>
+                  <span>Sunday–Saturday</span>
+                </div>
+
+                <div className="prf-week-grid">
+                  <button
+                    className={prfWeekFilter === 'ALL' ? 'prf-week-card active' : 'prf-week-card'}
+                    onClick={() => selectPrfWeek('ALL')}
+                  >
+                    <span>ALL WEEKS</span>
+                    <strong>{fmt(allPrfRows.filter((r) => r.pr_date).length)}</strong>
+                  </button>
+
+                  {prfWeekCounts.map((week) => (
+                    <button
+                      key={week.weekStart}
+                      className={prfWeekFilter === week.weekStart ? 'prf-week-card active' : 'prf-week-card'}
+                      onClick={() => selectPrfWeek(week.weekStart)}
+                    >
+                      <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
+                      <strong>{fmt(week.count)}</strong>
+                    </button>
+                  ))}
+                </div>
+
+                {prfWeekFilter !== 'ALL' && (
+                  <div className="prf-filter-note">
+                    Showing PRFs submitted {formatShortDate(prfWeekFilter)} – {formatShortDate(addDaysIso(prfWeekFilter, 6))}
+                    <button onClick={() => setPrfWeekFilter('ALL')}>Clear week</button>
+                  </div>
+                )}
+              </section>
+
               <section className="prf-status-summary">
                 <div className="prf-status-head">
                   <div>
@@ -1124,44 +1176,6 @@ export default function App() {
                   <div className="prf-filter-note">
                     Showing <b>{prfStatusFilter}</b>
                     <button onClick={() => setPrfStatusFilter('ALL')}>Clear filter</button>
-                  </div>
-                )}
-              </section>
-
-              <section className="prf-weekly-summary">
-                <div className="prf-status-head">
-                  <div>
-                    <span className="eyebrow">WEEKLY SUBMISSIONS</span>
-                    <h3>Submitted PRFs by week</h3>
-                  </div>
-                  <span>Sunday–Saturday</span>
-                </div>
-
-                <div className="prf-week-grid">
-                  <button
-                    className={prfWeekFilter === 'ALL' ? 'prf-week-card active' : 'prf-week-card'}
-                    onClick={() => setPrfWeekFilter('ALL')}
-                  >
-                    <span>ALL WEEKS</span>
-                    <strong>{fmt(allPrfRows.filter((r) => r.pr_date).length)}</strong>
-                  </button>
-
-                  {prfWeekCounts.map((week) => (
-                    <button
-                      key={week.weekStart}
-                      className={prfWeekFilter === week.weekStart ? 'prf-week-card active' : 'prf-week-card'}
-                      onClick={() => setPrfWeekFilter(week.weekStart)}
-                    >
-                      <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
-                      <strong>{fmt(week.count)}</strong>
-                    </button>
-                  ))}
-                </div>
-
-                {prfWeekFilter !== 'ALL' && (
-                  <div className="prf-filter-note">
-                    Showing PRFs submitted {formatShortDate(prfWeekFilter)} – {formatShortDate(addDaysIso(prfWeekFilter, 6))}
-                    <button onClick={() => setPrfWeekFilter('ALL')}>Clear week</button>
                   </div>
                 )}
               </section>
