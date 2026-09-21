@@ -409,6 +409,49 @@ tbody tr:hover { background: #fbfcfe; }
 .meeting-stat span { color: #9fb0c8; font-weight: 700; }
 .meeting-stat b { margin: 12px 0; font-size: 58px; letter-spacing: -.055em; }
 .meeting-stat small { color: #8199b9; }
+.meeting-week-picker {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+.meeting-week-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px;
+  background: rgba(255,255,255,.055);
+  color: #a7b8ce;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .025em;
+}
+.meeting-week-chip b {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.09);
+  color: white;
+  font-size: 10px;
+}
+.meeting-week-chip.active {
+  border-color: rgba(86,216,188,.7);
+  background: rgba(35,197,166,.16);
+  color: #67e1c6;
+}
+.meeting-week-chip.active b {
+  background: rgba(86,216,188,.18);
+  color: #75ead0;
+}
+
 .meeting-prf-total {
   display: flex;
   align-items: end;
