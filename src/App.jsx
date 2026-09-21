@@ -45,7 +45,7 @@ function isUrgent(value) {
 
 function prfStatusLabel(value) {
   const text = String(value ?? '').trim()
-  return text ? text.toUpperCase() : 'PRF NOT RAISED'
+  return text ? text.toUpperCase() : 'NOT ATTENDED'
 }
 
 function weekStartSunday(dateLike) {
@@ -878,7 +878,7 @@ export default function App() {
 
   const meetingPrfStatuses = (() => {
     const statusMap = new Map(prfStatusCounts)
-    const preferred = ['PRF NOT RAISED', 'ITEM CREATION PENDING']
+    const preferred = ['NOT ATTENDED', 'ITEM CREATION PENDING']
       .filter((status) => statusMap.has(status))
       .map((status) => [status, statusMap.get(status)])
 
@@ -950,7 +950,7 @@ export default function App() {
             {meetingPrfStatuses.map(([status, count]) => (
               <div
                 className={
-                  status === 'PRF NOT RAISED' || status === 'ITEM CREATION PENDING'
+                  status === 'NOT ATTENDED' || status === 'ITEM CREATION PENDING'
                     ? 'meeting-status-card highlight'
                     : 'meeting-status-card'
                 }
