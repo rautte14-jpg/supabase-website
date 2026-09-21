@@ -877,13 +877,13 @@ export default function App() {
   const vesselTx = data.transactions.filter((r) => !vesselTerm || [r.vessel, r.sr_wo, r.delivery_name, r.sales_order].some((v) => lower(v).includes(vesselTerm)))
 
   const meetingPrfStatuses = (() => {
-    const statusMap = new Map(overallPrfStatusCounts)
+    const statusMap = new Map(prfStatusCounts)
     const preferred = ['PRF NOT RAISED', 'ITEM CREATION PENDING']
       .filter((status) => statusMap.has(status))
       .map((status) => [status, statusMap.get(status)])
 
     const preferredSet = new Set(preferred.map(([status]) => status))
-    const remaining = overallPrfStatusCounts.filter(([status]) => !preferredSet.has(status))
+    const remaining = prfStatusCounts.filter(([status]) => !preferredSet.has(status))
 
     return [...preferred, ...remaining].slice(0, 12)
   })()
@@ -915,13 +915,37 @@ export default function App() {
     },
     {
       kicker: 'PRF STATUS CONTROL',
-      title: 'PRF Status Breakdown',
+      title:
+        'PRF Status Breakdown' +
+        (prfWeekFilter !== 'ALL'
+          ? ' — ' + formatShortDate(prfWeekFilter) + '–' + formatShortDate(addDaysIso(prfWeekFilter, 6))
+          : ''),
       body: (
         <>
-          <div className="meeting-prf-total">
-            <span>Total PRFs in current register</span>
-            <strong>{fmt(allPrfRows.length)}</strong>
+          <div className="meeting-week-picker">
+            <button
+              className={prfWeekFilter === 'ALL' ? 'meeting-week-chip active' : 'meeting-week-chip'}
+              onClick={() => selectPrfWeek('ALL')}
+            >
+              ALL WEEKS
+            </button>
+            {prfWeekCounts.map((week) => (
+              <button
+                key={week.weekStart}
+                className={prfWeekFilter === week.weekStart ? 'meeting-week-chip active' : 'meeting-week-chip'}
+                onClick={() => selectPrfWeek(week.weekStart)}
+              >
+                {formatShortDate(week.weekStart)}–{formatShortDate(week.weekEnd)}
+                <b>{fmt(week.count)}</b>
+              </button>
+            ))}
           </div>
+
+          <div className="meeting-prf-total">
+            <span>{prfWeekFilter === 'ALL' ? 'Total PRFs in current register' : 'PRFs submitted in selected week'}</span>
+            <strong>{fmt(weekFilteredPrfRows.length)}</strong>
+          </div>
+
           <div className="meeting-status-grid">
             {meetingPrfStatuses.map(([status, count]) => (
               <div
@@ -937,8 +961,9 @@ export default function App() {
               </div>
             ))}
           </div>
+
           {!meetingPrfStatuses.length && (
-            <EmptyState title="No PRF status data loaded" text="Upload and apply the PRF / IPF register." />
+            <EmptyState title="No PRF status data for this week" text="Choose another week or upload the PRF / IPF register." />
           )}
         </>
       ),
