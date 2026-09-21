@@ -1,5 +1,14 @@
 const clean = (v) => String(v ?? '').trim()
 
+const meaningful = (v, zeroIsBlank = false) => {
+  const value = clean(v)
+  if (!value) return false
+  if (/^[-–—_.]+$/.test(value)) return false
+  if (/^(null|undefined|n\/?a)$/i.test(value)) return false
+  if (zeroIsBlank && /^0(?:\.0+)?$/.test(value)) return false
+  return true
+}
+
 const normalized = (s) =>
   clean(s)
     .toLowerCase()
@@ -246,7 +255,12 @@ export function mapRows(source, rows) {
       source_type: source,
       source_updated_at: new Date().toISOString(),
       raw_source: rawSource(r),
-    })).filter((r) => r.prf_no || r.pr_no || r.po_no || r.item_code)
+    })).filter((r) =>
+      meaningful(r.pr_no, true) ||
+      meaningful(r.po_no, true) ||
+      meaningful(r.item_code, true) ||
+      meaningful(r.item_description, true)
+    )
   }
 
   if (source === 'MTR' || source === 'MRN') {
