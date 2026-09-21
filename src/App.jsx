@@ -692,6 +692,7 @@ export default function App() {
   const [prfWeekFilter, setPrfWeekFilter] = useState('ALL')
   const [prPoWeekFilter, setPrPoWeekFilter] = useState('ALL')
   const [prPoAgeFilter, setPrPoAgeFilter] = useState('ALL')
+  const [prPoUrgentFilter, setPrPoUrgentFilter] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -820,6 +821,7 @@ export default function App() {
   function selectPrPoWeek(weekStart) {
     setPrPoWeekFilter(weekStart)
     setPrPoAgeFilter('ALL')
+    setPrPoUrgentFilter(false)
   }
 
   function selectPrPoAge(ageBand) {
@@ -829,6 +831,12 @@ export default function App() {
     }
     setPrPoAgeFilter((current) => current === ageBand ? 'ALL' : ageBand)
     setPrPoWeekFilter('ALL')
+    setPrPoUrgentFilter(false)
+  }
+
+  function togglePrPoUrgent() {
+    setPrPoUrgentFilter((current) => !current)
+    setPrPoAgeFilter('ALL')
   }
 
   const query = lower(search).trim()
@@ -1003,6 +1011,16 @@ export default function App() {
     }
   }, [allPrLines])
 
+  const isUrgentPendingRow = (row) => {
+    if (!isUrgent(row.priority)) return false
+    const requested = requestedQty(row)
+    const received = receivedQty(row)
+    const status = lower([row.status, row.delivery_status].filter(Boolean).join(' '))
+    const closedByStatus = isClosed(status)
+    const fullyReceived = requested > 0 && received >= requested
+    return !closedByStatus && !fullyReceived
+  }
+
   const prpoRows = useMemo(
     () => allPrPoRows.filter((row) => {
       if (!matches(row)) return false
@@ -1011,10 +1029,11 @@ export default function App() {
       const prNo = String(row.pr_no || '').trim()
       if (prPoAgeFilter === '3TO6' && !prPoAgeing.agedThreeToSixPrNos.has(prNo)) return false
       if (prPoAgeFilter === '6PLUS' && !prPoAgeing.agedSixPlusPrNos.has(prNo)) return false
+      if (prPoUrgentFilter && !isUrgentPendingRow(row)) return false
 
       return true
     }),
-    [allPrPoRows, query, prPoWeekFilter, prPoAgeFilter, prPoAgeing],
+    [allPrPoRows, query, prPoWeekFilter, prPoAgeFilter, prPoUrgentFilter, prPoAgeing],
   )
 
   const prPoVisibleCounts = useMemo(() => ({
@@ -1121,10 +1140,13 @@ export default function App() {
       return sum + po.value * Math.min(1, po.received / po.requested)
     }, 0)
 
+    const urgentPendingItems = weekFilteredPrLines.filter(isUrgentPendingRow).length
+
     return {
       totalPrs: prMap.size,
       fullyReceivedPrs: fullyReceived.length,
       partReceivedPrs: partReceived.length,
+      urgentPendingItems,
       receivedItemQty,
       receivedItemValue,
     }
@@ -1704,6 +1726,14 @@ export default function App() {
                   onClick={() => selectPrPoAge('6PLUS')}
                 />
                 <MetricCard
+                  label="Urgent Items Pending"
+                  value={fmt(prPoSummary.urgentPendingItems)}
+                  helper="Urgent / critical / high-priority open item lines"
+                  tone="bad"
+                  active={prPoUrgentFilter}
+                  onClick={togglePrPoUrgent}
+                />
+                <MetricCard
                   label="Received Item Quantity"
                   value={fmt(prPoSummary.receivedItemQty, 2)}
                   helper="Total quantity received"
@@ -1719,6 +1749,13 @@ export default function App() {
                 <div className="prf-filter-note prpo-age-note">
                   Showing <b>{prPoAgeFilter === '3TO6' ? '3–6 month aged open PRs' : '6+ month aged open PRs'}</b>
                   <button onClick={() => selectPrPoAge('ALL')}>Clear ageing filter</button>
+                </div>
+              )}
+
+              {prPoUrgentFilter && (
+                <div className="prf-filter-note prpo-age-note">
+                  Showing <b>urgent pending item lines</b>
+                  <button onClick={() => setPrPoUrgentFilter(false)}>Clear urgent filter</button>
                 </div>
               )}
 
