@@ -173,6 +173,47 @@ function prSubmittedDate(row) {
   ])
 }
 
+function mtrRequestedQty(row) {
+  return Math.max(0, Number(row?.requested_qty || 0))
+}
+
+function mtrTransferredQty(row) {
+  return Math.max(0, Number(row?.transferred_qty || 0))
+}
+
+function mtrRemainingQty(row) {
+  const direct = row?.remaining_qty
+  if (direct !== null && direct !== undefined && String(direct).trim() !== '') {
+    const parsed = Number(direct)
+    if (Number.isFinite(parsed)) return Math.max(0, parsed)
+  }
+  return Math.max(0, mtrRequestedQty(row) - mtrTransferredQty(row))
+}
+
+function mtrRequestDate(row) {
+  return dateRowField(row, 'document_date', ['Request date', 'Request Date'])
+}
+
+function mtrAgeDays(row) {
+  const iso = mtrRequestDate(row)
+  if (!iso) return 0
+  const date = new Date(iso + 'T12:00:00')
+  if (Number.isNaN(date.valueOf())) return 0
+  return Math.max(0, Math.floor((Date.now() - date.valueOf()) / 86400000))
+}
+
+function mtrStockAvailable(row) {
+  const raw = rawField(row, ['On-Hand SRD', 'On Hand SRD'])
+  const parsed = Number(String(raw).replace(/,/g, '').replace(/[^0-9.-]/g, ''))
+  if (Number.isFinite(parsed)) return parsed > 0
+  const text = lower(raw)
+  return text.includes('available') && !text.includes('not available') && !text.includes('unavailable')
+}
+
+function mtrDeliveryStatus(row) {
+  return String(rawField(row, ['Delivery Status ERP']) || '').trim()
+}
+
 function AuthScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -693,6 +734,10 @@ export default function App() {
   const [prPoWeekFilter, setPrPoWeekFilter] = useState('ALL')
   const [prPoAgeFilter, setPrPoAgeFilter] = useState('ALL')
   const [prPoUrgentFilter, setPrPoUrgentFilter] = useState(false)
+  const [mtrWeekFilter, setMtrWeekFilter] = useState('ALL')
+  const [mtrControlFilter, setMtrControlFilter] = useState('ALL')
+  const [mtrStatusFilter, setMtrStatusFilter] = useState('ALL')
+  const [mtrDeliveryFilter, setMtrDeliveryFilter] = useState('ALL')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -837,6 +882,31 @@ export default function App() {
   function togglePrPoUrgent() {
     setPrPoUrgentFilter((current) => !current)
     setPrPoAgeFilter('ALL')
+  }
+
+  function selectMtrWeek(weekStart) {
+    setMtrWeekFilter(weekStart)
+    setMtrControlFilter('ALL')
+    setMtrStatusFilter('ALL')
+    setMtrDeliveryFilter('ALL')
+  }
+
+  function selectMtrControl(filter) {
+    setMtrControlFilter((current) => current === filter ? 'ALL' : filter)
+    setMtrStatusFilter('ALL')
+    setMtrDeliveryFilter('ALL')
+  }
+
+  function selectMtrStatus(status) {
+    setMtrStatusFilter((current) => current === status ? 'ALL' : status)
+    setMtrControlFilter('ALL')
+    setMtrDeliveryFilter('ALL')
+  }
+
+  function selectMtrDelivery(status) {
+    setMtrDeliveryFilter((current) => current === status ? 'ALL' : status)
+    setMtrControlFilter('ALL')
+    setMtrStatusFilter('ALL')
   }
 
   const query = lower(search).trim()
@@ -1041,10 +1111,176 @@ export default function App() {
     lines: prpoRows.length,
   }), [prpoRows])
 
-  const mtrRows = useMemo(
-    () => data.material.filter((r) => r.document_type === 'MTR' && matches(r)),
-    [data.material, query],
+  const allMtrRows = useMemo(
+    () => data.material.filter((r) => r.document_type === 'MTR'),
+    [data.material],
   )
+
+  const mtrWeekCounts = useMemo(() => {
+    const weekSets = new Map()
+    allMtrRows.forEach((row) => {
+      const weekStart = weekStartSunday(mtrRequestDate(row))
+      const mtrNo = String(row.document_no || '').trim()
+      if (!weekStart || !mtrNo) return
+      if (!weekSets.has(weekStart)) weekSets.set(weekStart, new Set())
+      weekSets.get(weekStart).add(mtrNo)
+    })
+
+    const currentWeek = weekStartSunday(new Date().toISOString().slice(0, 10))
+    return Array.from({ length: 8 }, (_, index) => {
+      const weekStart = addDaysIso(currentWeek, index * -7)
+      return {
+        weekStart,
+        weekEnd: addDaysIso(weekStart, 6),
+        count: weekSets.get(weekStart)?.size || 0,
+      }
+    })
+  }, [allMtrRows])
+
+  const weekFilteredMtrRows = useMemo(
+    () => allMtrRows.filter((row) =>
+      mtrWeekFilter === 'ALL' || weekStartSunday(mtrRequestDate(row)) === mtrWeekFilter
+    ),
+    [allMtrRows, mtrWeekFilter],
+  )
+
+  const mtrSummary = useMemo(() => {
+    const mtrMap = new Map()
+    let requestedQty = 0
+    let transferredQty = 0
+    let remainingQty = 0
+    let stockAvailablePending = 0
+    let pendingNoStock = 0
+    let aged7 = 0
+    let aged14 = 0
+    let aged30 = 0
+
+    weekFilteredMtrRows.forEach((row) => {
+      const mtrNo = String(row.document_no || '').trim()
+      const requested = mtrRequestedQty(row)
+      const transferred = mtrTransferredQty(row)
+      const remaining = mtrRemainingQty(row)
+      const pending = remaining > 0 || (requested > 0 && transferred < requested)
+
+      requestedQty += requested
+      transferredQty += transferred
+      remainingQty += remaining
+
+      if (pending && mtrStockAvailable(row)) stockAvailablePending += 1
+      if (pending && !mtrStockAvailable(row)) pendingNoStock += 1
+
+      const age = mtrAgeDays(row)
+      if (pending && age >= 7) aged7 += 1
+      if (pending && age >= 14) aged14 += 1
+      if (pending && age >= 30) aged30 += 1
+
+      if (!mtrNo) return
+      if (!mtrMap.has(mtrNo)) {
+        mtrMap.set(mtrNo, { requested: 0, transferred: 0, remaining: 0, lines: 0 })
+      }
+      const item = mtrMap.get(mtrNo)
+      item.requested += requested
+      item.transferred += transferred
+      item.remaining += remaining
+      item.lines += 1
+    })
+
+    const mtrs = [...mtrMap.values()]
+    const fullyTransferred = mtrs.filter((m) =>
+      m.requested > 0 && m.remaining <= 0 && m.transferred >= m.requested
+    ).length
+    const partiallyTransferred = mtrs.filter((m) =>
+      m.transferred > 0 && m.remaining > 0
+    ).length
+    const notTransferred = mtrs.filter((m) =>
+      m.requested > 0 && m.transferred <= 0 && m.remaining > 0
+    ).length
+
+    return {
+      totalMtrs: mtrMap.size,
+      fullyTransferred,
+      partiallyTransferred,
+      notTransferred,
+      requestedQty,
+      transferredQty,
+      remainingQty,
+      stockAvailablePending,
+      pendingNoStock,
+      aged7,
+      aged14,
+      aged30,
+    }
+  }, [weekFilteredMtrRows])
+
+  const mtrStatusCounts = useMemo(() => {
+    const counts = new Map()
+    weekFilteredMtrRows.forEach((row) => {
+      const status = String(row.status || '').trim() || 'BLANK'
+      counts.set(status, (counts.get(status) || 0) + 1)
+    })
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])
+  }, [weekFilteredMtrRows])
+
+  const mtrDeliveryCounts = useMemo(() => {
+    const counts = new Map()
+    weekFilteredMtrRows.forEach((row) => {
+      const status = mtrDeliveryStatus(row) || 'BLANK'
+      counts.set(status, (counts.get(status) || 0) + 1)
+    })
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])
+  }, [weekFilteredMtrRows])
+
+  const mtrRows = useMemo(
+    () => weekFilteredMtrRows.filter((row) => {
+      if (!matches(row)) return false
+
+      const requested = mtrRequestedQty(row)
+      const transferred = mtrTransferredQty(row)
+      const remaining = mtrRemainingQty(row)
+      const pending = remaining > 0 || (requested > 0 && transferred < requested)
+      const mtrNo = String(row.document_no || '').trim()
+
+      if (mtrControlFilter === 'FULL') {
+        const sameMtrRows = weekFilteredMtrRows.filter((x) => String(x.document_no || '').trim() === mtrNo)
+        const totalRequested = sameMtrRows.reduce((s, x) => s + mtrRequestedQty(x), 0)
+        const totalTransferred = sameMtrRows.reduce((s, x) => s + mtrTransferredQty(x), 0)
+        const totalRemaining = sameMtrRows.reduce((s, x) => s + mtrRemainingQty(x), 0)
+        if (!(totalRequested > 0 && totalRemaining <= 0 && totalTransferred >= totalRequested)) return false
+      }
+      if (mtrControlFilter === 'PARTIAL') {
+        const sameMtrRows = weekFilteredMtrRows.filter((x) => String(x.document_no || '').trim() === mtrNo)
+        const totalTransferred = sameMtrRows.reduce((s, x) => s + mtrTransferredQty(x), 0)
+        const totalRemaining = sameMtrRows.reduce((s, x) => s + mtrRemainingQty(x), 0)
+        if (!(totalTransferred > 0 && totalRemaining > 0)) return false
+      }
+      if (mtrControlFilter === 'NOT_TRANSFERRED') {
+        const sameMtrRows = weekFilteredMtrRows.filter((x) => String(x.document_no || '').trim() === mtrNo)
+        const totalRequested = sameMtrRows.reduce((s, x) => s + mtrRequestedQty(x), 0)
+        const totalTransferred = sameMtrRows.reduce((s, x) => s + mtrTransferredQty(x), 0)
+        const totalRemaining = sameMtrRows.reduce((s, x) => s + mtrRemainingQty(x), 0)
+        if (!(totalRequested > 0 && totalTransferred <= 0 && totalRemaining > 0)) return false
+      }
+      if (mtrControlFilter === 'STOCK_PENDING' && !(pending && mtrStockAvailable(row))) return false
+      if (mtrControlFilter === 'NO_STOCK' && !(pending && !mtrStockAvailable(row))) return false
+      if (mtrControlFilter === 'AGE7' && !(pending && mtrAgeDays(row) >= 7)) return false
+      if (mtrControlFilter === 'AGE14' && !(pending && mtrAgeDays(row) >= 14)) return false
+      if (mtrControlFilter === 'AGE30' && !(pending && mtrAgeDays(row) >= 30)) return false
+
+      const erpStatus = String(row.status || '').trim() || 'BLANK'
+      if (mtrStatusFilter !== 'ALL' && erpStatus !== mtrStatusFilter) return false
+
+      const deliveryStatus = mtrDeliveryStatus(row) || 'BLANK'
+      if (mtrDeliveryFilter !== 'ALL' && deliveryStatus !== mtrDeliveryFilter) return false
+
+      return true
+    }),
+    [weekFilteredMtrRows, query, mtrControlFilter, mtrStatusFilter, mtrDeliveryFilter],
+  )
+
+  const mtrVisibleCounts = useMemo(() => ({
+    mtrs: new Set(mtrRows.map((r) => r.document_no).filter(Boolean)).size,
+    lines: mtrRows.length,
+  }), [mtrRows])
   const mrnRows = useMemo(
     () => data.material.filter((r) => r.document_type === 'MRN' && matches(r)),
     [data.material, query],
@@ -1408,6 +1644,44 @@ export default function App() {
           {!meetingPrfStatuses.length && (
             <EmptyState title="No PRF status data for this week" text="Choose another week or upload the PRF / IPF register." />
           )}
+        </>
+      ),
+    },
+    {
+      kicker: 'MTR MOVEMENT CONTROL',
+      title:
+        'MTR Transfer Status' +
+        (mtrWeekFilter !== 'ALL'
+          ? ' — ' + formatShortDate(mtrWeekFilter) + '–' + formatShortDate(addDaysIso(mtrWeekFilter, 6))
+          : ''),
+      body: (
+        <>
+          <div className="meeting-week-picker">
+            <button
+              className={mtrWeekFilter === 'ALL' ? 'meeting-week-chip active' : 'meeting-week-chip'}
+              onClick={() => selectMtrWeek('ALL')}
+            >
+              ALL WEEKS
+            </button>
+            {mtrWeekCounts.map((week) => (
+              <button
+                key={week.weekStart}
+                className={mtrWeekFilter === week.weekStart ? 'meeting-week-chip active' : 'meeting-week-chip'}
+                onClick={() => selectMtrWeek(week.weekStart)}
+              >
+                {formatShortDate(week.weekStart)}–{formatShortDate(week.weekEnd)}
+                <b>{fmt(week.count)}</b>
+              </button>
+            ))}
+          </div>
+          <div className="meeting-metrics">
+            <MetricCard label="MTRs" value={fmt(mtrSummary.totalMtrs)} helper="Distinct MTR numbers" />
+            <MetricCard label="Fully transferred" value={fmt(mtrSummary.fullyTransferred)} />
+            <MetricCard label="Partially transferred" value={fmt(mtrSummary.partiallyTransferred)} tone="warn" />
+            <MetricCard label="Not transferred" value={fmt(mtrSummary.notTransferred)} tone="bad" />
+            <MetricCard label="Stock available, pending" value={fmt(mtrSummary.stockAvailablePending)} tone="bad" helper="Item lines" />
+            <MetricCard label="30+ day pending" value={fmt(mtrSummary.aged30)} tone="bad" helper="Item lines" />
+          </div>
         </>
       ),
     },
@@ -1793,6 +2067,167 @@ export default function App() {
           {view === 'mtr' && (
             <>
               <PageHeader title="MTR Tracker" subtitle="Requested, transferred and remaining quantities by vessel / SR." />
+
+              <section className="prf-weekly-summary">
+                <div className="prf-status-head">
+                  <div>
+                    <span className="eyebrow">WEEKLY MTR REQUESTS</span>
+                    <h3>MTRs requested by week</h3>
+                  </div>
+                  <span>Sunday–Saturday</span>
+                </div>
+                <div className="prf-week-grid">
+                  <button
+                    className={mtrWeekFilter === 'ALL' ? 'prf-week-card active' : 'prf-week-card'}
+                    onClick={() => selectMtrWeek('ALL')}
+                  >
+                    <span>ALL WEEKS</span>
+                    <strong>{fmt(new Set(allMtrRows.map((r) => r.document_no).filter(Boolean)).size)} MTRs</strong>
+                  </button>
+                  {mtrWeekCounts.map((week) => (
+                    <button
+                      key={week.weekStart}
+                      className={mtrWeekFilter === week.weekStart ? 'prf-week-card active' : 'prf-week-card'}
+                      onClick={() => selectMtrWeek(week.weekStart)}
+                    >
+                      <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
+                      <strong>{fmt(week.count)} {week.count === 1 ? 'MTR' : 'MTRs'}</strong>
+                    </button>
+                  ))}
+                </div>
+                {mtrWeekFilter !== 'ALL' && (
+                  <div className="prf-filter-note">
+                    Showing MTRs requested {formatShortDate(mtrWeekFilter)} – {formatShortDate(addDaysIso(mtrWeekFilter, 6))}
+                    <button onClick={() => selectMtrWeek('ALL')}>Clear week</button>
+                  </div>
+                )}
+              </section>
+
+              <div className="metric-grid mtr-metrics">
+                <MetricCard label="Total MTRs" value={fmt(mtrSummary.totalMtrs)} helper="Distinct MTR numbers" />
+                <MetricCard
+                  label="Fully Transferred MTRs"
+                  value={fmt(mtrSummary.fullyTransferred)}
+                  helper="All requested quantity transferred"
+                  active={mtrControlFilter === 'FULL'}
+                  onClick={() => selectMtrControl('FULL')}
+                />
+                <MetricCard
+                  label="Partially Transferred MTRs"
+                  value={fmt(mtrSummary.partiallyTransferred)}
+                  helper="Transfer started; balance remains"
+                  tone="warn"
+                  active={mtrControlFilter === 'PARTIAL'}
+                  onClick={() => selectMtrControl('PARTIAL')}
+                />
+                <MetricCard
+                  label="Not Transferred / Pending"
+                  value={fmt(mtrSummary.notTransferred)}
+                  helper="No quantity transferred yet"
+                  tone="bad"
+                  active={mtrControlFilter === 'NOT_TRANSFERRED'}
+                  onClick={() => selectMtrControl('NOT_TRANSFERRED')}
+                />
+                <MetricCard label="Total Requested Qty" value={fmt(mtrSummary.requestedQty, 2)} />
+                <MetricCard label="Total Transferred Qty" value={fmt(mtrSummary.transferredQty, 2)} />
+                <MetricCard label="Total Remaining Qty" value={fmt(mtrSummary.remainingQty, 2)} tone="warn" />
+                <MetricCard
+                  label="Stock Available but MTR Pending"
+                  value={fmt(mtrSummary.stockAvailablePending)}
+                  helper="Pending item lines with SRD stock available"
+                  tone="bad"
+                  active={mtrControlFilter === 'STOCK_PENDING'}
+                  onClick={() => selectMtrControl('STOCK_PENDING')}
+                />
+                <MetricCard
+                  label="Pending Due to No Stock"
+                  value={fmt(mtrSummary.pendingNoStock)}
+                  helper="Pending item lines without SRD stock"
+                  tone="warn"
+                  active={mtrControlFilter === 'NO_STOCK'}
+                  onClick={() => selectMtrControl('NO_STOCK')}
+                />
+                <MetricCard
+                  label="Pending 7+ Days"
+                  value={fmt(mtrSummary.aged7)}
+                  helper="Pending item lines"
+                  active={mtrControlFilter === 'AGE7'}
+                  onClick={() => selectMtrControl('AGE7')}
+                />
+                <MetricCard
+                  label="Pending 14+ Days"
+                  value={fmt(mtrSummary.aged14)}
+                  helper="Pending item lines"
+                  tone="warn"
+                  active={mtrControlFilter === 'AGE14'}
+                  onClick={() => selectMtrControl('AGE14')}
+                />
+                <MetricCard
+                  label="Pending 30+ Days"
+                  value={fmt(mtrSummary.aged30)}
+                  helper="Pending item lines"
+                  tone="bad"
+                  active={mtrControlFilter === 'AGE30'}
+                  onClick={() => selectMtrControl('AGE30')}
+                />
+              </div>
+
+              <div className="mtr-breakdown-grid">
+                <section className="prf-status-summary">
+                  <div className="prf-status-head">
+                    <div><span className="eyebrow">ERP STATUS</span><h3>Item lines by ERP status</h3></div>
+                    <span>{fmt(weekFilteredMtrRows.length)} lines</span>
+                  </div>
+                  <div className="prf-status-grid">
+                    {mtrStatusCounts.slice(0, 12).map(([status, count]) => (
+                      <button
+                        key={status}
+                        className={mtrStatusFilter === status ? 'prf-status-card active' : 'prf-status-card'}
+                        onClick={() => selectMtrStatus(status)}
+                      >
+                        <span>{status}</span>
+                        <strong>{fmt(count)}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="prf-status-summary">
+                  <div className="prf-status-head">
+                    <div><span className="eyebrow">DELIVERY STATUS ERP</span><h3>Item lines by delivery status</h3></div>
+                    <span>{fmt(weekFilteredMtrRows.length)} lines</span>
+                  </div>
+                  <div className="prf-status-grid">
+                    {mtrDeliveryCounts.slice(0, 12).map(([status, count]) => (
+                      <button
+                        key={status}
+                        className={mtrDeliveryFilter === status ? 'prf-status-card active' : 'prf-status-card'}
+                        onClick={() => selectMtrDelivery(status)}
+                      >
+                        <span>{status}</span>
+                        <strong>{fmt(count)}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              </div>
+
+              {(mtrControlFilter !== 'ALL' || mtrStatusFilter !== 'ALL' || mtrDeliveryFilter !== 'ALL') && (
+                <div className="prf-filter-note prpo-age-note">
+                  Showing filtered MTR item lines
+                  <button onClick={() => {
+                    setMtrControlFilter('ALL')
+                    setMtrStatusFilter('ALL')
+                    setMtrDeliveryFilter('ALL')
+                  }}>Clear MTR filter</button>
+                </div>
+              )}
+
+              <div className="prpo-visible-count">
+                <strong>{fmt(mtrVisibleCounts.mtrs)} MTR{mtrVisibleCounts.mtrs === 1 ? '' : 's'}</strong>
+                <span>{fmt(mtrVisibleCounts.lines)} item line{mtrVisibleCounts.lines === 1 ? '' : 's'} shown</span>
+              </div>
+
               <DataTable rows={mtrRows} columns={mtrColumns} noteType="material" noteMap={noteMap} onUpdate={openNote} />
             </>
           )}
