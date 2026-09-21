@@ -168,6 +168,24 @@ textarea { resize: vertical; }
 .metric-card.warn { border-left: 4px solid #d49b34; }
 .metric-card.bad { border-left: 4px solid #d55a5a; }
 
+.prpo-visible-count {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 2px 0 10px;
+  color: #7888a0;
+  font-size: 11px;
+}
+.prpo-visible-count strong {
+  color: #20314d;
+  font-size: 12px;
+}
+.prpo-visible-count span::before {
+  content: '•';
+  margin-right: 9px;
+  color: #a7b3c3;
+}
+
 .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .panel {
   min-width: 0; padding: 18px; border: 1px solid #dfe6ef; border-radius: 14px;
