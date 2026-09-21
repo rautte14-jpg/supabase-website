@@ -700,14 +700,21 @@ export default function App() {
     [procurementData],
   )
 
+  const weekFilteredPrfRows = useMemo(
+    () => allPrfRows.filter((row) =>
+      prfWeekFilter === 'ALL' || weekStartSunday(row.pr_date) === prfWeekFilter
+    ),
+    [allPrfRows, prfWeekFilter],
+  )
+
   const prfStatusCounts = useMemo(() => {
     const counts = new Map()
-    allPrfRows.forEach((row) => {
+    weekFilteredPrfRows.forEach((row) => {
       const status = prfStatusLabel(row.status)
       counts.set(status, (counts.get(status) || 0) + 1)
     })
     return [...counts.entries()].sort((a, b) => b[1] - a[1])
-  }, [allPrfRows])
+  }, [weekFilteredPrfRows])
 
   const prfWeekCounts = useMemo(() => {
     const counts = new Map()
@@ -728,12 +735,11 @@ export default function App() {
   }, [allPrfRows])
 
   const prfRows = useMemo(
-    () => allPrfRows.filter((r) =>
+    () => weekFilteredPrfRows.filter((r) =>
       matches(r) &&
-      (prfStatusFilter === 'ALL' || prfStatusLabel(r.status) === prfStatusFilter) &&
-      (prfWeekFilter === 'ALL' || weekStartSunday(r.pr_date) === prfWeekFilter)
+      (prfStatusFilter === 'ALL' || prfStatusLabel(r.status) === prfStatusFilter)
     ),
-    [allPrfRows, query, prfStatusFilter, prfWeekFilter],
+    [weekFilteredPrfRows, query, prfStatusFilter],
   )
   const prpoRows = useMemo(
     () => procurementData.filter((r) => ['PR', 'PO'].includes(r.source_type) && matches(r)),
@@ -1080,9 +1086,17 @@ export default function App() {
                 <div className="prf-status-head">
                   <div>
                     <span className="eyebrow">STATUS SUMMARY</span>
-                    <h3>PRF quantity by status</h3>
+                    <h3>
+                      PRF quantity by status
+                      {prfWeekFilter !== 'ALL'
+                        ? ' — ' + formatShortDate(prfWeekFilter) + '–' + formatShortDate(addDaysIso(prfWeekFilter, 6))
+                        : ''}
+                    </h3>
                   </div>
-                  <span>{fmt(allPrfRows.length)} total PRFs</span>
+                  <span>
+                    {fmt(weekFilteredPrfRows.length)}
+                    {prfWeekFilter === 'ALL' ? ' total PRFs' : ' PRFs in selected week'}
+                  </span>
                 </div>
 
                 <div className="prf-status-grid">
@@ -1090,8 +1104,8 @@ export default function App() {
                     className={prfStatusFilter === 'ALL' ? 'prf-status-card active' : 'prf-status-card'}
                     onClick={() => setPrfStatusFilter('ALL')}
                   >
-                    <span>ALL PRFs</span>
-                    <strong>{fmt(allPrfRows.length)}</strong>
+                    <span>{prfWeekFilter === 'ALL' ? 'ALL PRFs' : 'ALL IN WEEK'}</span>
+                    <strong>{fmt(weekFilteredPrfRows.length)}</strong>
                   </button>
 
                   {prfStatusCounts.map(([status, count]) => (
