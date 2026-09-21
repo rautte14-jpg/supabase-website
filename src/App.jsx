@@ -1567,7 +1567,7 @@ export default function App() {
                       onClick={() => selectPrfWeek(week.weekStart)}
                     >
                       <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
-                      <strong>{fmt(week.count)}</strong>
+                      <strong>{fmt(week.count)} {week.count === 1 ? 'PR' : 'PRs'}</strong>
                     </button>
                   ))}
                 </div>
@@ -1670,7 +1670,7 @@ export default function App() {
                     onClick={() => selectPrPoWeek('ALL')}
                   >
                     <span>ALL WEEKS</span>
-                    <strong>{fmt(new Set(allPrLines.map((r) => r.pr_no).filter(Boolean)).size)}</strong>
+                    <strong>{fmt(new Set(allPrLines.map((r) => r.pr_no).filter(Boolean)).size)} PRs</strong>
                   </button>
 
                   {prPoWeekCounts.map((week) => (
