@@ -151,7 +151,7 @@ textarea { resize: vertical; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; margin-bottom: 18px; }
 .metric-grid.compact { grid-template-columns: repeat(3, minmax(0, 230px)); }
 .metric-grid.prpo-metrics {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .metric-grid.prpo-metrics .metric-card strong {
   font-size: 25px;
