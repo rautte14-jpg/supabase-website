@@ -214,6 +214,54 @@ function mtrDeliveryStatus(row) {
   return String(rawField(row, ['Delivery Status ERP']) || '').trim()
 }
 
+function mrnCreatedDate(row) {
+  return dateRowField(row, 'document_date', ['Created'])
+}
+
+function mrnStatusLabel(row) {
+  return String(row?.status || rawField(row, ['Issued Status']) || '').trim() || 'BLANK'
+}
+
+function mrnIsIssued(row) {
+  const status = lower(mrnStatusLabel(row))
+  return (
+    status === 'issued' ||
+    status.includes('issued') ||
+    status.includes('complete') ||
+    status.includes('completed') ||
+    status.includes('posted')
+  ) && !status.includes('not issued') && !status.includes('unissued')
+}
+
+function mrnIsCancelled(row) {
+  const status = lower(mrnStatusLabel(row))
+  return status.includes('cancel') || status.includes('reject')
+}
+
+function mrnIsPending(row) {
+  return !mrnIsIssued(row) && !mrnIsCancelled(row)
+}
+
+function mrnAgeDays(row) {
+  const iso = mrnCreatedDate(row)
+  if (!iso) return 0
+  const date = new Date(iso + 'T12:00:00')
+  if (Number.isNaN(date.valueOf())) return 0
+  return Math.max(0, Math.floor((Date.now() - date.valueOf()) / 86400000))
+}
+
+function mrnJournalNo(row) {
+  return String(rawField(row, ['SVO / JOURNAL NUMBER', 'SVO / Journal Number']) || '').trim()
+}
+
+function mrnHasJournal(row) {
+  return !isPlaceholderValue(mrnJournalNo(row), true)
+}
+
+function mrnWpType(row) {
+  return String(rawField(row, ['WP TYPE', 'WP Type']) || '').trim() || 'BLANK'
+}
+
 function AuthScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -738,6 +786,11 @@ export default function App() {
   const [mtrControlFilter, setMtrControlFilter] = useState('ALL')
   const [mtrStatusFilter, setMtrStatusFilter] = useState('ALL')
   const [mtrDeliveryFilter, setMtrDeliveryFilter] = useState('ALL')
+  const [mrnWeekFilter, setMrnWeekFilter] = useState('ALL')
+  const [mrnControlFilter, setMrnControlFilter] = useState('ALL')
+  const [mrnStatusFilter, setMrnStatusFilter] = useState('ALL')
+  const [mrnWorkshopFilter, setMrnWorkshopFilter] = useState('ALL')
+  const [mrnWpTypeFilter, setMrnWpTypeFilter] = useState('ALL')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -907,6 +960,42 @@ export default function App() {
     setMtrDeliveryFilter((current) => current === status ? 'ALL' : status)
     setMtrControlFilter('ALL')
     setMtrStatusFilter('ALL')
+  }
+
+  function selectMrnWeek(weekStart) {
+    setMrnWeekFilter(weekStart)
+    setMrnControlFilter('ALL')
+    setMrnStatusFilter('ALL')
+    setMrnWorkshopFilter('ALL')
+    setMrnWpTypeFilter('ALL')
+  }
+
+  function selectMrnControl(filter) {
+    setMrnControlFilter((current) => current === filter ? 'ALL' : filter)
+    setMrnStatusFilter('ALL')
+    setMrnWorkshopFilter('ALL')
+    setMrnWpTypeFilter('ALL')
+  }
+
+  function selectMrnStatus(status) {
+    setMrnStatusFilter((current) => current === status ? 'ALL' : status)
+    setMrnControlFilter('ALL')
+    setMrnWorkshopFilter('ALL')
+    setMrnWpTypeFilter('ALL')
+  }
+
+  function selectMrnWorkshop(workshop) {
+    setMrnWorkshopFilter((current) => current === workshop ? 'ALL' : workshop)
+    setMrnControlFilter('ALL')
+    setMrnStatusFilter('ALL')
+    setMrnWpTypeFilter('ALL')
+  }
+
+  function selectMrnWpType(wpType) {
+    setMrnWpTypeFilter((current) => current === wpType ? 'ALL' : wpType)
+    setMrnControlFilter('ALL')
+    setMrnStatusFilter('ALL')
+    setMrnWorkshopFilter('ALL')
   }
 
   const query = lower(search).trim()
@@ -1270,10 +1359,166 @@ export default function App() {
     mtrs: new Set(mtrRows.map((r) => r.document_no).filter(Boolean)).size,
     lines: mtrRows.length,
   }), [mtrRows])
-  const mrnRows = useMemo(
-    () => data.material.filter((r) => r.document_type === 'MRN' && matches(r)),
-    [data.material, query],
+  const allMrnRows = useMemo(
+    () => data.material.filter((r) => r.document_type === 'MRN'),
+    [data.material],
   )
+
+  const mrnWeekCounts = useMemo(() => {
+    const weekSets = new Map()
+    allMrnRows.forEach((row) => {
+      const weekStart = weekStartSunday(mrnCreatedDate(row))
+      const mrnNo = String(row.document_no || '').trim()
+      if (!weekStart || !mrnNo) return
+      if (!weekSets.has(weekStart)) weekSets.set(weekStart, new Set())
+      weekSets.get(weekStart).add(mrnNo)
+    })
+
+    const currentWeek = weekStartSunday(new Date().toISOString().slice(0, 10))
+    return Array.from({ length: 8 }, (_, index) => {
+      const weekStart = addDaysIso(currentWeek, index * -7)
+      return {
+        weekStart,
+        weekEnd: addDaysIso(weekStart, 6),
+        count: weekSets.get(weekStart)?.size || 0,
+      }
+    })
+  }, [allMrnRows])
+
+  const weekFilteredMrnRows = useMemo(
+    () => allMrnRows.filter((row) =>
+      mrnWeekFilter === 'ALL' || weekStartSunday(mrnCreatedDate(row)) === mrnWeekFilter
+    ),
+    [allMrnRows, mrnWeekFilter],
+  )
+
+  const mrnSummary = useMemo(() => {
+    const all = new Set()
+    const issued = new Set()
+    const pending = new Set()
+    const pending7 = new Set()
+    const pending14 = new Set()
+    const pending30 = new Set()
+    const noJournal = new Set()
+    const withJournal = new Set()
+
+    weekFilteredMrnRows.forEach((row) => {
+      const mrnNo = String(row.document_no || '').trim()
+      if (!mrnNo) return
+      all.add(mrnNo)
+
+      if (mrnIsIssued(row)) issued.add(mrnNo)
+      if (mrnIsPending(row)) {
+        pending.add(mrnNo)
+        const age = mrnAgeDays(row)
+        if (age >= 7) pending7.add(mrnNo)
+        if (age >= 14) pending14.add(mrnNo)
+        if (age >= 30) pending30.add(mrnNo)
+        if (!mrnHasJournal(row)) noJournal.add(mrnNo)
+      }
+
+      if (mrnHasJournal(row)) withJournal.add(mrnNo)
+    })
+
+    return {
+      total: all.size,
+      issued: issued.size,
+      pending: pending.size,
+      pending7: pending7.size,
+      pending14: pending14.size,
+      pending30: pending30.size,
+      noJournal: noJournal.size,
+      withJournal: withJournal.size,
+      issuedSet: issued,
+      pendingSet: pending,
+      pending7Set: pending7,
+      pending14Set: pending14,
+      pending30Set: pending30,
+      noJournalSet: noJournal,
+      withJournalSet: withJournal,
+    }
+  }, [weekFilteredMrnRows])
+
+  const mrnStatusCounts = useMemo(() => {
+    const sets = new Map()
+    weekFilteredMrnRows.forEach((row) => {
+      const status = mrnStatusLabel(row)
+      const mrnNo = String(row.document_no || '').trim()
+      if (!mrnNo) return
+      if (!sets.has(status)) sets.set(status, new Set())
+      sets.get(status).add(mrnNo)
+    })
+    return [...sets.entries()]
+      .map(([status, values]) => [status, values.size])
+      .sort((a, b) => b[1] - a[1])
+  }, [weekFilteredMrnRows])
+
+  const mrnWorkshopCounts = useMemo(() => {
+    const sets = new Map()
+    weekFilteredMrnRows.forEach((row) => {
+      const workshop = String(row.workshop || '').trim() || 'BLANK'
+      const mrnNo = String(row.document_no || '').trim()
+      if (!mrnNo) return
+      if (!sets.has(workshop)) sets.set(workshop, new Set())
+      sets.get(workshop).add(mrnNo)
+    })
+    return [...sets.entries()]
+      .map(([workshop, values]) => [workshop, values.size])
+      .sort((a, b) => b[1] - a[1])
+  }, [weekFilteredMrnRows])
+
+  const mrnWpTypeCounts = useMemo(() => {
+    const sets = new Map()
+    weekFilteredMrnRows.forEach((row) => {
+      const wpType = mrnWpType(row)
+      const mrnNo = String(row.document_no || '').trim()
+      if (!mrnNo) return
+      if (!sets.has(wpType)) sets.set(wpType, new Set())
+      sets.get(wpType).add(mrnNo)
+    })
+    return [...sets.entries()]
+      .map(([wpType, values]) => [wpType, values.size])
+      .sort((a, b) => b[1] - a[1])
+  }, [weekFilteredMrnRows])
+
+  const mrnRows = useMemo(
+    () => weekFilteredMrnRows.filter((row) => {
+      if (!matches(row)) return false
+
+      const mrnNo = String(row.document_no || '').trim()
+      if (mrnControlFilter === 'ISSUED' && !mrnSummary.issuedSet.has(mrnNo)) return false
+      if (mrnControlFilter === 'PENDING' && !mrnSummary.pendingSet.has(mrnNo)) return false
+      if (mrnControlFilter === 'AGE7' && !mrnSummary.pending7Set.has(mrnNo)) return false
+      if (mrnControlFilter === 'AGE14' && !mrnSummary.pending14Set.has(mrnNo)) return false
+      if (mrnControlFilter === 'AGE30' && !mrnSummary.pending30Set.has(mrnNo)) return false
+      if (mrnControlFilter === 'NO_JOURNAL' && !mrnSummary.noJournalSet.has(mrnNo)) return false
+      if (mrnControlFilter === 'WITH_JOURNAL' && !mrnSummary.withJournalSet.has(mrnNo)) return false
+
+      if (mrnStatusFilter !== 'ALL' && mrnStatusLabel(row) !== mrnStatusFilter) return false
+
+      const workshop = String(row.workshop || '').trim() || 'BLANK'
+      if (mrnWorkshopFilter !== 'ALL' && workshop !== mrnWorkshopFilter) return false
+
+      const wpType = mrnWpType(row)
+      if (mrnWpTypeFilter !== 'ALL' && wpType !== mrnWpTypeFilter) return false
+
+      return true
+    }),
+    [
+      weekFilteredMrnRows,
+      query,
+      mrnControlFilter,
+      mrnStatusFilter,
+      mrnWorkshopFilter,
+      mrnWpTypeFilter,
+      mrnSummary,
+    ],
+  )
+
+  const mrnVisibleCounts = useMemo(() => ({
+    mrns: new Set(mrnRows.map((r) => r.document_no).filter(Boolean)).size,
+    rows: mrnRows.length,
+  }), [mrnRows])
   const stockRows = useMemo(() => data.stock.filter(matches), [data.stock, query])
   const transactionRows = useMemo(() => data.transactions.filter(matches), [data.transactions, query])
 
@@ -1688,6 +1933,44 @@ export default function App() {
             <MetricCard label="Not transferred" value={fmt(mtrSummary.notTransferred)} tone="bad" />
             <MetricCard label="Stock available, pending" value={fmt(mtrSummary.stockAvailablePending)} tone="bad" helper="Item lines" />
             <MetricCard label="30+ day pending" value={fmt(mtrSummary.aged30)} tone="bad" helper="Item lines" />
+          </div>
+        </>
+      ),
+    },
+    {
+      kicker: 'MRN / ISSUE CONTROL',
+      title:
+        'MRN Issue Status' +
+        (mrnWeekFilter !== 'ALL'
+          ? ' — ' + formatShortDate(mrnWeekFilter) + '–' + formatShortDate(addDaysIso(mrnWeekFilter, 6))
+          : ''),
+      body: (
+        <>
+          <div className="meeting-week-picker">
+            <button
+              className={mrnWeekFilter === 'ALL' ? 'meeting-week-chip active' : 'meeting-week-chip'}
+              onClick={() => selectMrnWeek('ALL')}
+            >
+              ALL WEEKS
+            </button>
+            {mrnWeekCounts.map((week) => (
+              <button
+                key={week.weekStart}
+                className={mrnWeekFilter === week.weekStart ? 'meeting-week-chip active' : 'meeting-week-chip'}
+                onClick={() => selectMrnWeek(week.weekStart)}
+              >
+                {formatShortDate(week.weekStart)}–{formatShortDate(week.weekEnd)}
+                <b>{fmt(week.count)}</b>
+              </button>
+            ))}
+          </div>
+          <div className="meeting-metrics">
+            <MetricCard label="MRNs" value={fmt(mrnSummary.total)} helper="Distinct MRN numbers" />
+            <MetricCard label="Issued" value={fmt(mrnSummary.issued)} />
+            <MetricCard label="Pending / Not issued" value={fmt(mrnSummary.pending)} tone="bad" />
+            <MetricCard label="14+ day pending" value={fmt(mrnSummary.pending14)} tone="warn" />
+            <MetricCard label="30+ day pending" value={fmt(mrnSummary.pending30)} tone="bad" />
+            <MetricCard label="Pending without SVO / Journal" value={fmt(mrnSummary.noJournal)} tone="bad" />
           </div>
         </>
       ),
@@ -2241,7 +2524,176 @@ export default function App() {
 
           {view === 'mrn' && (
             <>
-              <PageHeader title="MRN & Issues" subtitle="Material requests and ERP issue progress against SR / work order." />
+              <PageHeader title="MRN & Issues" subtitle="Material request progress from creation through ERP issue / journal posting." />
+
+              <section className="prf-weekly-summary">
+                <div className="prf-status-head">
+                  <div>
+                    <span className="eyebrow">WEEKLY MRNs CREATED</span>
+                    <h3>MRNs created by week</h3>
+                  </div>
+                  <span>Sunday–Saturday</span>
+                </div>
+                <div className="prf-week-grid">
+                  <button
+                    className={mrnWeekFilter === 'ALL' ? 'prf-week-card active' : 'prf-week-card'}
+                    onClick={() => selectMrnWeek('ALL')}
+                  >
+                    <span>ALL WEEKS</span>
+                    <strong>{fmt(new Set(allMrnRows.map((r) => r.document_no).filter(Boolean)).size)} MRNs</strong>
+                  </button>
+                  {mrnWeekCounts.map((week) => (
+                    <button
+                      key={week.weekStart}
+                      className={mrnWeekFilter === week.weekStart ? 'prf-week-card active' : 'prf-week-card'}
+                      onClick={() => selectMrnWeek(week.weekStart)}
+                    >
+                      <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
+                      <strong>{fmt(week.count)} {week.count === 1 ? 'MRN' : 'MRNs'}</strong>
+                    </button>
+                  ))}
+                </div>
+                {mrnWeekFilter !== 'ALL' && (
+                  <div className="prf-filter-note">
+                    Showing MRNs created {formatShortDate(mrnWeekFilter)} – {formatShortDate(addDaysIso(mrnWeekFilter, 6))}
+                    <button onClick={() => selectMrnWeek('ALL')}>Clear week</button>
+                  </div>
+                )}
+              </section>
+
+              <div className="metric-grid mtr-metrics">
+                <MetricCard label="Total MRNs" value={fmt(mrnSummary.total)} helper="Distinct MRN numbers" />
+                <MetricCard
+                  label="Issued MRNs"
+                  value={fmt(mrnSummary.issued)}
+                  helper="Issued / completed in ERP"
+                  active={mrnControlFilter === 'ISSUED'}
+                  onClick={() => selectMrnControl('ISSUED')}
+                />
+                <MetricCard
+                  label="Pending / Not Issued"
+                  value={fmt(mrnSummary.pending)}
+                  helper="Still waiting for ERP issue"
+                  tone="bad"
+                  active={mrnControlFilter === 'PENDING'}
+                  onClick={() => selectMrnControl('PENDING')}
+                />
+                <MetricCard
+                  label="Pending 7+ Days"
+                  value={fmt(mrnSummary.pending7)}
+                  helper="Pending MRNs"
+                  active={mrnControlFilter === 'AGE7'}
+                  onClick={() => selectMrnControl('AGE7')}
+                />
+                <MetricCard
+                  label="Pending 14+ Days"
+                  value={fmt(mrnSummary.pending14)}
+                  helper="Pending MRNs"
+                  tone="warn"
+                  active={mrnControlFilter === 'AGE14'}
+                  onClick={() => selectMrnControl('AGE14')}
+                />
+                <MetricCard
+                  label="Pending 30+ Days"
+                  value={fmt(mrnSummary.pending30)}
+                  helper="Pending MRNs"
+                  tone="bad"
+                  active={mrnControlFilter === 'AGE30'}
+                  onClick={() => selectMrnControl('AGE30')}
+                />
+                <MetricCard
+                  label="Pending Without SVO / Journal"
+                  value={fmt(mrnSummary.noJournal)}
+                  helper="Pending MRNs without ERP issue reference"
+                  tone="bad"
+                  active={mrnControlFilter === 'NO_JOURNAL'}
+                  onClick={() => selectMrnControl('NO_JOURNAL')}
+                />
+                <MetricCard
+                  label="MRNs With SVO / Journal"
+                  value={fmt(mrnSummary.withJournal)}
+                  helper="MRNs linked to an ERP issue reference"
+                  active={mrnControlFilter === 'WITH_JOURNAL'}
+                  onClick={() => selectMrnControl('WITH_JOURNAL')}
+                />
+              </div>
+
+              <div className="mtr-breakdown-grid">
+                <section className="prf-status-summary">
+                  <div className="prf-status-head">
+                    <div><span className="eyebrow">ISSUED STATUS</span><h3>MRNs by issued status</h3></div>
+                    <span>{fmt(mrnSummary.total)} MRNs</span>
+                  </div>
+                  <div className="prf-status-grid">
+                    {mrnStatusCounts.slice(0, 12).map(([status, count]) => (
+                      <button
+                        key={status}
+                        className={mrnStatusFilter === status ? 'prf-status-card active' : 'prf-status-card'}
+                        onClick={() => selectMrnStatus(status)}
+                      >
+                        <span>{status}</span>
+                        <strong>{fmt(count)}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="prf-status-summary">
+                  <div className="prf-status-head">
+                    <div><span className="eyebrow">WORKSHOP</span><h3>MRNs by workshop</h3></div>
+                    <span>Top workshops</span>
+                  </div>
+                  <div className="prf-status-grid">
+                    {mrnWorkshopCounts.slice(0, 12).map(([workshop, count]) => (
+                      <button
+                        key={workshop}
+                        className={mrnWorkshopFilter === workshop ? 'prf-status-card active' : 'prf-status-card'}
+                        onClick={() => selectMrnWorkshop(workshop)}
+                      >
+                        <span>{workshop}</span>
+                        <strong>{fmt(count)}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              </div>
+
+              <section className="prf-status-summary">
+                <div className="prf-status-head">
+                  <div><span className="eyebrow">WP TYPE</span><h3>MRNs by WP type</h3></div>
+                  <span>Click to filter</span>
+                </div>
+                <div className="prf-status-grid">
+                  {mrnWpTypeCounts.slice(0, 12).map(([wpType, count]) => (
+                    <button
+                      key={wpType}
+                      className={mrnWpTypeFilter === wpType ? 'prf-status-card active' : 'prf-status-card'}
+                      onClick={() => selectMrnWpType(wpType)}
+                    >
+                      <span>{wpType}</span>
+                      <strong>{fmt(count)}</strong>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {(mrnControlFilter !== 'ALL' || mrnStatusFilter !== 'ALL' || mrnWorkshopFilter !== 'ALL' || mrnWpTypeFilter !== 'ALL') && (
+                <div className="prf-filter-note prpo-age-note">
+                  Showing filtered MRNs
+                  <button onClick={() => {
+                    setMrnControlFilter('ALL')
+                    setMrnStatusFilter('ALL')
+                    setMrnWorkshopFilter('ALL')
+                    setMrnWpTypeFilter('ALL')
+                  }}>Clear MRN filter</button>
+                </div>
+              )}
+
+              <div className="prpo-visible-count">
+                <strong>{fmt(mrnVisibleCounts.mrns)} MRN{mrnVisibleCounts.mrns === 1 ? '' : 's'}</strong>
+                <span>{fmt(mrnVisibleCounts.rows)} register row{mrnVisibleCounts.rows === 1 ? '' : 's'} shown</span>
+              </div>
+
               <DataTable rows={mrnRows} columns={mrnColumns} noteType="material" noteMap={noteMap} onUpdate={openNote} />
             </>
           )}
