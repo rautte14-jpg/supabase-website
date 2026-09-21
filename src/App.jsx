@@ -237,9 +237,26 @@ function AccessDenied({ email }) {
   )
 }
 
-function MetricCard({ label, value, helper, tone = 'default' }) {
+function MetricCard({ label, value, helper, tone = 'default', onClick, active = false }) {
+  const className = [
+    'metric-card',
+    tone,
+    onClick ? 'clickable' : '',
+    active ? 'active' : '',
+  ].filter(Boolean).join(' ')
+
+  if (onClick) {
+    return (
+      <button type="button" className={className} onClick={onClick}>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        {helper && <small>{helper}</small>}
+      </button>
+    )
+  }
+
   return (
-    <article className={'metric-card ' + tone}>
+    <article className={className}>
       <span>{label}</span>
       <strong>{value}</strong>
       {helper && <small>{helper}</small>}
@@ -674,6 +691,7 @@ export default function App() {
   const [prfStatusFilter, setPrfStatusFilter] = useState('ALL')
   const [prfWeekFilter, setPrfWeekFilter] = useState('ALL')
   const [prPoWeekFilter, setPrPoWeekFilter] = useState('ALL')
+  const [prPoAgeFilter, setPrPoAgeFilter] = useState('ALL')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -801,6 +819,16 @@ export default function App() {
 
   function selectPrPoWeek(weekStart) {
     setPrPoWeekFilter(weekStart)
+    setPrPoAgeFilter('ALL')
+  }
+
+  function selectPrPoAge(ageBand) {
+    if (ageBand === 'ALL') {
+      setPrPoAgeFilter('ALL')
+      return
+    }
+    setPrPoAgeFilter((current) => current === ageBand ? 'ALL' : ageBand)
+    setPrPoWeekFilter('ALL')
   }
 
   const query = lower(search).trim()
@@ -906,11 +934,17 @@ export default function App() {
   )
 
   const prpoRows = useMemo(
-    () => allPrPoRows.filter((row) =>
-      matches(row) &&
-      (prPoWeekFilter === 'ALL' || weekStartSunday(prSubmittedDate(row)) === prPoWeekFilter)
-    ),
-    [allPrPoRows, query, prPoWeekFilter],
+    () => allPrPoRows.filter((row) => {
+      if (!matches(row)) return false
+      if (prPoWeekFilter !== 'ALL' && weekStartSunday(prSubmittedDate(row)) !== prPoWeekFilter) return false
+
+      const prNo = String(row.pr_no || '').trim()
+      if (prPoAgeFilter === '3TO6' && !prPoAgeing.agedThreeToSixPrNos.has(prNo)) return false
+      if (prPoAgeFilter === '6PLUS' && !prPoAgeing.agedSixPlusPrNos.has(prNo)) return false
+
+      return true
+    }),
+    [allPrPoRows, query, prPoWeekFilter, prPoAgeFilter, prPoAgeing],
   )
 
   const prPoVisibleCounts = useMemo(() => ({
@@ -938,6 +972,7 @@ export default function App() {
 
       if (!prMap.has(prNo)) {
         prMap.set(prNo, {
+          prNo,
           requested: 0,
           received: 0,
           submitted: null,
@@ -972,8 +1007,8 @@ export default function App() {
     const sixMonthsAgo = new Date(now)
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
 
-    let agedThreeToSix = 0
-    let agedSixPlus = 0
+    const agedThreeToSixPrNos = new Set()
+    const agedSixPlusPrNos = new Set()
     let oldestOpenDays = 0
 
     for (const p of prMap.values()) {
@@ -985,11 +1020,17 @@ export default function App() {
       const days = Math.max(0, Math.floor((now - p.submitted) / 86400000))
       oldestOpenDays = Math.max(oldestOpenDays, days)
 
-      if (p.submitted <= sixMonthsAgo) agedSixPlus += 1
-      else if (p.submitted <= threeMonthsAgo) agedThreeToSix += 1
+      if (p.submitted <= sixMonthsAgo) agedSixPlusPrNos.add(p.prNo)
+      else if (p.submitted <= threeMonthsAgo) agedThreeToSixPrNos.add(p.prNo)
     }
 
-    return { agedThreeToSix, agedSixPlus, oldestOpenDays }
+    return {
+      agedThreeToSix: agedThreeToSixPrNos.size,
+      agedSixPlus: agedSixPlusPrNos.size,
+      oldestOpenDays,
+      agedThreeToSixPrNos,
+      agedSixPlusPrNos,
+    }
   }, [allPrLines])
 
   const prPoSummary = useMemo(() => {
@@ -1645,18 +1686,22 @@ export default function App() {
                 <MetricCard
                   label="3–6 Month Aged PRs"
                   value={fmt(prPoAgeing.agedThreeToSix)}
-                  helper="Open PRs aged 3 to under 6 months"
+                  helper="Click to show these aged PRs"
                   tone="warn"
+                  active={prPoAgeFilter === '3TO6'}
+                  onClick={() => selectPrPoAge('3TO6')}
                 />
                 <MetricCard
                   label="6+ Month Aged PRs"
                   value={fmt(prPoAgeing.agedSixPlus)}
                   helper={
                     prPoAgeing.agedSixPlus > 0
-                      ? 'Open PRs aged 6+ months • oldest open ' + fmt(prPoAgeing.oldestOpenDays) + ' days'
-                      : 'Open PRs aged 6+ months'
+                      ? 'Click to show • oldest open ' + fmt(prPoAgeing.oldestOpenDays) + ' days'
+                      : 'Click to show 6+ month aged PRs'
                   }
                   tone="bad"
+                  active={prPoAgeFilter === '6PLUS'}
+                  onClick={() => selectPrPoAge('6PLUS')}
                 />
                 <MetricCard
                   label="Received Item Quantity"
@@ -1669,6 +1714,13 @@ export default function App() {
                   helper="Received share of mapped PO value"
                 />
               </div>
+
+              {prPoAgeFilter !== 'ALL' && (
+                <div className="prf-filter-note prpo-age-note">
+                  Showing <b>{prPoAgeFilter === '3TO6' ? '3–6 month aged open PRs' : '6+ month aged open PRs'}</b>
+                  <button onClick={() => selectPrPoAge('ALL')}>Clear ageing filter</button>
+                </div>
+              )}
 
               <div className="prpo-visible-count">
                 <strong>{fmt(prPoVisibleCounts.prs)} PR{prPoVisibleCounts.prs === 1 ? '' : 's'}</strong>
