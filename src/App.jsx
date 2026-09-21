@@ -70,6 +70,82 @@ function formatShortDate(iso) {
   })
 }
 
+function rawField(row, names) {
+  const raw = row?.raw_source
+  if (!raw || typeof raw !== 'object') return ''
+  const entries = Object.entries(raw)
+  for (const name of names) {
+    const wanted = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '')
+    const hit = entries.find(([key]) =>
+      String(key).toLowerCase().replace(/[^a-z0-9]+/g, '') === wanted
+    )
+    if (hit && String(hit[1] ?? '').trim() !== '') return hit[1]
+  }
+  return ''
+}
+
+function numericRowField(row, directKey, rawNames = []) {
+  const direct = row?.[directKey]
+  const value = direct !== null && direct !== undefined && String(direct).trim() !== ''
+    ? direct
+    : rawField(row, rawNames)
+  if (value === null || value === undefined || String(value).trim() === '') return null
+  const parsed = Number(String(value).replace(/,/g, '').replace(/[^0-9.-]/g, ''))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function dateRowField(row, directKey, rawNames = []) {
+  const direct = row?.[directKey]
+  const value = direct || rawField(row, rawNames)
+  if (!value) return ''
+  const d = new Date(String(value).slice(0, 10) + (String(value).includes('T') ? '' : 'T12:00:00'))
+  if (!Number.isNaN(d.valueOf())) return d.toISOString().slice(0, 10)
+  const fallback = new Date(value)
+  return Number.isNaN(fallback.valueOf()) ? '' : fallback.toISOString().slice(0, 10)
+}
+
+function receiptState(row) {
+  const rawText = row?.raw_source && typeof row.raw_source === 'object'
+    ? Object.values(row.raw_source).join(' ')
+    : ''
+  const status = lower([row?.status, row?.delivery_status, rawText].filter(Boolean).join(' '))
+
+  if (/partial(?:ly)?\s*receiv|part\s*receiv/.test(status)) return 'partial'
+  if (/fully\s*receiv|completely\s*receiv|all\s*receiv|received\s*all|complete\s*receipt/.test(status)) return 'full'
+  if (/\breceived\b/.test(status) && !/not\s*received|pending|awaiting/.test(status)) return 'full'
+  return ''
+}
+
+function requestedQty(row) {
+  return numericRowField(row, 'qty_requested', ['Requested Qty', 'Request Qty', 'Quantity', 'PR Qty']) ?? 0
+}
+
+function receivedQty(row) {
+  const direct = numericRowField(row, 'qty_received', [
+    'Received',
+    'Received Qty',
+    'Received Quantity',
+    'Receipt Qty',
+    'PO Received Qty',
+    'Total Received Qty',
+    'Delivered Qty',
+  ])
+  if (direct !== null) return Math.max(0, direct)
+  return receiptState(row) === 'full' ? Math.max(0, requestedQty(row)) : 0
+}
+
+function prSubmittedDate(row) {
+  return dateRowField(row, 'pr_date', [
+    'PR Date',
+    'Submitted Date',
+    'Created Date',
+    'PR Created Date',
+    'PR Creation Date',
+    'Creation Date',
+    'Requisition Date',
+  ])
+}
+
 function AuthScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -570,6 +646,7 @@ export default function App() {
   const [slide, setSlide] = useState(0)
   const [prfStatusFilter, setPrfStatusFilter] = useState('ALL')
   const [prfWeekFilter, setPrfWeekFilter] = useState('ALL')
+  const [prPoWeekFilter, setPrPoWeekFilter] = useState('ALL')
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -695,6 +772,10 @@ export default function App() {
     setPrfStatusFilter('ALL')
   }
 
+  function selectPrPoWeek(weekStart) {
+    setPrPoWeekFilter(weekStart)
+  }
+
   const query = lower(search).trim()
   const matches = (row) => !query || Object.values(row).some((v) =>
     typeof v !== 'object' && lower(v).includes(query),
@@ -755,10 +836,52 @@ export default function App() {
     ),
     [weekFilteredPrfRows, query, prfStatusFilter],
   )
-  const prpoRows = useMemo(
-    () => procurementData.filter((r) => ['PR', 'PO'].includes(r.source_type) && matches(r)),
-    [procurementData, query],
+  const allPrPoRows = useMemo(
+    () => procurementData.filter((r) => ['PR', 'PO'].includes(r.source_type)),
+    [procurementData],
   )
+
+  const allPrLines = useMemo(
+    () => procurementData.filter((r) => r.source_type === 'PR' && String(r.pr_no || '').trim()),
+    [procurementData],
+  )
+
+  const prPoWeekCounts = useMemo(() => {
+    const weekSets = new Map()
+    allPrLines.forEach((row) => {
+      const weekStart = weekStartSunday(prSubmittedDate(row))
+      const prNo = String(row.pr_no || '').trim()
+      if (!weekStart || !prNo) return
+      if (!weekSets.has(weekStart)) weekSets.set(weekStart, new Set())
+      weekSets.get(weekStart).add(prNo)
+    })
+
+    const currentWeek = weekStartSunday(new Date().toISOString().slice(0, 10))
+    return Array.from({ length: 8 }, (_, index) => {
+      const weekStart = addDaysIso(currentWeek, index * -7)
+      return {
+        weekStart,
+        weekEnd: addDaysIso(weekStart, 6),
+        count: weekSets.get(weekStart)?.size || 0,
+      }
+    })
+  }, [allPrLines])
+
+  const weekFilteredPrLines = useMemo(
+    () => allPrLines.filter((row) =>
+      prPoWeekFilter === 'ALL' || weekStartSunday(prSubmittedDate(row)) === prPoWeekFilter
+    ),
+    [allPrLines, prPoWeekFilter],
+  )
+
+  const prpoRows = useMemo(
+    () => allPrPoRows.filter((row) =>
+      matches(row) &&
+      (prPoWeekFilter === 'ALL' || weekStartSunday(prSubmittedDate(row)) === prPoWeekFilter)
+    ),
+    [allPrPoRows, query, prPoWeekFilter],
+  )
+
   const mtrRows = useMemo(
     () => data.material.filter((r) => r.document_type === 'MTR' && matches(r)),
     [data.material, query],
@@ -771,10 +894,9 @@ export default function App() {
   const transactionRows = useMemo(() => data.transactions.filter(matches), [data.transactions, query])
 
   const prPoSummary = useMemo(() => {
-    const prLines = procurementData.filter((r) => r.source_type === 'PR')
     const prMap = new Map()
 
-    prLines.forEach((row) => {
+    weekFilteredPrLines.forEach((row) => {
       const prNo = String(row.pr_no || '').trim()
       if (!prNo) return
 
@@ -782,80 +904,112 @@ export default function App() {
         prMap.set(prNo, {
           requested: 0,
           received: 0,
-          balance: 0,
           submitted: null,
-          cancelled: false,
+          lineCount: 0,
+          fullLines: 0,
+          partialLines: 0,
+          activeLines: 0,
         })
       }
 
       const item = prMap.get(prNo)
-      item.requested += Number(row.qty_requested || 0)
-      item.received += Number(row.qty_received || 0)
-      item.balance += Number(row.balance_qty || 0)
-
-      if (row.pr_date) {
-        const d = new Date(row.pr_date + 'T12:00:00')
-        if (!Number.isNaN(d.valueOf()) && (!item.submitted || d < item.submitted)) {
-          item.submitted = d
-        }
-      }
-
+      const requested = requestedQty(row)
+      const received = Math.min(requested > 0 ? requested : Number.MAX_SAFE_INTEGER, receivedQty(row))
+      const state = receiptState(row)
       const status = lower(row.status)
-      if (status.includes('cancel') || status.includes('reject')) {
-        item.cancelled = true
+
+      item.requested += requested
+      item.received += received
+      item.lineCount += 1
+      if (state === 'full') item.fullLines += 1
+      if (state === 'partial') item.partialLines += 1
+      if (!status.includes('cancel') && !status.includes('reject')) item.activeLines += 1
+
+      const dateIso = prSubmittedDate(row)
+      if (dateIso) {
+        const d = new Date(dateIso + 'T12:00:00')
+        if (!Number.isNaN(d.valueOf()) && (!item.submitted || d < item.submitted)) item.submitted = d
       }
     })
 
-    const prs = [...prMap.values()]
-    const fullyReceived = prs.filter((p) => p.requested > 0 && p.received >= p.requested)
-    const partReceived = prs.filter((p) => p.received > 0 && p.received < p.requested)
+    const prs = [...prMap.values()].filter((p) => p.activeLines > 0)
+    const isFullyReceived = (p) =>
+      (p.requested > 0 && p.received >= p.requested) ||
+      (p.lineCount > 0 && p.fullLines === p.lineCount)
+
+    const fullyReceived = prs.filter(isFullyReceived)
+    const partReceived = prs.filter((p) =>
+      !isFullyReceived(p) && (p.received > 0 || p.partialLines > 0 || p.fullLines > 0)
+    )
 
     const now = new Date()
+    const threeMonthsAgo = new Date(now)
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+    const sixMonthsAgo = new Date(now)
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+
+    let agedThreeToSix = 0
+    let agedSixPlus = 0
     let oldestOpenDays = 0
-    let aged90Plus = 0
 
     prs.forEach((p) => {
-      const complete = p.requested > 0 && p.received >= p.requested
-      if (p.cancelled || complete || !p.submitted) return
+      if (isFullyReceived(p) || !p.submitted) return
       const days = Math.max(0, Math.floor((now - p.submitted) / 86400000))
       oldestOpenDays = Math.max(oldestOpenDays, days)
-      if (days >= 90) aged90Plus += 1
+      if (p.submitted <= sixMonthsAgo) agedSixPlus += 1
+      else if (p.submitted <= threeMonthsAgo) agedThreeToSix += 1
     })
 
-    const receivedItemQty = prLines.reduce(
-      (sum, row) => sum + Number(row.qty_received || 0),
+    const receivedItemQty = weekFilteredPrLines.reduce(
+      (sum, row) => sum + receivedQty(row),
       0,
     )
 
     const poMap = new Map()
-    prLines.forEach((row) => {
+    weekFilteredPrLines.forEach((row, index) => {
+      const amount = numericRowField(row, 'amount', [
+        'Amount',
+        'PO Amount',
+        'PO Value',
+        'Total Amount',
+        'Value',
+        'Line Amount',
+        'Net Amount',
+        'Line Value',
+        'Total Value',
+        'Purchase Amount',
+      ]) ?? 0
+      const requested = requestedQty(row)
+      const received = receivedQty(row)
+      if (!(amount > 0) || !(received > 0)) return
+
       const poNo = String(row.po_no || '').trim()
-      if (!poNo) return
+      const key = poNo || 'LINE-' + (row.id ?? index)
 
-      if (!poMap.has(poNo)) {
-        poMap.set(poNo, { value: 0, requested: 0, received: 0 })
-      }
-
-      const po = poMap.get(poNo)
-      po.value = Math.max(po.value, Number(row.amount || 0))
-      po.requested += Number(row.qty_requested || 0)
-      po.received += Number(row.qty_received || 0)
+      if (!poMap.has(key)) poMap.set(key, { value: 0, requested: 0, received: 0 })
+      const po = poMap.get(key)
+      po.value = poNo ? Math.max(po.value, amount) : po.value + amount
+      po.requested += requested
+      po.received += received
     })
 
     const receivedItemValue = [...poMap.values()].reduce((sum, po) => {
-      if (!(po.value > 0) || !(po.requested > 0) || !(po.received > 0)) return sum
+      if (!(po.value > 0) || !(po.received > 0)) return sum
+      if (!(po.requested > 0)) return sum + po.value
       return sum + po.value * Math.min(1, po.received / po.requested)
     }, 0)
 
     return {
+      totalPrs: prMap.size,
       fullyReceivedPrs: fullyReceived.length,
       partReceivedPrs: partReceived.length,
-      aged90Plus,
+      agedThreeToSix,
+      agedSixPlus,
       oldestOpenDays,
       receivedItemQty,
       receivedItemValue,
     }
-  }, [procurementData])
+  }, [weekFilteredPrLines])
 
   const today = new Date()
   const sevenDaysAgo = new Date()
@@ -1321,33 +1475,77 @@ export default function App() {
             <>
               <PageHeader title="PR & PO Tracker" subtitle="Procurement line status from PR through payment, delivery and receipt." />
 
+              <section className="prf-weekly-summary">
+                <div className="prf-status-head">
+                  <div>
+                    <span className="eyebrow">WEEKLY PR SUBMISSIONS</span>
+                    <h3>Submitted PRs by week</h3>
+                  </div>
+                  <span>Sunday–Saturday</span>
+                </div>
+
+                <div className="prf-week-grid">
+                  <button
+                    className={prPoWeekFilter === 'ALL' ? 'prf-week-card active' : 'prf-week-card'}
+                    onClick={() => selectPrPoWeek('ALL')}
+                  >
+                    <span>ALL WEEKS</span>
+                    <strong>{fmt(new Set(allPrLines.map((r) => r.pr_no).filter(Boolean)).size)}</strong>
+                  </button>
+
+                  {prPoWeekCounts.map((week) => (
+                    <button
+                      key={week.weekStart}
+                      className={prPoWeekFilter === week.weekStart ? 'prf-week-card active' : 'prf-week-card'}
+                      onClick={() => selectPrPoWeek(week.weekStart)}
+                    >
+                      <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
+                      <strong>{fmt(week.count)}</strong>
+                    </button>
+                  ))}
+                </div>
+
+                {prPoWeekFilter !== 'ALL' && (
+                  <div className="prf-filter-note">
+                    Showing PRs submitted {formatShortDate(prPoWeekFilter)} – {formatShortDate(addDaysIso(prPoWeekFilter, 6))}
+                    <button onClick={() => selectPrPoWeek('ALL')}>Clear week</button>
+                  </div>
+                )}
+              </section>
+
               <div className="metric-grid prpo-metrics">
                 <MetricCard
-                  label="PRs Received All"
+                  label="Fully Received PRs"
                   value={fmt(prPoSummary.fullyReceivedPrs)}
-                  helper="Distinct PRs fully received"
+                  helper="Distinct PRs completely received"
                 />
                 <MetricCard
-                  label="PRs Part Received"
+                  label="Partially Received PRs"
                   value={fmt(prPoSummary.partReceivedPrs)}
-                  helper="Some quantity received, balance remains"
+                  helper="Some quantity received; balance remains"
                   tone="warn"
                 />
                 <MetricCard
-                  label="Aged PRs — 90+ Days"
-                  value={fmt(prPoSummary.aged90Plus)}
-                  helper={'Oldest open PR: ' + fmt(prPoSummary.oldestOpenDays) + ' days'}
+                  label="3–6 Month Aged PRs"
+                  value={fmt(prPoSummary.agedThreeToSix)}
+                  helper="Open PRs aged 3 to under 6 months"
+                  tone="warn"
+                />
+                <MetricCard
+                  label="6+ Month Aged PRs"
+                  value={fmt(prPoSummary.agedSixPlus)}
+                  helper={'Open PRs aged 6+ months • oldest ' + fmt(prPoSummary.oldestOpenDays) + ' days'}
                   tone="bad"
                 />
                 <MetricCard
-                  label="Received Item Qty"
+                  label="Received Item Quantity"
                   value={fmt(prPoSummary.receivedItemQty, 2)}
                   helper="Total quantity received"
                 />
                 <MetricCard
                   label="Received Items Value"
                   value={money(prPoSummary.receivedItemValue)}
-                  helper="PO value counted once; partial receipts proportioned"
+                  helper="Received share of mapped PO value"
                 />
               </div>
 
