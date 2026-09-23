@@ -1197,7 +1197,7 @@ export default function App() {
       const weekStart = addDaysIso(currentWeek, index * -7)
       return {
         weekStart,
-        weekEnd: addDaysIso(weekStart, 7),
+        weekEnd: addDaysIso(weekStart, 6),
         count: counts.get(weekStart) || 0,
       }
     })
@@ -1239,7 +1239,7 @@ export default function App() {
       const weekStart = addDaysIso(currentWeek, index * -7)
       return {
         weekStart,
-        weekEnd: addDaysIso(weekStart, 7),
+        weekEnd: addDaysIso(weekStart, 6),
         count: weekSets.get(weekStart)?.size || 0,
       }
     })
@@ -1388,7 +1388,7 @@ export default function App() {
       const weekStart = addDaysIso(currentWeek, index * -7)
       return {
         weekStart,
-        weekEnd: addDaysIso(weekStart, 7),
+        weekEnd: addDaysIso(weekStart, 6),
         count: weekSets.get(weekStart)?.size || 0,
       }
     })
@@ -1547,7 +1547,7 @@ export default function App() {
       const weekStart = addDaysIso(currentWeek, index * -7)
       return {
         weekStart,
-        weekEnd: addDaysIso(weekStart, 7),
+        weekEnd: addDaysIso(weekStart, 6),
         count: weekSets.get(weekStart)?.size || 0,
       }
     })
@@ -2019,7 +2019,7 @@ export default function App() {
       title:
         'PRF Status Breakdown' +
         (prfWeekFilter !== 'ALL'
-          ? ' — ' + formatShortDate(prfWeekFilter) + '–' + formatShortDate(addDaysIso(prfWeekFilter, 7))
+          ? ' — ' + formatShortDate(prfWeekFilter) + '–' + formatShortDate(addDaysIso(prfWeekFilter, 6))
           : ''),
       body: (
         <>
@@ -2074,7 +2074,7 @@ export default function App() {
       title:
         'MTR Transfer Status' +
         (mtrWeekFilter !== 'ALL'
-          ? ' — ' + formatShortDate(mtrWeekFilter) + '–' + formatShortDate(addDaysIso(mtrWeekFilter, 7))
+          ? ' — ' + formatShortDate(mtrWeekFilter) + '–' + formatShortDate(addDaysIso(mtrWeekFilter, 6))
           : ''),
       body: (
         <>
@@ -2112,7 +2112,7 @@ export default function App() {
       title:
         'MRN Issue Status' +
         (mrnWeekFilter !== 'ALL'
-          ? ' — ' + formatShortDate(mrnWeekFilter) + '–' + formatShortDate(addDaysIso(mrnWeekFilter, 7))
+          ? ' — ' + formatShortDate(mrnWeekFilter) + '–' + formatShortDate(addDaysIso(mrnWeekFilter, 6))
           : ''),
       body: (
         <>
@@ -2307,7 +2307,7 @@ export default function App() {
                     <span className="eyebrow">WEEKLY SUBMISSIONS</span>
                     <h3>Submitted PRFs by week</h3>
                   </div>
-                  <span>Wednesday–Wednesday</span>
+                  <span>Wednesday–Tuesday</span>
                 </div>
 
                 <div className="prf-week-grid">
@@ -2333,7 +2333,7 @@ export default function App() {
 
                 {prfWeekFilter !== 'ALL' && (
                   <div className="prf-filter-note">
-                    Showing PRFs submitted {formatShortDate(prfWeekFilter)} – {formatShortDate(addDaysIso(prfWeekFilter, 7))}
+                    Showing PRFs submitted {formatShortDate(prfWeekFilter)} – {formatShortDate(addDaysIso(prfWeekFilter, 6))}
                     <button onClick={() => selectPrfWeek('ALL')}>Clear week</button>
                   </div>
                 )}
@@ -2346,7 +2346,7 @@ export default function App() {
                     <h3>
                       PRF quantity by status
                       {prfWeekFilter !== 'ALL'
-                        ? ' — ' + formatShortDate(prfWeekFilter) + '–' + formatShortDate(addDaysIso(prfWeekFilter, 7))
+                        ? ' — ' + formatShortDate(prfWeekFilter) + '–' + formatShortDate(addDaysIso(prfWeekFilter, 6))
                         : ''}
                     </h3>
                   </div>
@@ -2420,7 +2420,7 @@ export default function App() {
                     <span className="eyebrow">WEEKLY PR SUBMISSIONS</span>
                     <h3>Submitted PRs by week</h3>
                   </div>
-                  <span>Wednesday–Wednesday</span>
+                  <span>Wednesday–Tuesday</span>
                 </div>
 
                 <div className="prf-week-grid">
@@ -2446,7 +2446,7 @@ export default function App() {
 
                 {prPoWeekFilter !== 'ALL' && (
                   <div className="prf-filter-note">
-                    Showing PRs submitted {formatShortDate(prPoWeekFilter)} – {formatShortDate(addDaysIso(prPoWeekFilter, 7))}
+                    Showing PRs submitted {formatShortDate(prPoWeekFilter)} – {formatShortDate(addDaysIso(prPoWeekFilter, 6))}
                     <button onClick={() => selectPrPoWeek('ALL')}>Clear week</button>
                   </div>
                 )}
@@ -2552,7 +2552,7 @@ export default function App() {
                     <span className="eyebrow">WEEKLY MTR REQUESTS</span>
                     <h3>MTRs requested by week</h3>
                   </div>
-                  <span>Wednesday–Wednesday</span>
+                  <span>Wednesday–Tuesday</span>
                 </div>
                 <div className="prf-week-grid">
                   <button
@@ -2575,7 +2575,7 @@ export default function App() {
                 </div>
                 {mtrWeekFilter !== 'ALL' && (
                   <div className="prf-filter-note">
-                    Showing MTRs requested {formatShortDate(mtrWeekFilter)} – {formatShortDate(addDaysIso(mtrWeekFilter, 7))}
+                    Showing MTRs requested {formatShortDate(mtrWeekFilter)} – {formatShortDate(addDaysIso(mtrWeekFilter, 6))}
                     <button onClick={() => selectMtrWeek('ALL')}>Clear week</button>
                   </div>
                 )}
@@ -2720,7 +2720,7 @@ export default function App() {
                     <span className="eyebrow">WEEKLY MRNs CREATED</span>
                     <h3>MRNs created by week</h3>
                   </div>
-                  <span>Wednesday–Wednesday</span>
+                  <span>Wednesday–Tuesday</span>
                 </div>
                 <div className="prf-week-grid">
                   <button
@@ -2743,7 +2743,7 @@ export default function App() {
                 </div>
                 {mrnWeekFilter !== 'ALL' && (
                   <div className="prf-filter-note">
-                    Showing MRNs created {formatShortDate(mrnWeekFilter)} – {formatShortDate(addDaysIso(mrnWeekFilter, 7))}
+                    Showing MRNs created {formatShortDate(mrnWeekFilter)} – {formatShortDate(addDaysIso(mrnWeekFilter, 6))}
                     <button onClick={() => selectMrnWeek('ALL')}>Clear week</button>
                   </div>
                 )}
