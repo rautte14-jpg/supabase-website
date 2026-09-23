@@ -1378,7 +1378,7 @@ export default function App() {
     allMtrRows.forEach((row) => {
       const weekStart = weekStartWednesday(mtrRequestDate(row))
       const mtrNo = String(row.document_no || '').trim()
-      if (!weekStart || !mtrNo || !isSundayToWednesday(mtrRequestDate(row))) return
+      if (!weekStart || !mtrNo) return
       if (!weekSets.has(weekStart)) weekSets.set(weekStart, new Set())
       weekSets.get(weekStart).add(mtrNo)
     })
@@ -1537,7 +1537,7 @@ export default function App() {
     allMrnRows.forEach((row) => {
       const weekStart = weekStartWednesday(mrnCreatedDate(row))
       const mrnNo = String(row.document_no || '').trim()
-      if (!weekStart || !mrnNo || !isSundayToWednesday(mrnCreatedDate(row))) return
+      if (!weekStart || !mrnNo) return
       if (!weekSets.has(weekStart)) weekSets.set(weekStart, new Set())
       weekSets.get(weekStart).add(mrnNo)
     })
@@ -2326,7 +2326,7 @@ export default function App() {
                       onClick={() => selectPrfWeek(week.weekStart)}
                     >
                       <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
-                      <strong>{fmt(week.count)} {week.count === 1 ? 'PR' : 'PRs'}</strong>
+                      <strong>{fmt(week.count)} {week.count === 1 ? 'PRF' : 'PRFs'}</strong>
                     </button>
                   ))}
                 </div>
@@ -2439,7 +2439,7 @@ export default function App() {
                       onClick={() => selectPrPoWeek(week.weekStart)}
                     >
                       <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
-                      <strong>{fmt(week.count)}</strong>
+                      <strong>{fmt(week.count)} {week.count === 1 ? 'PR' : 'PRs'}</strong>
                     </button>
                   ))}
                 </div>
