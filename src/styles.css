@@ -52,6 +52,17 @@ button:disabled { opacity: .45; cursor: default; }
 }
 .login-card h2 { margin: 8px 0 6px; font-size: 34px; }
 .login-card form { display: grid; gap: 15px; margin-top: 26px; }
+.auth-switch {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: #63d8bf;
+  font-size: 12px;
+  font-weight: 800;
+}
+.auth-switch:hover { color: #8de7d4; }
 .login-card label, .form-grid label, .panel > label {
   display: grid; gap: 8px; font-size: 13px; font-weight: 700;
 }
