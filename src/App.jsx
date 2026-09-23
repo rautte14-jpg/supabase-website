@@ -319,6 +319,28 @@ function AuthScreen() {
     if (error) setMessage(error.message)
   }
 
+  async function resetPassword() {
+    const address = email.trim()
+    if (!address) {
+      setMessage('Enter your email address first, then tap Forgot password?')
+      return
+    }
+
+    setLoading(true)
+    setMessage('')
+    const { error } = await supabase.auth.resetPasswordForEmail(address, {
+      redirectTo: window.location.origin,
+    })
+    setLoading(false)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    setMessage('Password reset email sent. Open the link in your email to set a new password.')
+  }
+
   function switchMode(nextMode) {
     setMode(nextMode)
     setMessage('')
@@ -359,6 +381,12 @@ function AuthScreen() {
               : (mode === 'signin' ? 'Sign in' : 'Create account')}
           </button>
         </form>
+
+        {mode === 'signin' && (
+          <button type="button" className="auth-switch" onClick={resetPassword} disabled={loading}>
+            Forgot password?
+          </button>
+        )}
 
         <button
           type="button"
@@ -826,9 +854,50 @@ function ImportPanel({ onApplied, email }) {
   )
 }
 
+function PasswordRecovery() {
+  const [password, setPassword] = useState('')
+  const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function save(event) {
+    event.preventDefault()
+    setLoading(true)
+    setMessage('')
+    const { error } = await supabase.auth.updateUser({ password })
+    setLoading(false)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    setMessage('Password updated successfully. You can now continue to the portal.')
+  }
+
+  return (
+    <main className="login-page">
+      <section className="login-card">
+        <span className="eyebrow">PASSWORD RESET</span>
+        <h2>Set a new password</h2>
+        <form onSubmit={save}>
+          <label>
+            New password
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required />
+          </label>
+          <button className="primary" disabled={loading}>
+            {loading ? 'Updating…' : 'Update password'}
+          </button>
+        </form>
+        {message && <p className="notice">{message}</p>}
+      </section>
+    </main>
+  )
+}
+
 export default function App() {
   const [session, setSession] = useState(null)
   const [checking, setChecking] = useState(true)
+  const [recoveringPassword, setRecoveringPassword] = useState(false)
   const [access, setAccess] = useState(null)
   const [view, setView] = useState('overview')
   const [search, setSearch] = useState('')
@@ -870,9 +939,10 @@ export default function App() {
       setSession(data.session)
       setChecking(false)
     })
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, next) => {
       setSession(next)
       setChecking(false)
+      if (event === 'PASSWORD_RECOVERY') setRecoveringPassword(true)
     })
     return () => listener.subscription.unsubscribe()
   }, [])
@@ -2115,6 +2185,7 @@ export default function App() {
 
   if (checking) return <div className="splash">Loading SRD Inventory Control Centre…</div>
   if (!session) return <AuthScreen />
+  if (recoveringPassword) return <PasswordRecovery />
   if (access === null) return <div className="splash">Checking portal access…</div>
   if (access === false) return <AccessDenied email={session.user.email} />
 
