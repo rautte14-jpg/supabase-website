@@ -851,6 +851,7 @@ export default function App() {
   const [prPoWeekFilter, setPrPoWeekFilter] = useState('ALL')
   const [prPoAgeFilter, setPrPoAgeFilter] = useState('ALL')
   const [prPoUrgentFilter, setPrPoUrgentFilter] = useState(false)
+  const [prPoReceiptPendingFilter, setPrPoReceiptPendingFilter] = useState(false)
   const [mtrWeekFilter, setMtrWeekFilter] = useState('ALL')
   const [mtrControlFilter, setMtrControlFilter] = useState('ALL')
   const [mtrStatusFilter, setMtrStatusFilter] = useState('ALL')
@@ -992,6 +993,7 @@ export default function App() {
     setPrPoWeekFilter(weekStart)
     setPrPoAgeFilter('ALL')
     setPrPoUrgentFilter(false)
+    setPrPoReceiptPendingFilter(false)
   }
 
   function selectPrPoAge(ageBand) {
@@ -1002,11 +1004,19 @@ export default function App() {
     setPrPoAgeFilter((current) => current === ageBand ? 'ALL' : ageBand)
     setPrPoWeekFilter('ALL')
     setPrPoUrgentFilter(false)
+    setPrPoReceiptPendingFilter(false)
   }
 
   function togglePrPoUrgent() {
     setPrPoUrgentFilter((current) => !current)
     setPrPoAgeFilter('ALL')
+    setPrPoReceiptPendingFilter(false)
+  }
+
+  function togglePrPoReceiptPending() {
+    setPrPoReceiptPendingFilter((current) => !current)
+    setPrPoAgeFilter('ALL')
+    setPrPoUrgentFilter(false)
   }
 
   function selectMtrWeek(weekStart) {
@@ -1252,6 +1262,21 @@ export default function App() {
     return !closedByStatus && !fullyReceived
   }
 
+  const isReceiptNotDoneRow = (row) => {
+    const poNo = String(row.po_no || '').trim()
+    if (!poNo || isPlaceholderValue(poNo, true)) return false
+
+    const status = lower([
+      row.status,
+      row.delivery_status,
+      rawField(row, ['PO ERP Status']),
+    ].filter(Boolean).join(' '))
+
+    if (status.includes('cancel') || status.includes('reject')) return false
+
+    return receivedQty(row) <= 0
+  }
+
   const prpoRows = useMemo(
     () => allPrPoRows.filter((row) => {
       if (!matches(row)) return false
@@ -1261,10 +1286,11 @@ export default function App() {
       if (prPoAgeFilter === '3TO6' && !prPoAgeing.agedThreeToSixPrNos.has(prNo)) return false
       if (prPoAgeFilter === '6PLUS' && !prPoAgeing.agedSixPlusPrNos.has(prNo)) return false
       if (prPoUrgentFilter && !isUrgentPendingRow(row)) return false
+      if (prPoReceiptPendingFilter && !isReceiptNotDoneRow(row)) return false
 
       return true
     }),
-    [allPrPoRows, query, prPoWeekFilter, prPoAgeFilter, prPoUrgentFilter, prPoAgeing],
+    [allPrPoRows, query, prPoWeekFilter, prPoAgeFilter, prPoUrgentFilter, prPoReceiptPendingFilter, prPoAgeing],
   )
 
   const prPoVisibleCounts = useMemo(() => ({
@@ -1683,12 +1709,14 @@ export default function App() {
     }, 0)
 
     const urgentPendingItems = weekFilteredPrLines.filter(isUrgentPendingRow).length
+    const receiptNotDoneItems = weekFilteredPrLines.filter(isReceiptNotDoneRow).length
 
     return {
       totalPrs: prMap.size,
       fullyReceivedPrs: fullyReceived.length,
       partReceivedPrs: partReceived.length,
       urgentPendingItems,
+      receiptNotDoneItems,
       receivedItemQty,
       receivedItemValue,
     }
@@ -2394,6 +2422,14 @@ export default function App() {
                   onClick={togglePrPoUrgent}
                 />
                 <MetricCard
+                  label="Receipt Not Done"
+                  value={fmt(prPoSummary.receiptNotDoneItems)}
+                  helper="PO exists but Received Qty is still 0"
+                  tone="warn"
+                  active={prPoReceiptPendingFilter}
+                  onClick={togglePrPoReceiptPending}
+                />
+                <MetricCard
                   label="Received Item Quantity"
                   value={fmt(prPoSummary.receivedItemQty, 2)}
                   helper="Total quantity received"
@@ -2416,6 +2452,13 @@ export default function App() {
                 <div className="prf-filter-note prpo-age-note">
                   Showing <b>urgent pending item lines</b>
                   <button onClick={() => setPrPoUrgentFilter(false)}>Clear urgent filter</button>
+                </div>
+              )}
+
+              {prPoReceiptPendingFilter && (
+                <div className="prf-filter-note prpo-age-note">
+                  Showing <b>items where receipt is not done</b>
+                  <button onClick={() => setPrPoReceiptPendingFilter(false)}>Clear receipt filter</button>
                 </div>
               )}
 
