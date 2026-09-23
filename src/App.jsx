@@ -268,14 +268,60 @@ function AuthScreen() {
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [mode, setMode] = useState('signin')
 
-  async function signIn(event) {
+  async function submit(event) {
     event.preventDefault()
     setLoading(true)
     setMessage('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (mode === 'signup') {
+      const { data: accessRows, error: accessError } = await supabase
+        .from('portal_access')
+        .select('email, active')
+        .eq('email', email.trim().toLowerCase())
+        .limit(1)
+
+      // Anonymous users cannot normally read portal_access because of RLS.
+      // Sign-up remains safe because unauthorised accounts are blocked by the app
+      // and all portal data is protected by membership RLS.
+      if (accessError && !String(accessError.message || '').toLowerCase().includes('row-level security')) {
+        setLoading(false)
+        setMessage(accessError.message)
+        return
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+      })
+      setLoading(false)
+
+      if (error) {
+        setMessage(error.message)
+        return
+      }
+
+      if (data?.session) {
+        setMessage('Account created. Signing you in…')
+      } else {
+        setMessage('Account created. Check your email for the confirmation link, then return here and sign in.')
+      }
+      return
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    })
     setLoading(false)
     if (error) setMessage(error.message)
+  }
+
+  function switchMode(nextMode) {
+    setMode(nextMode)
+    setMessage('')
+    setPassword('')
   }
 
   return (
@@ -291,22 +337,43 @@ function AuthScreen() {
 
       <section className="login-card">
         <span className="eyebrow">AUTHORIZED ACCESS</span>
-        <h2>Sign in</h2>
-        <p className="muted">Use the account approved for the SRD Inventory Portal.</p>
-        <form onSubmit={signIn}>
+        <h2>{mode === 'signin' ? 'Sign in' : 'Create first-time login'}</h2>
+        <p className="muted">
+          {mode === 'signin'
+            ? 'Use the account approved for the SRD Inventory Portal.'
+            : 'Use the same email address that has been approved for portal access.'}
+        </p>
+        <form onSubmit={submit}>
           <label>
             Email
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </label>
           <label>
-            Password
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            {mode === 'signin' ? 'Password' : 'Create password'}
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required />
           </label>
           <button className="primary" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading
+              ? (mode === 'signin' ? 'Signing in…' : 'Creating account…')
+              : (mode === 'signin' ? 'Sign in' : 'Create account')}
           </button>
         </form>
-        {message && <p className="notice error">{message}</p>}
+
+        <button
+          type="button"
+          className="auth-switch"
+          onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
+        >
+          {mode === 'signin'
+            ? 'First time here? Create your login'
+            : 'Already created your login? Sign in'}
+        </button>
+
+        {message && (
+          <p className={lower(message).includes('invalid') || lower(message).includes('error') ? 'notice error' : 'notice'}>
+            {message}
+          </p>
+        )}
       </section>
     </main>
   )
@@ -792,6 +859,9 @@ export default function App() {
   const [mrnStatusFilter, setMrnStatusFilter] = useState('ALL')
   const [mrnWorkshopFilter, setMrnWorkshopFilter] = useState('ALL')
   const [mrnWpTypeFilter, setMrnWpTypeFilter] = useState('ALL')
+
+  const canEdit = access && ['admin', 'editor'].includes(lower(access.role))
+  const isAdmin = access && lower(access.role) === 'admin'
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -2031,12 +2101,14 @@ export default function App() {
         </div>
 
         <nav>
-          {NAV.map(([key, label, icon]) => (
-            <button key={key} className={view === key ? 'nav-item active' : 'nav-item'} onClick={() => setView(key)}>
-              <span className="nav-icon">{icon}</span>
-              <span>{label}</span>
-            </button>
-          ))}
+          {NAV
+            .filter(([key]) => canEdit || key !== 'updates')
+            .map(([key, label, icon]) => (
+              <button key={key} className={view === key ? 'nav-item active' : 'nav-item'} onClick={() => setView(key)}>
+                <span className="nav-icon">{icon}</span>
+                <span>{label}</span>
+              </button>
+            ))}
         </nav>
 
         <div className="sidebar-bottom">
@@ -2059,7 +2131,7 @@ export default function App() {
           </div>
           <div className="top-actions">
             <button className="secondary" onClick={loadAll}>{loading ? 'Refreshing…' : 'Refresh'}</button>
-            <button className="primary" onClick={() => setView('updates')}>Update data</button>
+            {canEdit && <button className="primary" onClick={() => setView('updates')}>Update data</button>}
           </div>
         </header>
 
@@ -2217,7 +2289,7 @@ export default function App() {
                 rows={prfRows}
                 noteType="procurement"
                 noteMap={noteMap}
-                onUpdate={openNote}
+                onUpdate={canEdit ? openNote : undefined}
                 columns={[
                   { key: 'prf_no', label: 'PRF / IPF' },
                   { key: 'linked_pr_mtr', label: 'PR / MTR' },
@@ -2351,7 +2423,7 @@ export default function App() {
                 <span>{fmt(prPoVisibleCounts.lines)} item line{prPoVisibleCounts.lines === 1 ? '' : 's'} shown</span>
               </div>
 
-              <DataTable rows={prpoRows} columns={prPoColumns} noteType="procurement" noteMap={noteMap} onUpdate={openNote} />
+              <DataTable rows={prpoRows} columns={prPoColumns} noteType="procurement" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} />
             </>
           )}
 
@@ -2519,7 +2591,7 @@ export default function App() {
                 <span>{fmt(mtrVisibleCounts.lines)} item line{mtrVisibleCounts.lines === 1 ? '' : 's'} shown</span>
               </div>
 
-              <DataTable rows={mtrRows} columns={mtrColumns} noteType="material" noteMap={noteMap} onUpdate={openNote} />
+              <DataTable rows={mtrRows} columns={mtrColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} />
             </>
           )}
 
@@ -2695,7 +2767,7 @@ export default function App() {
                 <span>{fmt(mrnVisibleCounts.rows)} register row{mrnVisibleCounts.rows === 1 ? '' : 's'} shown</span>
               </div>
 
-              <DataTable rows={mrnRows} columns={mrnColumns} noteType="material" noteMap={noteMap} onUpdate={openNote} />
+              <DataTable rows={mrnRows} columns={mrnColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} />
             </>
           )}
 
@@ -2711,11 +2783,11 @@ export default function App() {
                 <div className="joined-grid">
                   <section className="panel wide">
                     <div className="panel-head"><h3>Procurement</h3><span>{vesselProc.length} records</span></div>
-                    <DataTable rows={vesselProc} columns={procurementColumns.slice(0, 10)} noteType="procurement" noteMap={noteMap} onUpdate={openNote} limit={100} />
+                    <DataTable rows={vesselProc} columns={procurementColumns.slice(0, 10)} noteType="procurement" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={100} />
                   </section>
                   <section className="panel wide">
                     <div className="panel-head"><h3>MTR / MRN</h3><span>{vesselMat.length} records</span></div>
-                    <DataTable rows={vesselMat} columns={materialColumns} noteType="material" noteMap={noteMap} onUpdate={openNote} limit={100} />
+                    <DataTable rows={vesselMat} columns={materialColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={100} />
                   </section>
                   <section className="panel wide">
                     <div className="panel-head"><h3>ERP Issues / Receipts</h3><span>{vesselTx.length} records</span></div>
@@ -2744,7 +2816,7 @@ export default function App() {
                 <MetricCard label="Stock value" value={money(metrics.stockValue)} />
                 <MetricCard label="Aged value" value={money(metrics.agedValue)} tone="warn" />
               </div>
-              <DataTable rows={stockRows} noteType="stock" noteMap={noteMap} onUpdate={openNote} columns={[
+              <DataTable rows={stockRows} noteType="stock" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} columns={[
                 { key: 'item_code', label: 'Item' },
                 { key: 'item_description', label: 'Description' },
                 { key: 'unit', label: 'Unit' },
@@ -2781,7 +2853,7 @@ export default function App() {
             </>
           )}
 
-          {view === 'updates' && (
+          {view === 'updates' && canEdit && (
             <>
               <PageHeader title="Update Centre" subtitle="Load fresh ERP/Form exports and keep meeting remarks, actions and history intact." />
               <ImportPanel onApplied={loadAll} email={session.user.email} />
