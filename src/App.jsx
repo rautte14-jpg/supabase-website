@@ -352,7 +352,7 @@ function AuthScreen() {
       <section className="login-brand">
         <div className="mtcc-mark">SRD</div>
         <p>Shipbuilding & Repair Division</p>
-        <h1>Inventory Control Centre</h1>
+        <h1>Warehouse System</h1>
         <p className="login-copy">
           One place for procurement, transfers, material requests, inventory movement and Wednesday meeting follow-up.
         </p>
@@ -2183,7 +2183,7 @@ export default function App() {
     },
   ]
 
-  if (checking) return <div className="splash">Loading SRD Inventory Control Centre…</div>
+  if (checking) return <div className="splash">Loading SRD Warehouse System…</div>
   if (!session) return <AuthScreen />
   if (recoveringPassword) return <PasswordRecovery />
   if (access === null) return <div className="splash">Checking portal access…</div>
@@ -2993,7 +2993,7 @@ export default function App() {
                   <h2>{meetingSlides[slide].title}</h2>
                   <div className="meeting-body">{meetingSlides[slide].body}</div>
                   <footer>
-                    <span>SRD Inventory Control Centre</span>
+                    <span>SRD Warehouse System</span>
                     <span>{slide + 1} / {meetingSlides.length}</span>
                   </footer>
                 </div>
