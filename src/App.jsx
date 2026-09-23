@@ -62,6 +62,13 @@ function addDaysIso(iso, days) {
   return date.toISOString().slice(0, 10)
 }
 
+function isSundayToWednesday(dateLike) {
+  if (!dateLike) return false
+  const date = new Date(String(dateLike).slice(0, 10) + 'T12:00:00')
+  if (Number.isNaN(date.valueOf())) return false
+  return date.getDay() >= 0 && date.getDay() <= 3
+}
+
 function formatShortDate(iso) {
   if (!iso) return '—'
   return new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {
@@ -1081,7 +1088,7 @@ export default function App() {
 
   const weekFilteredPrfRows = useMemo(
     () => allPrfRows.filter((row) =>
-      prfWeekFilter === 'ALL' || weekStartSunday(row.pr_date) === prfWeekFilter
+      prfWeekFilter === 'ALL' || (weekStartSunday(row.pr_date) === prfWeekFilter && isSundayToWednesday(row.pr_date))
     ),
     [allPrfRows, prfWeekFilter],
   )
@@ -1108,7 +1115,7 @@ export default function App() {
     const counts = new Map()
     allPrfRows.forEach((row) => {
       const weekStart = weekStartSunday(row.pr_date)
-      if (weekStart) counts.set(weekStart, (counts.get(weekStart) || 0) + 1)
+      if (weekStart && isSundayToWednesday(row.pr_date)) counts.set(weekStart, (counts.get(weekStart) || 0) + 1)
     })
 
     const currentWeek = weekStartSunday(new Date().toISOString().slice(0, 10))
@@ -1116,7 +1123,7 @@ export default function App() {
       const weekStart = addDaysIso(currentWeek, index * -7)
       return {
         weekStart,
-        weekEnd: addDaysIso(weekStart, 6),
+        weekEnd: addDaysIso(weekStart, 3),
         count: counts.get(weekStart) || 0,
       }
     })
@@ -1148,7 +1155,7 @@ export default function App() {
     allPrLines.forEach((row) => {
       const weekStart = weekStartSunday(prSubmittedDate(row))
       const prNo = String(row.pr_no || '').trim()
-      if (!weekStart || !prNo) return
+      if (!weekStart || !prNo || !isSundayToWednesday(prSubmittedDate(row))) return
       if (!weekSets.has(weekStart)) weekSets.set(weekStart, new Set())
       weekSets.get(weekStart).add(prNo)
     })
@@ -1158,7 +1165,7 @@ export default function App() {
       const weekStart = addDaysIso(currentWeek, index * -7)
       return {
         weekStart,
-        weekEnd: addDaysIso(weekStart, 6),
+        weekEnd: addDaysIso(weekStart, 3),
         count: weekSets.get(weekStart)?.size || 0,
       }
     })
@@ -1166,7 +1173,7 @@ export default function App() {
 
   const weekFilteredPrLines = useMemo(
     () => allPrLines.filter((row) =>
-      prPoWeekFilter === 'ALL' || weekStartSunday(prSubmittedDate(row)) === prPoWeekFilter
+      prPoWeekFilter === 'ALL' || (weekStartSunday(prSubmittedDate(row)) === prPoWeekFilter && isSundayToWednesday(prSubmittedDate(row)))
     ),
     [allPrLines, prPoWeekFilter],
   )
@@ -1254,7 +1261,7 @@ export default function App() {
   const prpoRows = useMemo(
     () => allPrPoRows.filter((row) => {
       if (!matches(row)) return false
-      if (prPoWeekFilter !== 'ALL' && weekStartSunday(prSubmittedDate(row)) !== prPoWeekFilter) return false
+      if (prPoWeekFilter !== 'ALL' && (weekStartSunday(prSubmittedDate(row)) !== prPoWeekFilter || !isSundayToWednesday(prSubmittedDate(row)))) return false
 
       const prNo = String(row.pr_no || '').trim()
       if (prPoAgeFilter === '3TO6' && !prPoAgeing.agedThreeToSixPrNos.has(prNo)) return false
@@ -1281,7 +1288,7 @@ export default function App() {
     allMtrRows.forEach((row) => {
       const weekStart = weekStartSunday(mtrRequestDate(row))
       const mtrNo = String(row.document_no || '').trim()
-      if (!weekStart || !mtrNo) return
+      if (!weekStart || !mtrNo || !isSundayToWednesday(mtrRequestDate(row))) return
       if (!weekSets.has(weekStart)) weekSets.set(weekStart, new Set())
       weekSets.get(weekStart).add(mtrNo)
     })
@@ -1291,7 +1298,7 @@ export default function App() {
       const weekStart = addDaysIso(currentWeek, index * -7)
       return {
         weekStart,
-        weekEnd: addDaysIso(weekStart, 6),
+        weekEnd: addDaysIso(weekStart, 3),
         count: weekSets.get(weekStart)?.size || 0,
       }
     })
@@ -1299,7 +1306,7 @@ export default function App() {
 
   const weekFilteredMtrRows = useMemo(
     () => allMtrRows.filter((row) =>
-      mtrWeekFilter === 'ALL' || weekStartSunday(mtrRequestDate(row)) === mtrWeekFilter
+      mtrWeekFilter === 'ALL' || (weekStartSunday(mtrRequestDate(row)) === mtrWeekFilter && isSundayToWednesday(mtrRequestDate(row)))
     ),
     [allMtrRows, mtrWeekFilter],
   )
@@ -1440,7 +1447,7 @@ export default function App() {
     allMrnRows.forEach((row) => {
       const weekStart = weekStartSunday(mrnCreatedDate(row))
       const mrnNo = String(row.document_no || '').trim()
-      if (!weekStart || !mrnNo) return
+      if (!weekStart || !mrnNo || !isSundayToWednesday(mrnCreatedDate(row))) return
       if (!weekSets.has(weekStart)) weekSets.set(weekStart, new Set())
       weekSets.get(weekStart).add(mrnNo)
     })
@@ -1450,7 +1457,7 @@ export default function App() {
       const weekStart = addDaysIso(currentWeek, index * -7)
       return {
         weekStart,
-        weekEnd: addDaysIso(weekStart, 6),
+        weekEnd: addDaysIso(weekStart, 3),
         count: weekSets.get(weekStart)?.size || 0,
       }
     })
@@ -1458,7 +1465,7 @@ export default function App() {
 
   const weekFilteredMrnRows = useMemo(
     () => allMrnRows.filter((row) =>
-      mrnWeekFilter === 'ALL' || weekStartSunday(mrnCreatedDate(row)) === mrnWeekFilter
+      mrnWeekFilter === 'ALL' || (weekStartSunday(mrnCreatedDate(row)) === mrnWeekFilter && isSundayToWednesday(mrnCreatedDate(row)))
     ),
     [allMrnRows, mrnWeekFilter],
   )
@@ -1920,7 +1927,7 @@ export default function App() {
       title:
         'PRF Status Breakdown' +
         (prfWeekFilter !== 'ALL'
-          ? ' — ' + formatShortDate(prfWeekFilter) + '–' + formatShortDate(addDaysIso(prfWeekFilter, 6))
+          ? ' — ' + formatShortDate(prfWeekFilter) + '–' + formatShortDate(addDaysIso(prfWeekFilter, 3))
           : ''),
       body: (
         <>
@@ -1975,7 +1982,7 @@ export default function App() {
       title:
         'MTR Transfer Status' +
         (mtrWeekFilter !== 'ALL'
-          ? ' — ' + formatShortDate(mtrWeekFilter) + '–' + formatShortDate(addDaysIso(mtrWeekFilter, 6))
+          ? ' — ' + formatShortDate(mtrWeekFilter) + '–' + formatShortDate(addDaysIso(mtrWeekFilter, 3))
           : ''),
       body: (
         <>
@@ -2013,7 +2020,7 @@ export default function App() {
       title:
         'MRN Issue Status' +
         (mrnWeekFilter !== 'ALL'
-          ? ' — ' + formatShortDate(mrnWeekFilter) + '–' + formatShortDate(addDaysIso(mrnWeekFilter, 6))
+          ? ' — ' + formatShortDate(mrnWeekFilter) + '–' + formatShortDate(addDaysIso(mrnWeekFilter, 3))
           : ''),
       body: (
         <>
@@ -2207,7 +2214,7 @@ export default function App() {
                     <span className="eyebrow">WEEKLY SUBMISSIONS</span>
                     <h3>Submitted PRFs by week</h3>
                   </div>
-                  <span>Sunday–Saturday</span>
+                  <span>Sunday–Wednesday</span>
                 </div>
 
                 <div className="prf-week-grid">
@@ -2233,7 +2240,7 @@ export default function App() {
 
                 {prfWeekFilter !== 'ALL' && (
                   <div className="prf-filter-note">
-                    Showing PRFs submitted {formatShortDate(prfWeekFilter)} – {formatShortDate(addDaysIso(prfWeekFilter, 6))}
+                    Showing PRFs submitted {formatShortDate(prfWeekFilter)} – {formatShortDate(addDaysIso(prfWeekFilter, 3))}
                     <button onClick={() => selectPrfWeek('ALL')}>Clear week</button>
                   </div>
                 )}
@@ -2246,7 +2253,7 @@ export default function App() {
                     <h3>
                       PRF quantity by status
                       {prfWeekFilter !== 'ALL'
-                        ? ' — ' + formatShortDate(prfWeekFilter) + '–' + formatShortDate(addDaysIso(prfWeekFilter, 6))
+                        ? ' — ' + formatShortDate(prfWeekFilter) + '–' + formatShortDate(addDaysIso(prfWeekFilter, 3))
                         : ''}
                     </h3>
                   </div>
@@ -2320,7 +2327,7 @@ export default function App() {
                     <span className="eyebrow">WEEKLY PR SUBMISSIONS</span>
                     <h3>Submitted PRs by week</h3>
                   </div>
-                  <span>Sunday–Saturday</span>
+                  <span>Sunday–Wednesday</span>
                 </div>
 
                 <div className="prf-week-grid">
@@ -2346,7 +2353,7 @@ export default function App() {
 
                 {prPoWeekFilter !== 'ALL' && (
                   <div className="prf-filter-note">
-                    Showing PRs submitted {formatShortDate(prPoWeekFilter)} – {formatShortDate(addDaysIso(prPoWeekFilter, 6))}
+                    Showing PRs submitted {formatShortDate(prPoWeekFilter)} – {formatShortDate(addDaysIso(prPoWeekFilter, 3))}
                     <button onClick={() => selectPrPoWeek('ALL')}>Clear week</button>
                   </div>
                 )}
@@ -2437,7 +2444,7 @@ export default function App() {
                     <span className="eyebrow">WEEKLY MTR REQUESTS</span>
                     <h3>MTRs requested by week</h3>
                   </div>
-                  <span>Sunday–Saturday</span>
+                  <span>Sunday–Wednesday</span>
                 </div>
                 <div className="prf-week-grid">
                   <button
@@ -2460,7 +2467,7 @@ export default function App() {
                 </div>
                 {mtrWeekFilter !== 'ALL' && (
                   <div className="prf-filter-note">
-                    Showing MTRs requested {formatShortDate(mtrWeekFilter)} – {formatShortDate(addDaysIso(mtrWeekFilter, 6))}
+                    Showing MTRs requested {formatShortDate(mtrWeekFilter)} – {formatShortDate(addDaysIso(mtrWeekFilter, 3))}
                     <button onClick={() => selectMtrWeek('ALL')}>Clear week</button>
                   </div>
                 )}
@@ -2605,7 +2612,7 @@ export default function App() {
                     <span className="eyebrow">WEEKLY MRNs CREATED</span>
                     <h3>MRNs created by week</h3>
                   </div>
-                  <span>Sunday–Saturday</span>
+                  <span>Sunday–Wednesday</span>
                 </div>
                 <div className="prf-week-grid">
                   <button
@@ -2628,7 +2635,7 @@ export default function App() {
                 </div>
                 {mrnWeekFilter !== 'ALL' && (
                   <div className="prf-filter-note">
-                    Showing MRNs created {formatShortDate(mrnWeekFilter)} – {formatShortDate(addDaysIso(mrnWeekFilter, 6))}
+                    Showing MRNs created {formatShortDate(mrnWeekFilter)} – {formatShortDate(addDaysIso(mrnWeekFilter, 3))}
                     <button onClick={() => selectMrnWeek('ALL')}>Clear week</button>
                   </div>
                 )}
