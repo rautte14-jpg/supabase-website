@@ -123,6 +123,13 @@ function numericRowField(row, directKey, rawNames = []) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function rawNumber(row, names = []) {
+  const value = rawField(row, names)
+  if (value === null || value === undefined || String(value).trim() === '') return 0
+  const parsed = Number(String(value).replace(/,/g, '').replace(/[^0-9.-]/g, ''))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 function dateRowField(row, directKey, rawNames = []) {
   const direct = row?.[directKey]
   const value = direct || rawField(row, rawNames)
@@ -1700,6 +1707,36 @@ export default function App() {
     rows: mrnRows.length,
   }), [mrnRows])
   const stockRows = useMemo(() => data.stock.filter(matches), [data.stock, query])
+
+  const ageingSummary = useMemo(() => {
+    const totals = {
+      onHandQty: 0,
+      onHandValue: 0,
+      inventoryValueQty: 0,
+      inventoryValue: 0,
+      p1: 0,
+      p2: 0,
+      p3: 0,
+      p4: 0,
+      p5: 0,
+    }
+
+    data.stock.forEach((row) => {
+      totals.onHandQty += rawNumber(row, ['On-hand quantity', 'On Hand Quantity']) || Number(row.on_hand || 0)
+      totals.onHandValue += rawNumber(row, ['On-hand value', 'On Hand Value'])
+      totals.inventoryValueQty += rawNumber(row, ['Inventory value quantity', 'Inventory Value Quantity'])
+      totals.inventoryValue += rawNumber(row, ['Inventory value', 'Inventory Value'])
+      totals.p1 += rawNumber(row, ['P1:Amount'])
+      totals.p2 += rawNumber(row, ['P2:Amount'])
+      totals.p3 += rawNumber(row, ['P3:Amount'])
+      totals.p4 += rawNumber(row, ['P4:Amount'])
+      totals.p5 += rawNumber(row, ['P5:Amount'])
+    })
+
+    totals.agedOver365 = totals.p2 + totals.p3 + totals.p4 + totals.p5
+    return totals
+  }, [data.stock])
+
   const transactionRows = useMemo(() => data.transactions.filter(matches), [data.transactions, query])
 
   const prPoSummary = useMemo(() => {
@@ -2988,25 +3025,51 @@ export default function App() {
 
           {view === 'stock' && (
             <>
-              <PageHeader title="Stock & Ageing" subtitle="On-hand, reserved, available, on-order and ageing value." />
-              <div className="metric-grid compact">
-                <MetricCard label="Items" value={fmt(data.stock.length)} />
-                <MetricCard label="Stock value" value={money(metrics.stockValue)} />
-                <MetricCard label="Aged value" value={money(metrics.agedValue)} tone="warn" />
+              <PageHeader
+                title="Stock & Ageing"
+                subtitle="Inventory ageing report with on-hand valuation and age-bucket values."
+              />
+
+              <div className="metric-grid stock-ageing-metrics">
+                <MetricCard label="Items" value={fmt(data.stock.length)} helper="Unique item IDs loaded" />
+                <MetricCard label="On-hand quantity" value={fmt(ageingSummary.onHandQty, 2)} helper="Physical on-hand quantity" />
+                <MetricCard label="On-hand value" value={money(ageingSummary.onHandValue)} helper="Value of current on-hand stock" />
+                <MetricCard label="Inventory value" value={money(ageingSummary.inventoryValue)} helper="Inventory ageing report value" />
+                <MetricCard label="0–365 days" value={money(ageingSummary.p1)} helper="P1 amount" />
+                <MetricCard label="366–1095 days" value={money(ageingSummary.p2)} helper="P2 amount" />
+                <MetricCard label="1096–1460 days" value={money(ageingSummary.p3)} helper="P3 amount" />
+                <MetricCard label="1461–1825 days" value={money(ageingSummary.p4)} helper="P4 amount" />
+                <MetricCard label="1825+ days" value={money(ageingSummary.p5)} helper="P5 amount" tone="bad" />
+                <MetricCard label="Aged over 365 days" value={money(ageingSummary.agedOver365)} helper="P2 + P3 + P4 + P5" tone="warn" />
               </div>
-              <DataTable rows={stockRows} noteType="stock" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} columns={[
-                { key: 'item_code', label: 'Item' },
-                { key: 'item_description', label: 'Description' },
-                { key: 'unit', label: 'Unit' },
-                { key: 'on_hand', label: 'On hand' },
-                { key: 'reserved', label: 'Reserved' },
-                { key: 'available', label: 'Available' },
-                { key: 'on_order', label: 'On order' },
-                { key: 'unit_cost', label: 'Unit cost', render: (v) => money(v) },
-                { key: 'stock_value', label: 'Value', render: (v) => money(v) },
-                { key: 'age_band', label: 'Age band', render: (v) => <StatusPill value={v} /> },
-                { key: 'last_transaction_date', label: 'Last movement' },
-              ]} />
+
+              <DataTable
+                rows={stockRows}
+                noteType="stock"
+                noteMap={noteMap}
+                onUpdate={canEdit ? openNote : undefined}
+                columns={[
+                  { key: 'raw_item_group', label: 'Item Group', render: (_v, r) => rawField(r, ['Item group']) || '—' },
+                  { key: 'item_code', label: 'Item Number' },
+                  { key: 'item_description', label: 'Product Name' },
+                  { key: 'unit', label: 'Inventory Unit' },
+                  { key: 'on_hand', label: 'On-hand Qty', render: (_v, r) => fmt(rawNumber(r, ['On-hand quantity']) || Number(r.on_hand || 0), 2) },
+                  { key: 'raw_on_hand_value', label: 'On-hand Value', render: (_v, r) => money(rawNumber(r, ['On-hand value'])) },
+                  { key: 'raw_inventory_value_qty', label: 'Inventory Value Qty', render: (_v, r) => fmt(rawNumber(r, ['Inventory value quantity']), 2) },
+                  { key: 'raw_inventory_value', label: 'Inventory Value', render: (_v, r) => money(rawNumber(r, ['Inventory value'])) },
+                  { key: 'unit_cost', label: 'Average Unit Cost', render: (_v, r) => money(rawNumber(r, ['Average unit cost']) || Number(r.unit_cost || 0)) },
+                  { key: 'raw_p1_qty', label: 'P1 Qty (0–365)', render: (_v, r) => fmt(rawNumber(r, ['P1:Quantity']), 2) },
+                  { key: 'raw_p1_amt', label: 'P1 Amount', render: (_v, r) => money(rawNumber(r, ['P1:Amount'])) },
+                  { key: 'raw_p2_qty', label: 'P2 Qty (366–1095)', render: (_v, r) => fmt(rawNumber(r, ['P2:Quantity']), 2) },
+                  { key: 'raw_p2_amt', label: 'P2 Amount', render: (_v, r) => money(rawNumber(r, ['P2:Amount'])) },
+                  { key: 'raw_p3_qty', label: 'P3 Qty (1096–1460)', render: (_v, r) => fmt(rawNumber(r, ['P3:Quantity']), 2) },
+                  { key: 'raw_p3_amt', label: 'P3 Amount', render: (_v, r) => money(rawNumber(r, ['P3:Amount'])) },
+                  { key: 'raw_p4_qty', label: 'P4 Qty (1461–1825)', render: (_v, r) => fmt(rawNumber(r, ['P4:Quantity']), 2) },
+                  { key: 'raw_p4_amt', label: 'P4 Amount', render: (_v, r) => money(rawNumber(r, ['P4:Amount'])) },
+                  { key: 'raw_p5_qty', label: 'P5 Qty (1825+)', render: (_v, r) => fmt(rawNumber(r, ['P5:Quantity']), 2) },
+                  { key: 'raw_p5_amt', label: 'P5 Amount', render: (_v, r) => money(rawNumber(r, ['P5:Amount'])) },
+                ]}
+              />
             </>
           )}
 
