@@ -3081,7 +3081,7 @@ export default function App() {
                 <MetricCard label="P3 — 3 to 4 Years" value={mvr(ageingSummary.p3)} helper="Stock aged 1096–1460 days" active={stockAgeFilter === 'P3'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P3' ? 'ALL' : 'P3')} />
                 <MetricCard label="P4 — 4 to 5 Years" value={mvr(ageingSummary.p4)} helper="Stock aged 1461–1825 days" active={stockAgeFilter === 'P4'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P4' ? 'ALL' : 'P4')} />
                 <MetricCard label="P5 — Over 5 Years" value={mvr(ageingSummary.p5)} helper="Stock aged more than 1825 days" tone="bad" active={stockAgeFilter === 'P5'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P5' ? 'ALL' : 'P5')} />
-                <MetricCard label="Aged over 365 days" value={mvr(ageingSummary.agedOver365)} helper="P2 + P3 + P4 + P5" tone="warn" active={stockAgeFilter === 'AGED365'} onClick={() => setStockAgeFilter(stockAgeFilter === 'AGED365' ? 'ALL' : 'AGED365')} />
+                <MetricCard label="Stock Value Over 1 Year" value={mvr(ageingSummary.agedOver365)} helper="Combined value of stock aged more than 365 days" tone="warn" active={stockAgeFilter === 'AGED365'} onClick={() => setStockAgeFilter(stockAgeFilter === 'AGED365' ? 'ALL' : 'AGED365')} />
               </div>
 
               {stockAgeFilter !== 'ALL' && (
