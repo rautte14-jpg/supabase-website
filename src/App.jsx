@@ -3055,11 +3055,11 @@ export default function App() {
                 <MetricCard label="Items" value={fmt(data.stock.length)} helper="Unique item IDs loaded" />
                 <MetricCard label="On-hand quantity" value={fmt(ageingSummary.onHandQty, 2)} helper="Physical on-hand quantity" />
                 <MetricCard label="On-hand value" value={money(ageingSummary.onHandValue)} helper="Value of current on-hand stock" />
-                <MetricCard label="0–365 days" value={money(ageingSummary.p1)} helper="P1 amount" />
-                <MetricCard label="366–1095 days" value={money(ageingSummary.p2)} helper="P2 amount" />
-                <MetricCard label="1096–1460 days" value={money(ageingSummary.p3)} helper="P3 amount" />
-                <MetricCard label="1461–1825 days" value={money(ageingSummary.p4)} helper="P4 amount" />
-                <MetricCard label="1825+ days" value={money(ageingSummary.p5)} helper="P5 amount" tone="bad" />
+                <MetricCard label="P1 — 0 to 1 Year" value={money(ageingSummary.p1)} helper="Stock aged 0–365 days" />
+                <MetricCard label="P2 — 1 to 3 Years" value={money(ageingSummary.p2)} helper="Stock aged 366–1095 days" />
+                <MetricCard label="P3 — 3 to 4 Years" value={money(ageingSummary.p3)} helper="Stock aged 1096–1460 days" />
+                <MetricCard label="P4 — 4 to 5 Years" value={money(ageingSummary.p4)} helper="Stock aged 1461–1825 days" />
+                <MetricCard label="P5 — Over 5 Years" value={money(ageingSummary.p5)} helper="Stock aged more than 1825 days" tone="bad" />
                 <MetricCard label="Aged over 365 days" value={money(ageingSummary.agedOver365)} helper="P2 + P3 + P4 + P5" tone="warn" />
               </div>
 
