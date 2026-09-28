@@ -642,6 +642,65 @@ async function fetchAllRows(table, orderColumn, ascending = false) {
   return all
 }
 
+function AgeingTrend({ snapshots }) {
+  if (!snapshots.length) return null
+
+  const values = snapshots.map((s) => Number(s.metrics?.over1 || 0))
+  const max = Math.max(...values, 1)
+  const width = 760
+  const height = 220
+  const padX = 42
+  const padY = 26
+  const usableW = width - padX * 2
+  const usableH = height - padY * 2
+  const points = snapshots.map((s, index) => {
+    const x = snapshots.length === 1
+      ? width / 2
+      : padX + (index / (snapshots.length - 1)) * usableW
+    const y = height - padY - (Number(s.metrics?.over1 || 0) / max) * usableH
+    return { x, y, snapshot: s }
+  })
+  const polyline = points.map((p) => `${p.x},${p.y}`).join(' ')
+
+  return (
+    <section className="panel ageing-trend-panel">
+      <div className="panel-head">
+        <div>
+          <span className="eyebrow">WEEKLY TREND</span>
+          <h3>Stock Value Over 1 Year</h3>
+        </div>
+        <span>{snapshots.length} saved {snapshots.length === 1 ? 'upload' : 'uploads'}</span>
+      </div>
+
+      <div className="ageing-chart-wrap">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Weekly ageing value trend">
+          <line x1={padX} y1={height - padY} x2={width - padX} y2={height - padY} className="ageing-axis" />
+          <line x1={padX} y1={padY} x2={padX} y2={height - padY} className="ageing-axis" />
+          <polyline points={polyline} className="ageing-line" />
+          {points.map((p, index) => (
+            <g key={p.snapshot.id || index}>
+              <circle cx={p.x} cy={p.y} r="5" className="ageing-point" />
+              <text x={p.x} y={height - 7} textAnchor="middle" className="ageing-x-label">
+                {new Date(p.snapshot.snapshot_date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+
+      <div className="ageing-history-list">
+        {[...snapshots].reverse().slice(0, 8).map((s) => (
+          <div key={s.id}>
+            <span>{new Date(s.snapshot_date + 'T12:00:00').toLocaleDateString()}</span>
+            <b>{mvr(s.metrics?.over1 || 0)}</b>
+            <small>{s.label || 'Inventory Ageing upload'}</small>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function ImportPanel({ onApplied, email }) {
   const [source, setSource] = useState('PRF')
   const [file, setFile] = useState(null)
@@ -738,6 +797,60 @@ function ImportPanel({ onApplied, email }) {
             .from('stock_items')
             .upsert(ageingRows.slice(i, i + 400), { onConflict: 'item_code' })
           if (error) throw error
+        }
+
+        const snapshotMetrics = ageingRows.reduce((totals, row) => {
+          totals.itemCount += 1
+          totals.onHandQty += rawNumber(row, ['On-hand quantity'])
+          totals.onHandValue += rawNumber(row, ['On-hand value'])
+          totals.inventoryValue += rawNumber(row, ['Inventory value'])
+          totals.p1 += rawNumber(row, ['P1:Amount'])
+          totals.p2 += rawNumber(row, ['P2:Amount'])
+          totals.p3 += rawNumber(row, ['P3:Amount'])
+          totals.p4 += rawNumber(row, ['P4:Amount'])
+          totals.p5 += rawNumber(row, ['P5:Amount'])
+          return totals
+        }, {
+          kind: 'AGEING',
+          itemCount: 0,
+          onHandQty: 0,
+          onHandValue: 0,
+          inventoryValue: 0,
+          p1: 0,
+          p2: 0,
+          p3: 0,
+          p4: 0,
+          p5: 0,
+        })
+        snapshotMetrics.over1 = snapshotMetrics.p2 + snapshotMetrics.p3 + snapshotMetrics.p4 + snapshotMetrics.p5
+
+        const snapshotDate = new Date().toISOString().slice(0, 10)
+        const { data: sameDaySnapshots, error: sameDayError } = await supabase
+          .from('weekly_snapshots')
+          .select('id, metrics')
+          .eq('snapshot_date', snapshotDate)
+        if (sameDayError) throw sameDayError
+
+        const existingAgeing = (sameDaySnapshots || []).find((s) => s.metrics?.kind === 'AGEING')
+        const snapshotRecord = {
+          snapshot_date: snapshotDate,
+          label: 'Inventory Ageing — ' + (file?.name || snapshotDate),
+          metrics: snapshotMetrics,
+          priority_cases: [],
+          created_by: email,
+        }
+
+        if (existingAgeing) {
+          const { error: snapshotError } = await supabase
+            .from('weekly_snapshots')
+            .update(snapshotRecord)
+            .eq('id', existingAgeing.id)
+          if (snapshotError) throw snapshotError
+        } else {
+          const { error: snapshotError } = await supabase
+            .from('weekly_snapshots')
+            .insert(snapshotRecord)
+          if (snapshotError) throw snapshotError
         }
       }
 
@@ -1764,6 +1877,25 @@ export default function App() {
     totals.agedOver365 = totals.p2 + totals.p3 + totals.p4 + totals.p5
     return totals
   }, [data.stock])
+
+  const ageingSnapshots = useMemo(
+    () => data.snapshots
+      .filter((s) => s.metrics?.kind === 'AGEING')
+      .sort((a, b) => String(a.snapshot_date).localeCompare(String(b.snapshot_date))),
+    [data.snapshots],
+  )
+
+  const ageingComparison = useMemo(() => {
+    const current = ageingSnapshots.at(-1) || null
+    const previous = ageingSnapshots.at(-2) || null
+    const currentValue = Number(current?.metrics?.over1 || 0)
+    const previousValue = Number(previous?.metrics?.over1 || 0)
+    const change = current && previous ? currentValue - previousValue : null
+    const percent = current && previous && previousValue !== 0
+      ? (change / previousValue) * 100
+      : null
+    return { current, previous, currentValue, previousValue, change, percent }
+  }, [ageingSnapshots])
 
   const transactionRows = useMemo(() => data.transactions.filter(matches), [data.transactions, query])
 
@@ -3083,6 +3215,30 @@ export default function App() {
                 <MetricCard label="P5 — Over 5 Years" value={mvr(ageingSummary.p5)} helper="Stock aged more than 1825 days" tone="bad" active={stockAgeFilter === 'P5'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P5' ? 'ALL' : 'P5')} />
                 <MetricCard label="Stock Value Over 1 Year" value={mvr(ageingSummary.agedOver365)} helper="Combined value of stock aged more than 365 days" tone="warn" active={stockAgeFilter === 'AGED365'} onClick={() => setStockAgeFilter(stockAgeFilter === 'AGED365' ? 'ALL' : 'AGED365')} />
               </div>
+
+              {ageingComparison.current && (
+                <>
+                  <div className="metric-grid ageing-history-metrics">
+                    <MetricCard
+                      label="Latest Saved Value Over 1 Year"
+                      value={mvr(ageingComparison.currentValue)}
+                      helper={ageingComparison.current.snapshot_date}
+                    />
+                    <MetricCard
+                      label="Previous Upload"
+                      value={ageingComparison.previous ? mvr(ageingComparison.previousValue) : '—'}
+                      helper={ageingComparison.previous?.snapshot_date || 'Baseline only — comparison starts next upload'}
+                    />
+                    <MetricCard
+                      label="Change vs Previous"
+                      value={ageingComparison.change === null ? '—' : ((ageingComparison.change >= 0 ? '+' : '') + mvr(ageingComparison.change))}
+                      helper={ageingComparison.percent === null ? 'No previous upload yet' : ((ageingComparison.percent >= 0 ? '+' : '') + ageingComparison.percent.toFixed(2) + '%')}
+                      tone={ageingComparison.change > 0 ? 'warn' : undefined}
+                    />
+                  </div>
+                  <AgeingTrend snapshots={ageingSnapshots} />
+                </>
+              )}
 
               {stockAgeFilter !== 'ALL' && (
                 <div className="prf-filter-note prpo-age-note">
