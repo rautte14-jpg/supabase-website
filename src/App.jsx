@@ -12,7 +12,6 @@ const NAV = [
   ['mrn', 'MRN & Issues', 'M'],
   ['vessel', 'Vessel / SR View', 'V'],
   ['stock', 'Stock & Ageing', 'S'],
-  ['transactions', 'Receipts & Issues', 'R'],
   ['updates', 'Update Centre', 'U'],
   ['meeting', 'Wednesday Meeting', 'W'],
   ['history', 'History', 'H'],
@@ -2550,7 +2549,6 @@ export default function App() {
                   ['mtr', 'MTR Tracker', 'Monitor requested, transferred and remaining quantities.'],
                   ['mrn', 'MRN & Issues', 'Track MRNs, issue status and pending material release.'],
                   ['stock', 'Stock & Ageing', 'Review current stock position, value and inventory ageing.'],
-                  ['transactions', 'Receipts & Issues', 'Review warehouse receipts and material issues.'],
                   ['meeting', 'Wednesday Meeting', 'Open the weekly management meeting view.'],
                   ['history', 'History', 'Review source uploads and update history.'],
                 ].map(([key, title, text]) => (
@@ -3327,26 +3325,6 @@ export default function App() {
             </>
           )}
 
-          {view === 'transactions' && (
-            <>
-              <PageHeader title="Receipts & Issues" subtitle="ERP inventory movement with PO, sales order, journal and delivery references." />
-              <DataTable rows={transactionRows} columns={[
-                { key: 'physical_date', label: 'Physical date' },
-                { key: 'transaction_type', label: 'Type', render: (v) => <StatusPill value={v} /> },
-                { key: 'item_code', label: 'Item' },
-                { key: 'item_description', label: 'Description' },
-                { key: 'quantity', label: 'Qty' },
-                { key: 'unit', label: 'Unit' },
-                { key: 'cost', label: 'Cost', render: (v) => money(v) },
-                { key: 'po_no', label: 'PO' },
-                { key: 'sales_order', label: 'Sales order' },
-                { key: 'journal_no', label: 'Journal' },
-                { key: 'delivery_name', label: 'Delivery name' },
-                { key: 'sr_wo', label: 'SR / WO' },
-                { key: 'status', label: 'Status', render: (v) => <StatusPill value={v} /> },
-              ]} />
-            </>
-          )}
 
           {view === 'updates' && canEdit && (
             <>
