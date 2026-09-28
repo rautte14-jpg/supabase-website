@@ -645,41 +645,56 @@ async function fetchAllRows(table, orderColumn, ascending = false) {
 function AgeingTrend({ snapshots }) {
   if (!snapshots.length) return null
 
-  const values = snapshots.map((s) => Number(s.metrics?.over1 || 0))
-  const max = Math.max(...values, 1)
+  const agedValues = snapshots.map((s) => Number(s.metrics?.over1 || 0))
+  const onHandValues = snapshots.map((s) => Number(s.metrics?.onHandValue || 0))
+  const max = Math.max(...agedValues, ...onHandValues, 1)
   const width = 760
-  const height = 220
+  const height = 240
   const padX = 42
-  const padY = 26
+  const padY = 28
   const usableW = width - padX * 2
   const usableH = height - padY * 2
-  const points = snapshots.map((s, index) => {
+
+  const makePoints = (key) => snapshots.map((s, index) => {
     const x = snapshots.length === 1
       ? width / 2
       : padX + (index / (snapshots.length - 1)) * usableW
-    const y = height - padY - (Number(s.metrics?.over1 || 0) / max) * usableH
+    const y = height - padY - (Number(s.metrics?.[key] || 0) / max) * usableH
     return { x, y, snapshot: s }
   })
-  const polyline = points.map((p) => `${p.x},${p.y}`).join(' ')
+
+  const agedPoints = makePoints('over1')
+  const onHandPoints = makePoints('onHandValue')
+  const agedPolyline = agedPoints.map((p) => `${p.x},${p.y}`).join(' ')
+  const onHandPolyline = onHandPoints.map((p) => `${p.x},${p.y}`).join(' ')
 
   return (
     <section className="panel ageing-trend-panel">
       <div className="panel-head">
         <div>
           <span className="eyebrow">WEEKLY TREND</span>
-          <h3>Stock Value Over 1 Year</h3>
+          <h3>On-hand Value vs Stock Value Over 1 Year</h3>
         </div>
         <span>{snapshots.length} saved {snapshots.length === 1 ? 'upload' : 'uploads'}</span>
       </div>
 
+      <div className="ageing-chart-legend">
+        <span><i className="legend-line onhand" />On-hand Value</span>
+        <span><i className="legend-line aged" />Stock Value Over 1 Year</span>
+      </div>
+
       <div className="ageing-chart-wrap">
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Weekly ageing value trend">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Weekly inventory ageing and on-hand value trend">
           <line x1={padX} y1={height - padY} x2={width - padX} y2={height - padY} className="ageing-axis" />
           <line x1={padX} y1={padY} x2={padX} y2={height - padY} className="ageing-axis" />
-          <polyline points={polyline} className="ageing-line" />
-          {points.map((p, index) => (
-            <g key={p.snapshot.id || index}>
-              <circle cx={p.x} cy={p.y} r="5" className="ageing-point" />
+          <polyline points={onHandPolyline} className="ageing-line onhand-line" />
+          <polyline points={agedPolyline} className="ageing-line aged-line" />
+          {onHandPoints.map((p, index) => (
+            <circle key={'oh-' + (p.snapshot.id || index)} cx={p.x} cy={p.y} r="5" className="ageing-point onhand-point" />
+          ))}
+          {agedPoints.map((p, index) => (
+            <g key={'aged-' + (p.snapshot.id || index)}>
+              <circle cx={p.x} cy={p.y} r="5" className="ageing-point aged-point" />
               <text x={p.x} y={height - 7} textAnchor="middle" className="ageing-x-label">
                 {new Date(p.snapshot.snapshot_date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
               </text>
@@ -692,8 +707,8 @@ function AgeingTrend({ snapshots }) {
         {[...snapshots].reverse().slice(0, 8).map((s) => (
           <div key={s.id}>
             <span>{new Date(s.snapshot_date + 'T12:00:00').toLocaleDateString()}</span>
-            <b>{mvr(s.metrics?.over1 || 0)}</b>
-            <small>{s.label || 'Inventory Ageing upload'}</small>
+            <b>On-hand {mvr(s.metrics?.onHandValue || 0)}</b>
+            <b>Over 1 year {mvr(s.metrics?.over1 || 0)}</b>
           </div>
         ))}
       </div>
@@ -1888,13 +1903,33 @@ export default function App() {
   const ageingComparison = useMemo(() => {
     const current = ageingSnapshots.at(-1) || null
     const previous = ageingSnapshots.at(-2) || null
+
     const currentValue = Number(current?.metrics?.over1 || 0)
     const previousValue = Number(previous?.metrics?.over1 || 0)
     const change = current && previous ? currentValue - previousValue : null
     const percent = current && previous && previousValue !== 0
       ? (change / previousValue) * 100
       : null
-    return { current, previous, currentValue, previousValue, change, percent }
+
+    const currentOnHand = Number(current?.metrics?.onHandValue || 0)
+    const previousOnHand = Number(previous?.metrics?.onHandValue || 0)
+    const onHandChange = current && previous ? currentOnHand - previousOnHand : null
+    const onHandPercent = current && previous && previousOnHand !== 0
+      ? (onHandChange / previousOnHand) * 100
+      : null
+
+    return {
+      current,
+      previous,
+      currentValue,
+      previousValue,
+      change,
+      percent,
+      currentOnHand,
+      previousOnHand,
+      onHandChange,
+      onHandPercent,
+    }
   }, [ageingSnapshots])
 
   const transactionRows = useMemo(() => data.transactions.filter(matches), [data.transactions, query])
@@ -3220,17 +3255,32 @@ export default function App() {
                 <>
                   <div className="metric-grid ageing-history-metrics">
                     <MetricCard
-                      label="Latest Saved Value Over 1 Year"
+                      label="Latest On-hand Value"
+                      value={mvr(ageingComparison.currentOnHand)}
+                      helper={ageingComparison.current.snapshot_date}
+                    />
+                    <MetricCard
+                      label="Previous On-hand Value"
+                      value={ageingComparison.previous ? mvr(ageingComparison.previousOnHand) : '—'}
+                      helper={ageingComparison.previous?.snapshot_date || 'Baseline only — comparison starts next upload'}
+                    />
+                    <MetricCard
+                      label="On-hand Change"
+                      value={ageingComparison.onHandChange === null ? '—' : ((ageingComparison.onHandChange >= 0 ? '+' : '') + mvr(ageingComparison.onHandChange))}
+                      helper={ageingComparison.onHandPercent === null ? 'No previous upload yet' : ((ageingComparison.onHandPercent >= 0 ? '+' : '') + ageingComparison.onHandPercent.toFixed(2) + '%')}
+                    />
+                    <MetricCard
+                      label="Latest Stock Value Over 1 Year"
                       value={mvr(ageingComparison.currentValue)}
                       helper={ageingComparison.current.snapshot_date}
                     />
                     <MetricCard
-                      label="Previous Upload"
+                      label="Previous Over 1 Year"
                       value={ageingComparison.previous ? mvr(ageingComparison.previousValue) : '—'}
                       helper={ageingComparison.previous?.snapshot_date || 'Baseline only — comparison starts next upload'}
                     />
                     <MetricCard
-                      label="Change vs Previous"
+                      label="Over 1 Year Change"
                       value={ageingComparison.change === null ? '—' : ((ageingComparison.change >= 0 ? '+' : '') + mvr(ageingComparison.change))}
                       helper={ageingComparison.percent === null ? 'No previous upload yet' : ((ageingComparison.percent >= 0 ? '+' : '') + ageingComparison.percent.toFixed(2) + '%')}
                       tone={ageingComparison.change > 0 ? 'warn' : undefined}
