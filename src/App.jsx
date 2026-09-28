@@ -707,8 +707,19 @@ function ImportPanel({ onApplied, email }) {
           if (upsertError) throw upsertError
         }
       } else if (source === 'AGEING') {
-        for (let i = 0; i < mapped.length; i += 400) {
-          const { error } = await supabase.from('stock_items').upsert(mapped.slice(i, i + 400), { onConflict: 'item_code' })
+        const ageingByItem = new Map()
+        for (const row of mapped) {
+          const itemCode = String(row.item_code || '').trim()
+          if (!itemCode) continue
+          ageingByItem.set(itemCode, row)
+        }
+
+        const ageingRows = Array.from(ageingByItem.values())
+
+        for (let i = 0; i < ageingRows.length; i += 400) {
+          const { error } = await supabase
+            .from('stock_items')
+            .upsert(ageingRows.slice(i, i + 400), { onConflict: 'item_code' })
           if (error) throw error
         }
       }
