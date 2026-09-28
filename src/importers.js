@@ -368,13 +368,44 @@ export function mapRows(source, rows) {
   }
 
   if (source === 'AGEING') {
-    return rows.map((r) => ({
-      item_code: text(r, ['Item', 'Item Code', 'Item Number', 'Item ID']),
-      age_band: text(r, ['Age Band', 'Ageing', 'Aging', 'Inventory Age']),
-      stock_value: number(r, ['Stock Value', 'Inventory Value', 'Value']),
-      last_transaction_date: date(r, ['Last Transaction Date', 'Last Movement Date']),
-      source_updated_at: new Date().toISOString(),
-    })).filter((r) => r.item_code)
+    return rows.map((r) => {
+      const onHand = number(r, [
+        'On Hand',
+        'On-hand',
+        'On-hand quantity',
+        'On Hand Quantity',
+        'Physical Inventory',
+        'Stock',
+      ])
+      const unitCost = number(r, [
+        'Average unit cost',
+        'Average Unit Cost',
+        'Unit Cost',
+        'Cost Price',
+        'Cost',
+      ])
+      const inventoryValue = number(r, [
+        'Inventory value',
+        'Inventory Value',
+        'Stock Value',
+        'Value',
+      ])
+
+      return {
+        item_code: text(r, ['Item', 'Item Code', 'Item Number', 'Item ID']),
+        item_description: text(r, ['Description', 'Item Description', 'Product Name']),
+        unit: text(r, ['Unit', 'UOM']),
+        on_hand: onHand ?? 0,
+        available: onHand ?? 0,
+        unit_cost: unitCost ?? 0,
+        stock_value: inventoryValue ?? ((onHand ?? 0) * (unitCost ?? 0)),
+        age_band: text(r, ['Age Band', 'Ageing', 'Aging', 'Inventory Age']),
+        last_transaction_date: date(r, ['Last Transaction Date', 'Last Movement Date']),
+        source_updated_at: new Date().toISOString(),
+        raw_source: rawSource(r),
+        updated_at: new Date().toISOString(),
+      }
+    }).filter((r) => r.item_code)
   }
 
   return []
