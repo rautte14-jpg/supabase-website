@@ -1244,3 +1244,51 @@ td {
     gap: 3px;
   }
 }
+
+
+.ageing-chart-legend {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin: -4px 0 10px;
+  color: #64779d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ageing-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.legend-line {
+  width: 24px;
+  height: 3px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.legend-line.onhand,
+.onhand-line {
+  stroke: #173675;
+  background: #173675;
+}
+
+.legend-line.aged,
+.aged-line {
+  stroke: #b77b1f;
+  background: #b77b1f;
+}
+
+.onhand-point {
+  stroke: #173675;
+}
+
+.aged-point {
+  stroke: #b77b1f;
+}
+
+.ageing-history-list > div {
+  grid-template-columns: 120px minmax(190px, 1fr) minmax(190px, 1fr);
+}
