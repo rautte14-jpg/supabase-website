@@ -130,6 +130,13 @@ function rawNumber(row, names = []) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function hasRawField(row, names = []) {
+  const raw = row?.raw_source
+  if (!raw || typeof raw !== 'object') return false
+  const keys = Object.keys(raw).map((key) => String(key).toLowerCase().replace(/[^a-z0-9]+/g, ''))
+  return names.some((name) => keys.includes(String(name).toLowerCase().replace(/[^a-z0-9]+/g, '')))
+}
+
 function dateRowField(row, directKey, rawNames = []) {
   const direct = row?.[directKey]
   const value = direct || rawField(row, rawNames)
@@ -1855,8 +1862,22 @@ export default function App() {
     const recent = data.transactions.filter((r) => r.physical_date && new Date(r.physical_date) >= sevenDaysAgo)
     const receipts = recent.filter((r) => lower(r.transaction_type).includes('receipt') || Number(r.quantity) > 0)
     const issues = recent.filter((r) => lower(r.transaction_type).includes('issue') || Number(r.quantity) < 0)
-    const value = data.stock.reduce((sum, r) => sum + Number(r.stock_value || 0), 0)
-    const aged = data.stock.filter((r) => /12|24|36|over|old|year/i.test(r.age_band || ''))
+    const value = data.stock.reduce((sum, r) => {
+      if (hasRawField(r, ['On-hand value'])) return sum + rawNumber(r, ['On-hand value'])
+      return sum + Number(r.stock_value || 0)
+    }, 0)
+    const agedValue = data.stock.reduce((sum, r) => {
+      if (hasRawField(r, ['P2:Amount', 'P3:Amount', 'P4:Amount', 'P5:Amount'])) {
+        return sum
+          + rawNumber(r, ['P2:Amount'])
+          + rawNumber(r, ['P3:Amount'])
+          + rawNumber(r, ['P4:Amount'])
+          + rawNumber(r, ['P5:Amount'])
+      }
+      return /12|24|36|over|old|year/i.test(r.age_band || '')
+        ? sum + Number(r.stock_value || 0)
+        : sum
+    }, 0)
     return {
       prf: new Set(procurementData.map((r) => r.prf_no).filter(Boolean)).size,
       mrn: new Set(data.material.filter((r) => r.document_type === 'MRN').map((r) => r.document_no).filter(Boolean)).size,
@@ -1866,7 +1887,7 @@ export default function App() {
       receipts: receipts.reduce((s, r) => s + Math.abs(Number(r.quantity || 0)), 0),
       issues: issues.reduce((s, r) => s + Math.abs(Number(r.quantity || 0)), 0),
       stockValue: value,
-      agedValue: aged.reduce((sum, r) => sum + Number(r.stock_value || 0), 0),
+      agedValue,
     }
   }, [data, todayIso])
 
