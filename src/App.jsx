@@ -956,6 +956,7 @@ export default function App() {
   const [mrnStatusFilter, setMrnStatusFilter] = useState('ALL')
   const [mrnWorkshopFilter, setMrnWorkshopFilter] = useState('ALL')
   const [mrnWpTypeFilter, setMrnWpTypeFilter] = useState('ALL')
+  const [stockAgeFilter, setStockAgeFilter] = useState('ALL')
 
   const canEdit = access && ['admin', 'editor'].includes(lower(access.role))
   const isAdmin = access && lower(access.role) === 'admin'
@@ -1713,7 +1714,25 @@ export default function App() {
     mrns: new Set(mrnRows.map((r) => r.document_no).filter(Boolean)).size,
     rows: mrnRows.length,
   }), [mrnRows])
-  const stockRows = useMemo(() => data.stock.filter(matches), [data.stock, query])
+  const stockRows = useMemo(() => data.stock.filter((row) => {
+    if (!matches(row)) return false
+    if (stockAgeFilter === 'ALL') return true
+
+    const hasBucket = (bucket) =>
+      rawNumber(row, [bucket + ':Quantity']) > 0 ||
+      rawNumber(row, [bucket + ':Amount']) > 0
+
+    if (stockAgeFilter === 'P1') return hasBucket('P1')
+    if (stockAgeFilter === 'P2') return hasBucket('P2')
+    if (stockAgeFilter === 'P3') return hasBucket('P3')
+    if (stockAgeFilter === 'P4') return hasBucket('P4')
+    if (stockAgeFilter === 'P5') return hasBucket('P5')
+    if (stockAgeFilter === 'AGED365') {
+      return hasBucket('P2') || hasBucket('P3') || hasBucket('P4') || hasBucket('P5')
+    }
+
+    return true
+  }), [data.stock, query, stockAgeFilter])
 
   const ageingSummary = useMemo(() => {
     const totals = {
@@ -3055,13 +3074,20 @@ export default function App() {
                 <MetricCard label="Items" value={fmt(data.stock.length)} helper="Unique item IDs loaded" />
                 <MetricCard label="On-hand quantity" value={fmt(ageingSummary.onHandQty, 2)} helper="Physical on-hand quantity" />
                 <MetricCard label="On-hand value" value={money(ageingSummary.onHandValue)} helper="Value of current on-hand stock" />
-                <MetricCard label="P1 — 0 to 1 Year" value={money(ageingSummary.p1)} helper="Stock aged 0–365 days" />
-                <MetricCard label="P2 — 1 to 3 Years" value={money(ageingSummary.p2)} helper="Stock aged 366–1095 days" />
-                <MetricCard label="P3 — 3 to 4 Years" value={money(ageingSummary.p3)} helper="Stock aged 1096–1460 days" />
-                <MetricCard label="P4 — 4 to 5 Years" value={money(ageingSummary.p4)} helper="Stock aged 1461–1825 days" />
-                <MetricCard label="P5 — Over 5 Years" value={money(ageingSummary.p5)} helper="Stock aged more than 1825 days" tone="bad" />
-                <MetricCard label="Aged over 365 days" value={money(ageingSummary.agedOver365)} helper="P2 + P3 + P4 + P5" tone="warn" />
+                <MetricCard label="P1 — 0 to 1 Year" value={money(ageingSummary.p1)} helper="Stock aged 0–365 days" active={stockAgeFilter === 'P1'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P1' ? 'ALL' : 'P1')} />
+                <MetricCard label="P2 — 1 to 3 Years" value={money(ageingSummary.p2)} helper="Stock aged 366–1095 days" active={stockAgeFilter === 'P2'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P2' ? 'ALL' : 'P2')} />
+                <MetricCard label="P3 — 3 to 4 Years" value={money(ageingSummary.p3)} helper="Stock aged 1096–1460 days" active={stockAgeFilter === 'P3'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P3' ? 'ALL' : 'P3')} />
+                <MetricCard label="P4 — 4 to 5 Years" value={money(ageingSummary.p4)} helper="Stock aged 1461–1825 days" active={stockAgeFilter === 'P4'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P4' ? 'ALL' : 'P4')} />
+                <MetricCard label="P5 — Over 5 Years" value={money(ageingSummary.p5)} helper="Stock aged more than 1825 days" tone="bad" active={stockAgeFilter === 'P5'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P5' ? 'ALL' : 'P5')} />
+                <MetricCard label="Aged over 365 days" value={money(ageingSummary.agedOver365)} helper="P2 + P3 + P4 + P5" tone="warn" active={stockAgeFilter === 'AGED365'} onClick={() => setStockAgeFilter(stockAgeFilter === 'AGED365' ? 'ALL' : 'AGED365')} />
               </div>
+
+              {stockAgeFilter !== 'ALL' && (
+                <div className="prf-filter-note prpo-age-note">
+                  Showing items in <b>{stockAgeFilter === 'AGED365' ? 'all ageing buckets over 1 year' : stockAgeFilter}</b>
+                  <button onClick={() => setStockAgeFilter('ALL')}>Clear ageing filter</button>
+                </div>
+              )}
 
               <DataTable
                 rows={stockRows}
