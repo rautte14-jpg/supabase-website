@@ -1137,3 +1137,24 @@ td {
     flex-direction: column;
   }
 }
+
+
+.metric-grid.stock-ageing-metrics {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.metric-grid.stock-ageing-metrics .metric-card {
+  min-height: 112px;
+}
+.metric-grid.stock-ageing-metrics .metric-card strong {
+  font-size: 23px;
+}
+@media (max-width: 1400px) {
+  .metric-grid.stock-ageing-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 800px) {
+  .metric-grid.stock-ageing-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+}
