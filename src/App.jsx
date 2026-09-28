@@ -1843,25 +1843,57 @@ export default function App() {
     mrns: new Set(mrnRows.map((r) => r.document_no).filter(Boolean)).size,
     rows: mrnRows.length,
   }), [mrnRows])
-  const stockRows = useMemo(() => data.stock.filter((row) => {
-    if (!matches(row)) return false
-    if (stockAgeFilter === 'ALL') return true
+  const stockOnHandValue = (row) =>
+    hasRawField(row, ['On-hand value', 'On Hand Value'])
+      ? rawNumber(row, ['On-hand value', 'On Hand Value'])
+      : Number(row.stock_value || 0)
 
-    const hasBucket = (bucket) =>
-      rawNumber(row, [bucket + ':Quantity']) > 0 ||
-      rawNumber(row, [bucket + ':Amount']) > 0
+  const top100HighValue = useMemo(
+    () => [...data.stock]
+      .filter((row) => stockOnHandValue(row) > 0)
+      .sort((a, b) => stockOnHandValue(b) - stockOnHandValue(a))
+      .slice(0, 100),
+    [data.stock],
+  )
 
-    if (stockAgeFilter === 'P1') return hasBucket('P1')
-    if (stockAgeFilter === 'P2') return hasBucket('P2')
-    if (stockAgeFilter === 'P3') return hasBucket('P3')
-    if (stockAgeFilter === 'P4') return hasBucket('P4')
-    if (stockAgeFilter === 'P5') return hasBucket('P5')
-    if (stockAgeFilter === 'AGED365') {
-      return hasBucket('P2') || hasBucket('P3') || hasBucket('P4') || hasBucket('P5')
+  const top100HighValueCodes = useMemo(
+    () => new Set(top100HighValue.map((row) => String(row.item_code || ''))),
+    [top100HighValue],
+  )
+
+  const top100HighValueTotal = useMemo(
+    () => top100HighValue.reduce((sum, row) => sum + stockOnHandValue(row), 0),
+    [top100HighValue],
+  )
+
+  const stockRows = useMemo(() => {
+    const filtered = data.stock.filter((row) => {
+      if (!matches(row)) return false
+      if (stockAgeFilter === 'ALL') return true
+      if (stockAgeFilter === 'HIGH100') return top100HighValueCodes.has(String(row.item_code || ''))
+
+      const hasBucket = (bucket) =>
+        rawNumber(row, [bucket + ':Quantity']) > 0 ||
+        rawNumber(row, [bucket + ':Amount']) > 0
+
+      if (stockAgeFilter === 'P1') return hasBucket('P1')
+      if (stockAgeFilter === 'P2') return hasBucket('P2')
+      if (stockAgeFilter === 'P3') return hasBucket('P3')
+      if (stockAgeFilter === 'P4') return hasBucket('P4')
+      if (stockAgeFilter === 'P5') return hasBucket('P5')
+      if (stockAgeFilter === 'AGED365') {
+        return hasBucket('P2') || hasBucket('P3') || hasBucket('P4') || hasBucket('P5')
+      }
+
+      return true
+    })
+
+    if (stockAgeFilter === 'HIGH100') {
+      return filtered.sort((a, b) => stockOnHandValue(b) - stockOnHandValue(a))
     }
 
-    return true
-  }), [data.stock, query, stockAgeFilter])
+    return filtered
+  }, [data.stock, query, stockAgeFilter, top100HighValueCodes])
 
   const ageingSummary = useMemo(() => {
     const totals = {
@@ -3241,6 +3273,7 @@ export default function App() {
                 <MetricCard label="Items" value={fmt(data.stock.length)} helper="Unique item IDs loaded" />
                 <MetricCard label="On-hand quantity" value={fmt(ageingSummary.onHandQty, 2)} helper="Physical on-hand quantity" />
                 <MetricCard label="On-hand value" value={mvr(ageingSummary.onHandValue)} helper="Value of current on-hand stock" />
+                <MetricCard label="Top 100 High Value Items" value={fmt(top100HighValue.length) + ' Items'} helper={'Combined on-hand value: ' + mvr(top100HighValueTotal)} tone="warn" active={stockAgeFilter === 'HIGH100'} onClick={() => setStockAgeFilter(stockAgeFilter === 'HIGH100' ? 'ALL' : 'HIGH100')} />
                 <MetricCard label="P1 — 0 to 1 Year" value={mvr(ageingSummary.p1)} helper="Stock aged 0–365 days" active={stockAgeFilter === 'P1'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P1' ? 'ALL' : 'P1')} />
                 <MetricCard label="P2 — 1 to 3 Years" value={mvr(ageingSummary.p2)} helper="Stock aged 366–1095 days" active={stockAgeFilter === 'P2'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P2' ? 'ALL' : 'P2')} />
                 <MetricCard label="P3 — 3 to 4 Years" value={mvr(ageingSummary.p3)} helper="Stock aged 1096–1460 days" active={stockAgeFilter === 'P3'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P3' ? 'ALL' : 'P3')} />
@@ -3290,7 +3323,7 @@ export default function App() {
 
               {stockAgeFilter !== 'ALL' && (
                 <div className="prf-filter-note prpo-age-note">
-                  Showing items in <b>{stockAgeFilter === 'AGED365' ? 'all ageing buckets over 1 year' : stockAgeFilter}</b>
+                  Showing items in <b>{stockAgeFilter === 'AGED365' ? 'all ageing buckets over 1 year' : stockAgeFilter === 'HIGH100' ? 'Top 100 High Value Items' : stockAgeFilter}</b>
                   <button onClick={() => setStockAgeFilter('ALL')}>Clear ageing filter</button>
                 </div>
               )}
