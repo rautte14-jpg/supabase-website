@@ -4,7 +4,8 @@ import { supabase } from './lib/supabase'
 import { SOURCE_OPTIONS, detectSource, entityKey, humanSource, mapRows, normalizeSheetRows } from './importers'
 
 const NAV = [
-  ['overview', 'Overview', '⌂'],
+  ['home', 'Home', '⌂'],
+  ['overview', 'Overview', 'D'],
   ['prf', 'PRF Tracker', 'P'],
   ['prpo', 'PR & PO Tracker', 'O'],
   ['mtr', 'MTR Tracker', 'T'],
@@ -910,7 +911,7 @@ export default function App() {
   const [checking, setChecking] = useState(true)
   const [recoveringPassword, setRecoveringPassword] = useState(false)
   const [access, setAccess] = useState(null)
-  const [view, setView] = useState('overview')
+  const [view, setView] = useState('home')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState({
@@ -2266,6 +2267,57 @@ export default function App() {
         )}
 
         <section className="content">
+          {view === 'home' && (
+            <section className="warehouse-home">
+              <div className="home-hero">
+                <div className="home-hero-copy">
+                  <span className="home-kicker">SHIPBUILDING & REPAIR DIVISION</span>
+                  <h1>SRD Warehouse System</h1>
+                  <p>
+                    Central control for procurement, material requests, stock movement,
+                    receipts, issues and weekly warehouse follow-up.
+                  </p>
+                  <div className="home-actions">
+                    <button className="home-primary" onClick={() => setView('overview')}>Open Dashboard</button>
+                    <button className="home-secondary" onClick={() => setView('stock')}>View Stock</button>
+                  </div>
+                </div>
+
+                <div className="home-hero-stats">
+                  <div><strong>{fmt(metrics.prf)}</strong><span>PRFs Tracked</span></div>
+                  <div><strong>{fmt(metrics.mrn)}</strong><span>MRNs Tracked</span></div>
+                  <div><strong>{fmt(metrics.pending)}</strong><span>Pending PR / PO</span></div>
+                  <div><strong>{money(metrics.stockValue)}</strong><span>Stock Value</span></div>
+                </div>
+              </div>
+
+              <div className="home-section-head">
+                <span className="eyebrow">WAREHOUSE MODULES</span>
+                <h2>Quick access</h2>
+                <p>Open the area you need directly from the home page.</p>
+              </div>
+
+              <div className="home-module-grid">
+                {[
+                  ['prf', 'PRF Tracker', 'Track PRF / IPF requests and movement into procurement.'],
+                  ['prpo', 'PR & PO Tracker', 'Follow PRs, POs, delivery, receipts and ageing.'],
+                  ['mtr', 'MTR Tracker', 'Monitor requested, transferred and remaining quantities.'],
+                  ['mrn', 'MRN & Issues', 'Track MRNs, issue status and pending material release.'],
+                  ['stock', 'Stock & Ageing', 'Review current stock position, value and inventory ageing.'],
+                  ['transactions', 'Receipts & Issues', 'Review warehouse receipts and material issues.'],
+                  ['meeting', 'Wednesday Meeting', 'Open the weekly management meeting view.'],
+                  ['history', 'History', 'Review source uploads and update history.'],
+                ].map(([key, title, text]) => (
+                  <button key={key} className="home-module-card" onClick={() => setView(key)}>
+                    <span>{title}</span>
+                    <p>{text}</p>
+                    <b>Open →</b>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
           {view === 'overview' && (
             <>
               <PageHeader title="Overview" subtitle="Live control view across SRD inventory and procurement sources." />
