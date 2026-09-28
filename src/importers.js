@@ -384,6 +384,11 @@ export function mapRows(source, rows) {
         'Cost Price',
         'Cost',
       ])
+      const onHandValue = number(r, [
+        'On-hand value',
+        'On Hand Value',
+        'On-hand Value',
+      ])
       const inventoryValue = number(r, [
         'Inventory value',
         'Inventory Value',
@@ -398,7 +403,7 @@ export function mapRows(source, rows) {
         on_hand: onHand ?? 0,
         available: onHand ?? 0,
         unit_cost: unitCost ?? 0,
-        stock_value: inventoryValue ?? ((onHand ?? 0) * (unitCost ?? 0)),
+        stock_value: onHandValue ?? ((onHand ?? 0) * (unitCost ?? 0)),
         age_band: text(r, ['Age Band', 'Ageing', 'Aging', 'Inventory Age']),
         last_transaction_date: date(r, ['Last Transaction Date', 'Last Movement Date']),
         source_updated_at: new Date().toISOString(),
