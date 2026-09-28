@@ -30,6 +30,8 @@ const money = (n) =>
     maximumFractionDigits: 2,
   })
 
+const mvr = (n) => 'MVR ' + money(n)
+
 const lower = (v) => String(v ?? '').toLowerCase()
 
 function isClosed(value) {
@@ -3073,13 +3075,13 @@ export default function App() {
               <div className="metric-grid stock-ageing-metrics">
                 <MetricCard label="Items" value={fmt(data.stock.length)} helper="Unique item IDs loaded" />
                 <MetricCard label="On-hand quantity" value={fmt(ageingSummary.onHandQty, 2)} helper="Physical on-hand quantity" />
-                <MetricCard label="On-hand value" value={money(ageingSummary.onHandValue)} helper="Value of current on-hand stock" />
-                <MetricCard label="P1 — 0 to 1 Year" value={money(ageingSummary.p1)} helper="Stock aged 0–365 days" active={stockAgeFilter === 'P1'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P1' ? 'ALL' : 'P1')} />
-                <MetricCard label="P2 — 1 to 3 Years" value={money(ageingSummary.p2)} helper="Stock aged 366–1095 days" active={stockAgeFilter === 'P2'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P2' ? 'ALL' : 'P2')} />
-                <MetricCard label="P3 — 3 to 4 Years" value={money(ageingSummary.p3)} helper="Stock aged 1096–1460 days" active={stockAgeFilter === 'P3'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P3' ? 'ALL' : 'P3')} />
-                <MetricCard label="P4 — 4 to 5 Years" value={money(ageingSummary.p4)} helper="Stock aged 1461–1825 days" active={stockAgeFilter === 'P4'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P4' ? 'ALL' : 'P4')} />
-                <MetricCard label="P5 — Over 5 Years" value={money(ageingSummary.p5)} helper="Stock aged more than 1825 days" tone="bad" active={stockAgeFilter === 'P5'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P5' ? 'ALL' : 'P5')} />
-                <MetricCard label="Aged over 365 days" value={money(ageingSummary.agedOver365)} helper="P2 + P3 + P4 + P5" tone="warn" active={stockAgeFilter === 'AGED365'} onClick={() => setStockAgeFilter(stockAgeFilter === 'AGED365' ? 'ALL' : 'AGED365')} />
+                <MetricCard label="On-hand value" value={mvr(ageingSummary.onHandValue)} helper="Value of current on-hand stock" />
+                <MetricCard label="P1 — 0 to 1 Year" value={mvr(ageingSummary.p1)} helper="Stock aged 0–365 days" active={stockAgeFilter === 'P1'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P1' ? 'ALL' : 'P1')} />
+                <MetricCard label="P2 — 1 to 3 Years" value={mvr(ageingSummary.p2)} helper="Stock aged 366–1095 days" active={stockAgeFilter === 'P2'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P2' ? 'ALL' : 'P2')} />
+                <MetricCard label="P3 — 3 to 4 Years" value={mvr(ageingSummary.p3)} helper="Stock aged 1096–1460 days" active={stockAgeFilter === 'P3'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P3' ? 'ALL' : 'P3')} />
+                <MetricCard label="P4 — 4 to 5 Years" value={mvr(ageingSummary.p4)} helper="Stock aged 1461–1825 days" active={stockAgeFilter === 'P4'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P4' ? 'ALL' : 'P4')} />
+                <MetricCard label="P5 — Over 5 Years" value={mvr(ageingSummary.p5)} helper="Stock aged more than 1825 days" tone="bad" active={stockAgeFilter === 'P5'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P5' ? 'ALL' : 'P5')} />
+                <MetricCard label="Aged over 365 days" value={mvr(ageingSummary.agedOver365)} helper="P2 + P3 + P4 + P5" tone="warn" active={stockAgeFilter === 'AGED365'} onClick={() => setStockAgeFilter(stockAgeFilter === 'AGED365' ? 'ALL' : 'AGED365')} />
               </div>
 
               {stockAgeFilter !== 'ALL' && (
@@ -3100,20 +3102,20 @@ export default function App() {
                   { key: 'item_description', label: 'Product Name' },
                   { key: 'unit', label: 'Inventory Unit' },
                   { key: 'on_hand', label: 'On-hand Qty', render: (_v, r) => fmt(rawNumber(r, ['On-hand quantity']) || Number(r.on_hand || 0), 2) },
-                  { key: 'raw_on_hand_value', label: 'On-hand Value', render: (_v, r) => money(rawNumber(r, ['On-hand value'])) },
+                  { key: 'raw_on_hand_value', label: 'On-hand Value', render: (_v, r) => mvr(rawNumber(r, ['On-hand value'])) },
                   { key: 'raw_inventory_value_qty', label: 'Inventory Value Qty', render: (_v, r) => fmt(rawNumber(r, ['Inventory value quantity']), 2) },
-                  { key: 'raw_inventory_value', label: 'Inventory Value', render: (_v, r) => money(rawNumber(r, ['Inventory value'])) },
-                  { key: 'unit_cost', label: 'Average Unit Cost', render: (_v, r) => money(rawNumber(r, ['Average unit cost']) || Number(r.unit_cost || 0)) },
+                  { key: 'raw_inventory_value', label: 'Inventory Value', render: (_v, r) => mvr(rawNumber(r, ['Inventory value'])) },
+                  { key: 'unit_cost', label: 'Average Unit Cost', render: (_v, r) => mvr(rawNumber(r, ['Average unit cost']) || Number(r.unit_cost || 0)) },
                   { key: 'raw_p1_qty', label: 'P1 Qty (0–365)', render: (_v, r) => fmt(rawNumber(r, ['P1:Quantity']), 2) },
-                  { key: 'raw_p1_amt', label: 'P1 Amount', render: (_v, r) => money(rawNumber(r, ['P1:Amount'])) },
+                  { key: 'raw_p1_amt', label: 'P1 Amount', render: (_v, r) => mvr(rawNumber(r, ['P1:Amount'])) },
                   { key: 'raw_p2_qty', label: 'P2 Qty (366–1095)', render: (_v, r) => fmt(rawNumber(r, ['P2:Quantity']), 2) },
-                  { key: 'raw_p2_amt', label: 'P2 Amount', render: (_v, r) => money(rawNumber(r, ['P2:Amount'])) },
+                  { key: 'raw_p2_amt', label: 'P2 Amount', render: (_v, r) => mvr(rawNumber(r, ['P2:Amount'])) },
                   { key: 'raw_p3_qty', label: 'P3 Qty (1096–1460)', render: (_v, r) => fmt(rawNumber(r, ['P3:Quantity']), 2) },
-                  { key: 'raw_p3_amt', label: 'P3 Amount', render: (_v, r) => money(rawNumber(r, ['P3:Amount'])) },
+                  { key: 'raw_p3_amt', label: 'P3 Amount', render: (_v, r) => mvr(rawNumber(r, ['P3:Amount'])) },
                   { key: 'raw_p4_qty', label: 'P4 Qty (1461–1825)', render: (_v, r) => fmt(rawNumber(r, ['P4:Quantity']), 2) },
-                  { key: 'raw_p4_amt', label: 'P4 Amount', render: (_v, r) => money(rawNumber(r, ['P4:Amount'])) },
+                  { key: 'raw_p4_amt', label: 'P4 Amount', render: (_v, r) => mvr(rawNumber(r, ['P4:Amount'])) },
                   { key: 'raw_p5_qty', label: 'P5 Qty (1825+)', render: (_v, r) => fmt(rawNumber(r, ['P5:Quantity']), 2) },
-                  { key: 'raw_p5_amt', label: 'P5 Amount', render: (_v, r) => money(rawNumber(r, ['P5:Amount'])) },
+                  { key: 'raw_p5_amt', label: 'P5 Amount', render: (_v, r) => mvr(rawNumber(r, ['P5:Amount'])) },
                 ]}
               />
             </>
