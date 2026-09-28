@@ -3055,7 +3055,6 @@ export default function App() {
                 <MetricCard label="Items" value={fmt(data.stock.length)} helper="Unique item IDs loaded" />
                 <MetricCard label="On-hand quantity" value={fmt(ageingSummary.onHandQty, 2)} helper="Physical on-hand quantity" />
                 <MetricCard label="On-hand value" value={money(ageingSummary.onHandValue)} helper="Value of current on-hand stock" />
-                <MetricCard label="Inventory value" value={money(ageingSummary.inventoryValue)} helper="Inventory ageing report value" />
                 <MetricCard label="0–365 days" value={money(ageingSummary.p1)} helper="P1 amount" />
                 <MetricCard label="366–1095 days" value={money(ageingSummary.p2)} helper="P2 amount" />
                 <MetricCard label="1096–1460 days" value={money(ageingSummary.p3)} helper="P3 amount" />
