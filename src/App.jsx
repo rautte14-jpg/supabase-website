@@ -2206,8 +2206,8 @@ export default function App() {
         <div className="brand">
           <div className="brand-box">SRD</div>
           <div>
-            <strong>Inventory</strong>
-            <span>Control Centre</span>
+            <strong>SRD Warehouse</strong>
+            <span>System</span>
           </div>
         </div>
 
