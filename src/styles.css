@@ -1158,3 +1158,89 @@ td {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+
+.metric-grid.ageing-history-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.ageing-trend-panel {
+  margin-bottom: 18px;
+}
+
+.ageing-chart-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.ageing-chart-wrap svg {
+  width: 100%;
+  min-width: 640px;
+  height: 240px;
+}
+
+.ageing-axis {
+  stroke: #cfd9ea;
+  stroke-width: 1;
+}
+
+.ageing-line {
+  fill: none;
+  stroke: #315fae;
+  stroke-width: 4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.ageing-point {
+  fill: white;
+  stroke: #315fae;
+  stroke-width: 3;
+}
+
+.ageing-x-label {
+  fill: #6c7fa7;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ageing-history-list {
+  display: grid;
+  gap: 0;
+  margin-top: 8px;
+  border-top: 1px solid #e6ebf3;
+}
+
+.ageing-history-list > div {
+  display: grid;
+  grid-template-columns: 120px 180px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid #edf1f7;
+  font-size: 12px;
+}
+
+.ageing-history-list span {
+  color: #6b7c9d;
+}
+
+.ageing-history-list b {
+  color: #173675;
+}
+
+.ageing-history-list small {
+  color: #8a98b2;
+}
+
+@media (max-width: 900px) {
+  .metric-grid.ageing-history-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .ageing-history-list > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+}
