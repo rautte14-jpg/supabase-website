@@ -2501,6 +2501,7 @@ export default function App() {
 
     const snapshotMetrics = {
       kind: 'MEETING',
+      comparisonVersion: '2',
       periodStart,
       periodEnd,
       prfSubmitted: prfWeekCounts[0]?.count || 0,
@@ -2595,8 +2596,13 @@ export default function App() {
     [data.snapshots],
   )
 
-  const currentMeetingSnapshot = meetingSnapshots.find((s) => s.snapshot_date === meetingWeek.weekStart) || null
-  const previousMeetingSnapshot = [...meetingSnapshots]
+  const verifiedMeetingSnapshots = useMemo(
+    () => meetingSnapshots.filter((s) => s.metrics?.comparisonVersion === '2'),
+    [meetingSnapshots],
+  )
+
+  const currentMeetingSnapshot = verifiedMeetingSnapshots.find((s) => s.snapshot_date === meetingWeek.weekStart) || null
+  const previousMeetingSnapshot = [...verifiedMeetingSnapshots]
     .reverse()
     .find((s) => s.snapshot_date < meetingWeek.weekStart) || null
 
@@ -2618,7 +2624,7 @@ export default function App() {
   const meetingStatePrevious = previousMeetingSnapshot?.metrics || null
 
   const snapshotDeltaText = (key, formatter = (v) => fmt(v)) => {
-    if (!meetingStatePrevious) return 'Save weekly snapshots to compare'
+    if (!meetingStatePrevious) return 'No verified prior snapshot yet'
     const current = Number(meetingStateCurrent[key] || 0)
     const previous = Number(meetingStatePrevious[key] || 0)
     const diff = current - previous
@@ -2713,7 +2719,7 @@ export default function App() {
             <span>On-hand stock value</span>
             <b>{mvr(meetingStateCurrent.onHandValue)}</b>
             <div>
-              <small>{meetingStatePrevious ? 'Last snapshot ' + mvr(meetingStatePrevious.onHandValue || 0) : 'No prior meeting snapshot'}</small>
+              <small>{meetingStatePrevious ? 'Last snapshot ' + mvr(meetingStatePrevious.onHandValue || 0) : 'No verified prior snapshot'}</small>
               <strong>{snapshotDeltaText('onHandValue', mvr)}</strong>
             </div>
           </div>
@@ -2721,7 +2727,7 @@ export default function App() {
             <span>Stock value over 1 year</span>
             <b>{mvr(meetingStateCurrent.agedOver365)}</b>
             <div>
-              <small>{meetingStatePrevious ? 'Last snapshot ' + mvr(meetingStatePrevious.agedOver365 || 0) : 'No prior meeting snapshot'}</small>
+              <small>{meetingStatePrevious ? 'Last snapshot ' + mvr(meetingStatePrevious.agedOver365 || 0) : 'No verified prior snapshot'}</small>
               <strong>{snapshotDeltaText('agedOver365', mvr)}</strong>
             </div>
           </div>
@@ -2730,9 +2736,15 @@ export default function App() {
     },
     {
       kicker: 'STATE CHANGE',
-      title: 'Operational Position vs Last Snapshot',
+      title: 'Operational Position vs Last Verified Snapshot',
       body: (
-        <div className="meeting-change-grid operational">
+        <>
+          {!meetingStatePrevious && (
+            <div className="meeting-snapshot-notice">
+              Operational comparison starts once two verified weekly snapshots exist. Legacy reconstructed snapshots are excluded.
+            </div>
+          )}
+          <div className="meeting-change-grid operational">
           {[
             ['Pending PR / PO', 'pendingPrPo'],
             ['Urgent cases', 'urgentCases'],
@@ -2747,12 +2759,13 @@ export default function App() {
               <span>{label}</span>
               <b>{fmt(meetingStateCurrent[key])}</b>
               <div>
-                <small>{meetingStatePrevious ? 'Last snapshot ' + fmt(meetingStatePrevious[key] || 0) : 'No prior snapshot'}</small>
+                <small>{meetingStatePrevious ? 'Last snapshot ' + fmt(meetingStatePrevious[key] || 0) : 'No verified prior snapshot'}</small>
                 <strong>{snapshotDeltaText(key)}</strong>
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        </>
       ),
     },
     {
