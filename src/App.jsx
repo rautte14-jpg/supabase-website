@@ -3787,14 +3787,6 @@ export default function App() {
                   onClick={() => selectMrnControl('AGE7')}
                 />
                 <MetricCard
-                  label="Pending Without SVO / Journal"
-                  value={fmt(mrnSummary.noJournal)}
-                  helper="Pending MRNs without ERP issue reference"
-                  tone="bad"
-                  active={mrnControlFilter === 'NO_JOURNAL'}
-                  onClick={() => selectMrnControl('NO_JOURNAL')}
-                />
-                <MetricCard
                   label="MRNs With SVO / Journal"
                   value={fmt(mrnSummary.withJournal)}
                   helper="MRNs linked to an ERP issue reference"
