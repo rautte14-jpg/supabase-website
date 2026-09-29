@@ -3558,7 +3558,7 @@ export default function App() {
             <>
               <PageHeader title="MTR Tracker" subtitle="Requested, transferred and remaining quantities by vessel / SR." />
 
-              <section className="prf-weekly-summary">
+              <section className="prf-weekly-summary mrn-weekly-strip">
                 <div className="prf-status-head">
                   <div>
                     <span className="eyebrow">WEEKLY MTR REQUESTS</span>
@@ -3593,7 +3593,7 @@ export default function App() {
                 )}
               </section>
 
-              <div className="metric-grid mtr-metrics">
+              <div className="metric-grid mtr-metrics mrn-primary-metrics">
                 <MetricCard label="Total MTRs" value={fmt(mtrSummary.totalMtrs)} helper="Distinct MTR numbers" />
                 <MetricCard
                   label="Fully Transferred MTRs"
@@ -3789,7 +3789,7 @@ export default function App() {
               </div>
 
               <div className="mtr-breakdown-grid">
-                <section className="prf-status-summary">
+                <section className="prf-status-summary mrn-analysis-panel mrn-status-panel">
                   <div className="prf-status-head">
                     <div><span className="eyebrow">ISSUED STATUS</span><h3>MRN records by issued status</h3></div>
                     <span>{fmt(mrnSummary.total)} records</span>
@@ -3827,7 +3827,7 @@ export default function App() {
                   )}
                 </section>
 
-                <section className="prf-status-summary">
+                <section className="prf-status-summary mrn-analysis-panel mrn-workshop-panel">
                   <div className="prf-status-head">
                     <div><span className="eyebrow">WORKSHOP</span><h3>MRNs by workshop</h3></div>
                     <span>Top workshops</span>
@@ -3867,7 +3867,7 @@ export default function App() {
                 </section>
               </div>
 
-              <section className="prf-status-summary">
+              <section className="prf-status-summary mrn-wp-panel">
                 <div className="prf-status-head">
                   <div><span className="eyebrow">WP TYPE</span><h3>MRNs by WP type</h3></div>
                   <span>Click to filter</span>
@@ -3886,7 +3886,7 @@ export default function App() {
                 </div>
               </section>
 
-              <section className="prf-status-summary sr-issues-section">
+              <section className="prf-status-summary sr-issues-section sr-issues-feature">
                 <div className="prf-status-head">
                   <div>
                     <span className="eyebrow">ACTUAL SR ISSUE ACTIVITY</span>
@@ -3904,9 +3904,9 @@ export default function App() {
                   <>
                     <div className="metric-grid sr-issue-metrics">
                       <MetricCard label="Issue Lines" value={fmt(srIssueSummary.total)} helper={fmt(srIssueSummary.salesOrders) + ' sales orders · ' + fmt(srIssueSummary.srs) + ' SRs'} active={srIssueFilter === 'ALL'} onClick={() => setSrIssueFilter('ALL')} />
-                      <MetricCard label="Completed Issue" value={fmt(srIssueSummary.completed)} helper="Invoiced or delivered lines" active={srIssueFilter === 'COMPLETED'} onClick={() => setSrIssueFilter(srIssueFilter === 'COMPLETED' ? 'ALL' : 'COMPLETED')} />
-                      <MetricCard label="Pending Invoice" value={fmt(srIssueSummary.pendingInvoice)} helper="ERP line status: Open order" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} />
-                      <MetricCard label="Cancelled" value={fmt(srIssueSummary.cancelled)} helper="Cancelled sales-order lines" tone="bad" active={srIssueFilter === 'CANCELLED'} onClick={() => setSrIssueFilter(srIssueFilter === 'CANCELLED' ? 'ALL' : 'CANCELLED')} />
+                      <div className="sr-kpi-accent sr-kpi-completed"><MetricCard label="Completed Issue" value={fmt(srIssueSummary.completed)} helper="Invoiced or delivered lines" active={srIssueFilter === 'COMPLETED'} onClick={() => setSrIssueFilter(srIssueFilter === 'COMPLETED' ? 'ALL' : 'COMPLETED')} /></div>
+                      <div className="sr-kpi-accent sr-kpi-pending"><MetricCard label="Pending Invoice" value={fmt(srIssueSummary.pendingInvoice)} helper="ERP line status: Open order" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} /></div>
+                      <div className="sr-kpi-accent sr-kpi-cancelled"><MetricCard label="Cancelled" value={fmt(srIssueSummary.cancelled)} helper="Cancelled sales-order lines" tone="bad" active={srIssueFilter === 'CANCELLED'} onClick={() => setSrIssueFilter(srIssueFilter === 'CANCELLED' ? 'ALL' : 'CANCELLED')} /></div>
                       <div className="metric-card sr-week-card !min-h-[108px] !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm">
                         <div className="sr-week-card-head">
                           <span>Selected Week</span>
@@ -3922,7 +3922,7 @@ export default function App() {
                         <strong>{fmt(srIssueSummary.selectedWeek)}</strong>
                         <small>Issue lines in the selected Wednesday–Tuesday week</small>
                       </div>
-                      <MetricCard label="This Month" value={fmt(srIssueSummary.thisMonth)} helper="Issue lines dated in the current calendar month" />
+                      <div className="sr-kpi-accent sr-kpi-month"><MetricCard label="This Month" value={fmt(srIssueSummary.thisMonth)} helper="Issue lines dated in the current calendar month" /></div>
                     </div>
 
                     <div className="prf-filter-note prpo-age-note">
