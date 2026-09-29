@@ -172,14 +172,66 @@ function hasRawField(row, names = []) {
   return names.some((name) => keys.includes(String(name).toLowerCase().replace(/[^a-z0-9]+/g, '')))
 }
 
+function parseFlexibleDate(value) {
+  if (!value) return ''
+  const text = String(value).trim()
+  if (!text) return ''
+
+  // Already ISO / database date.
+  const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (iso) {
+    const [, y, m, d] = iso
+    return [y, String(m).padStart(2, '0'), String(d).padStart(2, '0')].join('-')
+  }
+
+  // Excel/display dates such as 23-Sep-26 or 23-Sep-2026.
+  const named = text.match(/^(\d{1,2})[-\s/]([A-Za-z]{3,9})[-\s/](\d{2}|\d{4})/)
+  if (named) {
+    const months = {
+      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+      apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+      aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10,
+      nov: 11, november: 11, dec: 12, december: 12,
+    }
+    const day = Number(named[1])
+    const month = months[named[2].toLowerCase()]
+    let year = Number(named[3])
+    if (year < 100) year += 2000
+    if (month && day >= 1 && day <= 31) {
+      return [year, String(month).padStart(2, '0'), String(day).padStart(2, '0')].join('-')
+    }
+  }
+
+  // Slash dates from source exports, e.g. 9/23/26 or 23/9/26.
+  const slash = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})/)
+  if (slash) {
+    let a = Number(slash[1])
+    let b = Number(slash[2])
+    let year = Number(slash[3])
+    if (year < 100) year += 2000
+
+    // ERP exports are usually month/day/year. If first number > 12,
+    // it must be day/month/year.
+    let month = a
+    let day = b
+    if (a > 12) {
+      day = a
+      month = b
+    }
+
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return [year, String(month).padStart(2, '0'), String(day).padStart(2, '0')].join('-')
+    }
+  }
+
+  const fallback = new Date(text)
+  return Number.isNaN(fallback.valueOf()) ? '' : fallback.toISOString().slice(0, 10)
+}
+
 function dateRowField(row, directKey, rawNames = []) {
   const direct = row?.[directKey]
   const value = direct || rawField(row, rawNames)
-  if (!value) return ''
-  const d = new Date(String(value).slice(0, 10) + (String(value).includes('T') ? '' : 'T12:00:00'))
-  if (!Number.isNaN(d.valueOf())) return d.toISOString().slice(0, 10)
-  const fallback = new Date(value)
-  return Number.isNaN(fallback.valueOf()) ? '' : fallback.toISOString().slice(0, 10)
+  return parseFlexibleDate(value)
 }
 
 function receiptState(row) {
