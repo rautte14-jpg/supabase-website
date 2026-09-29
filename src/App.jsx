@@ -1844,8 +1844,6 @@ export default function App() {
     let transferredQty = 0
     let remainingQty = 0
     let pendingNoStock = 0
-    let aged7 = 0
-    let aged14 = 0
     let aged30 = 0
 
     weekFilteredMtrRows.forEach((row) => {
@@ -1862,8 +1860,6 @@ export default function App() {
       if (pending && !mtrStockAvailable(row)) pendingNoStock += 1
 
       const age = mtrAgeDays(row)
-      if (pending && age >= 7) aged7 += 1
-      if (pending && age >= 14) aged14 += 1
       if (pending && age >= 30) aged30 += 1
 
       if (!mtrNo) return
@@ -1903,8 +1899,6 @@ export default function App() {
       transferredQty,
       remainingQty,
       pendingNoStock,
-      aged7,
-      aged14,
       aged30,
     }
   }, [weekFilteredMtrRows])
@@ -1941,8 +1935,6 @@ export default function App() {
       if (mtrControlFilter === 'PARTIAL' && !mtrSummary.partiallyTransferredMtrs.has(mtrNo)) return false
       if (mtrControlFilter === 'NOT_TRANSFERRED' && !mtrSummary.notTransferredMtrs.has(mtrNo)) return false
       if (mtrControlFilter === 'NO_STOCK' && !(pending && !mtrStockAvailable(row))) return false
-      if (mtrControlFilter === 'AGE7' && !(pending && mtrAgeDays(row) >= 7)) return false
-      if (mtrControlFilter === 'AGE14' && !(pending && mtrAgeDays(row) >= 14)) return false
       if (mtrControlFilter === 'AGE30' && !(pending && mtrAgeDays(row) >= 30)) return false
 
       const erpStatus = String(row.status || '').trim() || 'BLANK'
@@ -2712,7 +2704,6 @@ export default function App() {
       oldestOpenPrDays: prPoAgeing.oldestOpenDays,
       mtrPending: mtrSummary.notTransferred + mtrSummary.partiallyTransferred,
       mtrNoStock: mtrSummary.pendingNoStock,
-      mtr14: mtrSummary.aged14,
       mtr30: mtrSummary.aged30,
       mrnPending: mrnSummary.pending,
       mrn14: mrnSummary.pending14,
@@ -2982,7 +2973,6 @@ export default function App() {
           <section>
             <div className="meeting-control-head"><span>MTR</span><b>Transfer Control</b></div>
             <div className="meeting-control-row"><span>Pending with no SRD on-hand</span><strong>{fmt(mtrSummary.pendingNoStock)}</strong></div>
-            <div className="meeting-control-row"><span>Pending 14+ days</span><strong>{fmt(mtrSummary.aged14)}</strong></div>
             <div className="meeting-control-row critical"><span>Pending 30+ days</span><strong>{fmt(mtrSummary.aged30)}</strong></div>
           </section>
           <section>
@@ -3655,21 +3645,6 @@ export default function App() {
                   tone="warn"
                   active={mtrControlFilter === 'NO_STOCK'}
                   onClick={() => selectMtrControl('NO_STOCK')}
-                />
-                <MetricCard
-                  label="Pending 7+ Days"
-                  value={fmt(mtrSummary.aged7)}
-                  helper="Pending item lines"
-                  active={mtrControlFilter === 'AGE7'}
-                  onClick={() => selectMtrControl('AGE7')}
-                />
-                <MetricCard
-                  label="Pending 14+ Days"
-                  value={fmt(mtrSummary.aged14)}
-                  helper="Pending item lines"
-                  tone="warn"
-                  active={mtrControlFilter === 'AGE14'}
-                  onClick={() => selectMtrControl('AGE14')}
                 />
                 <MetricCard
                   label="Pending 30+ Days"
