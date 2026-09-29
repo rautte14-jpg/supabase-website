@@ -223,6 +223,15 @@ function prSubmittedDate(row) {
     'Requisition Date',
   ])
 }
+function receivedDate(row) {
+  return dateRowField(row, 'received_date', [
+    'Received Date',
+    'Receipt Date',
+    'Goods Received Date',
+    'GRN Date',
+  ])
+}
+
 
 function mtrRequestedQty(row) {
   return Math.max(0, Number(row?.requested_qty || 0))
@@ -2097,25 +2106,24 @@ export default function App() {
   const transactionRows = useMemo(() => data.transactions.filter(matches), [data.transactions, query])
 
   const prPoSummary = useMemo(() => {
-    const prMap = new Map()
+    // Submission-based population: used for PRs submitted in the selected week.
+    const submittedRows = weekFilteredPrLines
+    const submittedPrMap = new Map()
 
-    weekFilteredPrLines.forEach((row) => {
+    submittedRows.forEach((row) => {
       const prNo = String(row.pr_no || '').trim()
       if (!prNo) return
-
-      if (!prMap.has(prNo)) {
-        prMap.set(prNo, {
+      if (!submittedPrMap.has(prNo)) {
+        submittedPrMap.set(prNo, {
           requested: 0,
           received: 0,
-          submitted: null,
           lineCount: 0,
           fullLines: 0,
           partialLines: 0,
           activeLines: 0,
         })
       }
-
-      const item = prMap.get(prNo)
+      const item = submittedPrMap.get(prNo)
       const requested = requestedQty(row)
       const received = Math.min(requested > 0 ? requested : Number.MAX_SAFE_INTEGER, receivedQty(row))
       const state = receiptState(row)
@@ -2127,31 +2135,57 @@ export default function App() {
       if (state === 'full') item.fullLines += 1
       if (state === 'partial') item.partialLines += 1
       if (!status.includes('cancel') && !status.includes('reject')) item.activeLines += 1
-
-      const dateIso = prSubmittedDate(row)
-      if (dateIso) {
-        const d = new Date(dateIso + 'T12:00:00')
-        if (!Number.isNaN(d.valueOf()) && (!item.submitted || d < item.submitted)) item.submitted = d
-      }
     })
 
-    const prs = [...prMap.values()].filter((p) => p.activeLines > 0)
-    const isFullyReceived = (p) =>
-      (p.requested > 0 && p.received >= p.requested) ||
-      (p.lineCount > 0 && p.fullLines === p.lineCount)
+    // Receipt-based population: used for receipt KPIs so older PRs received this week are included.
+    const receiptRows = allPrLines.filter((row) => {
+      const date = receivedDate(row)
+      if (!date || receivedQty(row) <= 0) return false
+      return prPoWeekFilter === 'ALL' || weekStartWednesday(date) === prPoWeekFilter
+    })
 
-    const fullyReceived = prs.filter(isFullyReceived)
-    const partReceived = prs.filter((p) =>
-      !isFullyReceived(p) && (p.received > 0 || p.partialLines > 0 || p.fullLines > 0)
-    )
-
-    const receivedItemQty = weekFilteredPrLines.reduce(
+    const receivedItemQty = receiptRows.reduce(
       (sum, row) => sum + receivedQty(row),
       0,
     )
 
-    const poMap = new Map()
-    weekFilteredPrLines.forEach((row, index) => {
+    const receivedPrNos = new Set(receiptRows.map((row) => String(row.pr_no || '').trim()).filter(Boolean))
+
+    // Determine each PR's current receipt completion state using all its lines.
+    const allPrState = new Map()
+    allPrLines.forEach((row) => {
+      const prNo = String(row.pr_no || '').trim()
+      if (!prNo) return
+      if (!allPrState.has(prNo)) {
+        allPrState.set(prNo, { requested: 0, received: 0, lineCount: 0, fullLines: 0, partialLines: 0, latestReceiptDate: '' })
+      }
+      const p = allPrState.get(prNo)
+      const requested = requestedQty(row)
+      const received = receivedQty(row)
+      const state = receiptState(row)
+      p.requested += requested
+      p.received += Math.min(requested > 0 ? requested : Number.MAX_SAFE_INTEGER, received)
+      p.lineCount += 1
+      if (state === 'full') p.fullLines += 1
+      if (state === 'partial') p.partialLines += 1
+      const rd = receivedDate(row)
+      if (rd && (!p.latestReceiptDate || rd > p.latestReceiptDate)) p.latestReceiptDate = rd
+    })
+
+    let fullyReceivedPrs = 0
+    let partReceivedPrs = 0
+    for (const prNo of receivedPrNos) {
+      const p = allPrState.get(prNo)
+      if (!p) continue
+      const full =
+        (p.requested > 0 && p.received >= p.requested) ||
+        (p.lineCount > 0 && p.fullLines === p.lineCount)
+      if (full) fullyReceivedPrs += 1
+      else if (p.received > 0 || p.partialLines > 0 || p.fullLines > 0) partReceivedPrs += 1
+    }
+
+    // Allocate PO value to only the item lines actually received in the selected receipt week.
+    const receivedItemValue = receiptRows.reduce((sum, row) => {
       const amount = numericRowField(row, 'amount', [
         'Amount',
         'PO Amount',
@@ -2166,37 +2200,27 @@ export default function App() {
       ]) ?? 0
       const requested = requestedQty(row)
       const received = receivedQty(row)
-      if (!(amount > 0) || !(received > 0)) return
-
-      const poNo = String(row.po_no || '').trim()
-      const key = poNo || 'LINE-' + (row.id ?? index)
-
-      if (!poMap.has(key)) poMap.set(key, { value: 0, requested: 0, received: 0 })
-      const po = poMap.get(key)
-      po.value = poNo ? Math.max(po.value, amount) : po.value + amount
-      po.requested += requested
-      po.received += received
-    })
-
-    const receivedItemValue = [...poMap.values()].reduce((sum, po) => {
-      if (!(po.value > 0) || !(po.received > 0)) return sum
-      if (!(po.requested > 0)) return sum + po.value
-      return sum + po.value * Math.min(1, po.received / po.requested)
+      if (!(amount > 0) || !(received > 0)) return sum
+      if (!(requested > 0)) return sum + amount
+      return sum + amount * Math.min(1, received / requested)
     }, 0)
 
-    const urgentPendingItems = weekFilteredPrLines.filter(isUrgentPendingRow).length
-    const receiptNotDoneItems = weekFilteredPrLines.filter(isReceiptNotDoneRow).length
+    // Pending/urgent remain operational-state metrics, not receipt-date metrics.
+    const urgentPendingItems = allPrLines.filter(isUrgentPendingRow).length
+    const receiptNotDoneItems = allPrLines.filter(isReceiptNotDoneRow).length
 
     return {
-      totalPrs: prMap.size,
-      fullyReceivedPrs: fullyReceived.length,
-      partReceivedPrs: partReceived.length,
+      totalPrs: submittedPrMap.size,
+      fullyReceivedPrs,
+      partReceivedPrs,
+      receivedItemLines: receiptRows.length,
+      receivedPrs: receivedPrNos.size,
       urgentPendingItems,
       receiptNotDoneItems,
       receivedItemQty,
       receivedItemValue,
     }
-  }, [weekFilteredPrLines])
+  }, [weekFilteredPrLines, allPrLines, prPoWeekFilter])
 
   const today = new Date()
   const sevenDaysAgo = new Date()
@@ -3180,9 +3204,14 @@ export default function App() {
                   onClick={togglePrPoReceiptPending}
                 />
                 <MetricCard
+                  label="Received Item Lines"
+                  value={fmt(prPoSummary.receivedItemLines)}
+                  helper={fmt(prPoSummary.receivedPrs) + ' PRs received in selected week'}
+                />
+                <MetricCard
                   label="Received Item Quantity"
                   value={fmt(prPoSummary.receivedItemQty, 2)}
-                  helper="Total quantity received"
+                  helper="Quantity received by Received Date"
                 />
                 <MetricCard
                   label="Received Items Value"
