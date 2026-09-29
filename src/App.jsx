@@ -1076,6 +1076,23 @@ export default function App() {
     sourceUpdates: [],
     snapshots: [],
   })
+  const [loaded, setLoaded] = useState({
+    procurement: false,
+    material: false,
+    stock: false,
+    transactions: false,
+    lld: false,
+    notes: false,
+    sourceUpdates: false,
+    snapshots: false,
+  })
+  const [homeSummary, setHomeSummary] = useState({
+    prf_count: 0,
+    mrn_count: 0,
+    pending_count: 0,
+    stock_value: 0,
+    aged_value: 0,
+  })
   const [noteState, setNoteState] = useState(null)
   const [vesselSearch, setVesselSearch] = useState('')
   const [slide, setSlide] = useState(0)
@@ -1127,49 +1144,98 @@ export default function App() {
     else setAccess(null)
   }, [session?.user?.id])
 
-  async function loadAll() {
+  const TABLE_CONFIG = {
+    procurement: ['procurement_records', 'updated_at', false],
+    material: ['material_records', 'updated_at', false],
+    stock: ['stock_items', 'item_code', true],
+    transactions: ['inventory_transactions', 'physical_date', false],
+    lld: ['lld_updates', 'updated_at', false],
+    notes: ['case_notes', 'updated_at', false],
+    sourceUpdates: ['source_updates', 'imported_at', false],
+    snapshots: ['weekly_snapshots', 'snapshot_date', false],
+  }
+
+  const VIEW_TABLES = {
+    home: [],
+    overview: ['procurement', 'material', 'stock', 'transactions', 'lld', 'notes', 'sourceUpdates', 'snapshots'],
+    prf: ['procurement', 'lld', 'notes'],
+    prpo: ['procurement', 'lld', 'notes'],
+    mtr: ['material', 'notes'],
+    mrn: ['material', 'notes'],
+    vessel: ['procurement', 'material', 'transactions', 'lld'],
+    stock: ['stock', 'snapshots'],
+    updates: ['sourceUpdates'],
+    meeting: ['procurement', 'material', 'stock', 'transactions', 'lld', 'notes', 'sourceUpdates', 'snapshots'],
+    history: ['sourceUpdates', 'snapshots'],
+  }
+
+  async function loadHomeSummary() {
+    const { data: rows, error } = await supabase
+      .from('portal_home_summary')
+      .select('*')
+      .limit(1)
+    if (error) throw error
+    if (rows?.[0]) setHomeSummary(rows[0])
+  }
+
+  async function loadTables(keys, force = false) {
+    const wanted = [...new Set(keys)].filter((key) => TABLE_CONFIG[key] && (force || !loaded[key]))
+    if (!wanted.length) return
+
+    const results = await Promise.all(wanted.map(async (key) => {
+      const [table, orderColumn, ascending] = TABLE_CONFIG[key]
+      const rows = await fetchAllRows(table, orderColumn, ascending)
+      return [key, rows]
+    }))
+
+    setData((current) => {
+      const next = { ...current }
+      for (const [key, rows] of results) next[key] = rows
+      return next
+    })
+    setLoaded((current) => {
+      const next = { ...current }
+      for (const [key] of results) next[key] = true
+      return next
+    })
+  }
+
+  async function loadForView(targetView = view, force = false) {
     if (!session || !access) return
     setLoading(true)
     try {
-      const [
-        procurement,
-        material,
-        stock,
-        transactions,
-        lld,
-        notes,
-        sourceUpdates,
-        snapshots,
-      ] = await Promise.all([
-        fetchAllRows('procurement_records', 'updated_at', false),
-        fetchAllRows('material_records', 'updated_at', false),
-        fetchAllRows('stock_items', 'item_code', true),
-        fetchAllRows('inventory_transactions', 'physical_date', false),
-        fetchAllRows('lld_updates', 'updated_at', false),
-        fetchAllRows('case_notes', 'updated_at', false),
-        fetchAllRows('source_updates', 'imported_at', false),
-        fetchAllRows('weekly_snapshots', 'snapshot_date', false),
-      ])
-
-      setData({
-        procurement,
-        material,
-        stock,
-        transactions,
-        lld,
-        notes,
-        sourceUpdates,
-        snapshots,
-      })
+      if (targetView === 'home') {
+        await loadHomeSummary()
+      } else {
+        await loadTables(VIEW_TABLES[targetView] || [], force)
+      }
     } catch (error) {
       console.error('Failed to load portal data', error)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
+  }
+
+  async function refreshCurrentView() {
+    if (view === 'home') {
+      setLoading(true)
+      try {
+        await loadHomeSummary()
+      } catch (error) {
+        console.error('Failed to refresh home summary', error)
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+    await loadForView(view, true)
   }
 
   useEffect(() => {
-    if (access) loadAll()
-  }, [access?.email])
+    if (!access) return
+    loadForView(view)
+  }, [access?.email, view])
+
 
   const noteMap = useMemo(
     () => new Map(data.notes.map((n) => [n.entity_type + '|' + n.entity_key, n])),
@@ -1215,7 +1281,7 @@ export default function App() {
     const { error } = await supabase.from('case_notes').upsert(payload, { onConflict: 'entity_type,entity_key' })
     if (!error) {
       setNoteState(null)
-      await loadAll()
+      await loadTables(['notes'], true)
     }
   }
 
@@ -2267,7 +2333,7 @@ export default function App() {
       priority_cases: urgentCases,
       created_by: session.user.email,
     })
-    if (!error) await loadAll()
+    if (!error) await loadTables(['snapshots'], true)
   }
 
   const vesselTerm = lower(vesselSearch).trim()
@@ -2539,7 +2605,7 @@ export default function App() {
             {search && <button onClick={() => setSearch('')}>×</button>}
           </div>
           <div className="top-actions">
-            <button className="secondary" onClick={loadAll}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+            <button className="secondary" onClick={refreshCurrentView}>{loading ? 'Refreshing…' : 'Refresh'}</button>
             {canEdit && <button className="primary" onClick={() => setView('updates')}>Update data</button>}
           </div>
         </header>
@@ -2579,10 +2645,10 @@ export default function App() {
               </div>
 
               <div className="home-hero-stats enterprise-summary-strip">
-                <div><span>PRFs tracked</span><strong>{fmt(metrics.prf)}</strong></div>
-                <div><span>MRNs tracked</span><strong>{fmt(metrics.mrn)}</strong></div>
-                <div><span>Pending PR / PO</span><strong>{fmt(metrics.pending)}</strong></div>
-                <div><span>On-hand stock value</span><strong>{mvr(metrics.stockValue)}</strong></div>
+                <div><span>PRFs tracked</span><strong>{fmt(homeSummary.prf_count)}</strong></div>
+                <div><span>MRNs tracked</span><strong>{fmt(homeSummary.mrn_count)}</strong></div>
+                <div><span>Pending PR / PO</span><strong>{fmt(homeSummary.pending_count)}</strong></div>
+                <div><span>On-hand stock value</span><strong>{mvr(homeSummary.stock_value)}</strong></div>
               </div>
 
               <div className="home-section-head">
@@ -3379,7 +3445,20 @@ export default function App() {
           {view === 'updates' && canEdit && (
             <>
               <PageHeader title="Update Centre" subtitle="Load fresh ERP/Form exports and keep meeting remarks, actions and history intact." />
-              <ImportPanel onApplied={loadAll} email={session.user.email} />
+              <ImportPanel onApplied={async () => {
+                setLoaded({
+                  procurement: false,
+                  material: false,
+                  stock: false,
+                  transactions: false,
+                  lld: false,
+                  notes: false,
+                  sourceUpdates: false,
+                  snapshots: false,
+                })
+                await loadHomeSummary()
+                await loadForView('updates', true)
+              }} email={session.user.email} />
             </>
           )}
 
