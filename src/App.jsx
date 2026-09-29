@@ -26,6 +26,31 @@ const NAV_GROUPS = [
   ['Administration', ['updates']],
 ]
 
+function LineIcon({ name, className = 'h-5 w-5' }) {
+  const paths = {
+    home: <><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-7h6v7"/></>,
+    overview: <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
+    prf: <><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4"/><path d="M9 12h6M9 16h6"/></>,
+    prpo: <><path d="M4 5h16v14H4z"/><path d="M4 9h16"/><path d="M8 13h3M8 16h6"/></>,
+    mtr: <><path d="M4 7h11"/><path d="m12 4 3 3-3 3"/><path d="M20 17H9"/><path d="m12 14-3 3 3 3"/></>,
+    mrn: <><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></>,
+    vessel: <><path d="M3 14h18l-3 5H6z"/><path d="M8 14V7h8v7"/><path d="M10 7V4h4v3"/></>,
+    stock: <><path d="m12 3 8 4-8 4-8-4z"/><path d="m4 12 8 4 8-4"/><path d="m4 17 8 4 8-4"/></>,
+    updates: <><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M5 21h14"/></>,
+    meeting: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></>,
+    history: <><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/></>,
+    search: <><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></>,
+    refresh: <><path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M18.5 9A7 7 0 0 0 6 6.5L4 11"/><path d="M5.5 15A7 7 0 0 0 18 17.5L20 13"/></>,
+    upload: <><path d="M12 21V9"/><path d="m8 13 4-4 4 4"/><path d="M5 3h14"/></>,
+    arrow: <><path d="M5 12h14"/><path d="m15 8 4 4-4 4"/></>,
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      {paths[name] || paths.overview}
+    </svg>
+  )
+}
+
 const fmt = (n, digits = 0) =>
   Number(n || 0).toLocaleString(undefined, {
     minimumFractionDigits: digits,
@@ -2554,26 +2579,37 @@ export default function App() {
   if (access === false) return <AccessDenied email={session.user.email} />
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-box">SRD</div>
+    <div className="app-shell bg-slate-50">
+      <aside className="sidebar !bg-[#0B1F3A] !border-r !border-white/10 !shadow-none">
+        <div className="brand !border-white/10">
+          <div className="brand-box !rounded-xl !bg-white/10 !text-white !shadow-none ring-1 ring-white/10">SRD</div>
           <div>
             <strong>SRD Warehouse</strong>
             <span>System</span>
           </div>
         </div>
 
-        <nav className="enterprise-nav">
+        <nav className="enterprise-nav space-y-5">
           {NAV_GROUPS.map(([group, keys]) => {
             const items = NAV.filter(([key]) => keys.includes(key) && (canEdit || key !== 'updates'))
             if (!items.length) return null
             return (
-              <div className="nav-group" key={group}>
-                <div className="nav-group-label">{group}</div>
+              <div className="nav-group !mb-0" key={group}>
+                <div className="nav-group-label !px-3 !pb-2 !text-[10px] !font-semibold !tracking-[0.14em] !text-slate-500">{group}</div>
                 {items.map(([key, label, icon]) => (
-                  <button key={key} className={view === key ? 'nav-item active' : 'nav-item'} onClick={() => setView(key)}>
-                    <span className="nav-icon">{icon}</span>
+                  <button
+                    key={key}
+                    className={
+                      'nav-item group relative !min-h-0 !rounded-lg !px-3 !py-2.5 !text-sm !font-medium transition-all duration-200 ' +
+                      (view === key
+                        ? '!bg-white/10 !text-white before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-blue-400'
+                        : '!text-slate-300 hover:!bg-white/[0.06] hover:!text-white')
+                    }
+                    onClick={() => setView(key)}
+                  >
+                    <span className="!grid !h-5 !w-5 !place-items-center !bg-transparent !text-current">
+                      <LineIcon name={key} className="h-[18px] w-[18px]" />
+                    </span>
                     <span>{label}</span>
                   </button>
                 ))}
@@ -2590,13 +2626,13 @@ export default function App() {
       </aside>
 
       <main className="workspace">
-        <header className="topbar">
-          <div className="topbar-context">
+        <header className="topbar !min-h-[68px] !border-b !border-slate-200 !bg-white/95 !px-7 !shadow-sm backdrop-blur">
+          <div className="topbar-context !border-slate-200">
             <span>SRD Warehouse</span>
             <strong>{NAV.find(([key]) => key === view)?.[1] || 'Workspace'}</strong>
           </div>
-          <div className="search-wrap">
-            <span>⌕</span>
+          <div className="search-wrap !min-h-[42px] !max-w-2xl !rounded-xl !border-slate-200 !bg-slate-50 !px-3.5 transition focus-within:!border-blue-400 focus-within:!bg-white focus-within:!shadow-[0_0_0_3px_rgba(59,130,246,0.10)]">
+            <LineIcon name="search" className="h-[18px] w-[18px] text-slate-400" />
             <input
               placeholder="Search PRF, PR, PO, MTR, MRN, item, vessel or SR…"
               value={search}
@@ -2605,8 +2641,14 @@ export default function App() {
             {search && <button onClick={() => setSearch('')}>×</button>}
           </div>
           <div className="top-actions">
-            <button className="secondary" onClick={refreshCurrentView}>{loading ? 'Refreshing…' : 'Refresh'}</button>
-            {canEdit && <button className="primary" onClick={() => setView('updates')}>Update data</button>}
+            <button className="secondary !inline-flex !items-center !gap-2 !rounded-lg !border-slate-200 !bg-white !px-3.5 !py-2 !text-sm !font-medium !text-slate-700 hover:!bg-slate-50" onClick={refreshCurrentView}>
+              <LineIcon name="refresh" className="h-4 w-4" />{loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+            {canEdit && (
+              <button className="primary !inline-flex !items-center !gap-2 !rounded-lg !bg-blue-600 !px-4 !py-2 !text-sm !font-semibold !text-white !shadow-sm hover:!bg-blue-700" onClick={() => setView('updates')}>
+                <LineIcon name="upload" className="h-4 w-4" />Update data
+              </button>
+            )}
           </div>
         </header>
 
@@ -2629,35 +2671,47 @@ export default function App() {
           </section>
         )}
 
-        <section className="content">
+        <section className="content !bg-[#F8FAFC]">
           {view === 'home' && (
-            <section className="warehouse-home">
-              <div className="home-hero enterprise-home-header">
+            <section className="warehouse-home mx-auto max-w-[1500px]">
+              <div className="home-hero enterprise-home-header !mb-6 !rounded-2xl !border !border-slate-200 !bg-white !px-7 !py-6 !shadow-sm">
                 <div className="home-hero-copy">
-                  <span className="home-kicker">SHIPBUILDING & REPAIR DIVISION · MATERIALS MANAGEMENT</span>
-                  <h1>Warehouse Operations</h1>
-                  <p>Procurement, material movement and inventory control workspace.</p>
+                  <span className="home-kicker !text-[10px] !font-semibold !tracking-[0.14em] !text-blue-600">SHIPBUILDING & REPAIR DIVISION · MATERIALS MANAGEMENT</span>
+                  <h1 className="!mt-2 !text-3xl !font-semibold !tracking-tight !text-slate-900">Warehouse Operations</h1>
+                  <p className="!mt-1 !text-sm !text-slate-500">Procurement, material movement and inventory control workspace.</p>
                 </div>
-                <div className="home-actions">
-                  <button className="home-primary" onClick={() => setView('overview')}>Open Overview</button>
-                  <button className="home-secondary" onClick={() => setView('stock')}>Stock & Ageing</button>
+                <div className="home-actions !gap-2">
+                  <button className="home-primary !rounded-lg !bg-blue-600 !px-4 !py-2.5 !text-sm !font-semibold !text-white hover:!bg-blue-700" onClick={() => setView('overview')}>Open Overview</button>
+                  <button className="home-secondary !rounded-lg !border !border-slate-200 !bg-white !px-4 !py-2.5 !text-sm !font-semibold !text-slate-700 hover:!bg-slate-50" onClick={() => setView('stock')}>Stock & Ageing</button>
                 </div>
               </div>
 
-              <div className="home-hero-stats enterprise-summary-strip">
-                <div><span>PRFs tracked</span><strong>{fmt(homeSummary.prf_count)}</strong></div>
-                <div><span>MRNs tracked</span><strong>{fmt(homeSummary.mrn_count)}</strong></div>
-                <div><span>Pending PR / PO</span><strong>{fmt(homeSummary.pending_count)}</strong></div>
-                <div><span>On-hand stock value</span><strong>{mvr(homeSummary.stock_value)}</strong></div>
+              <div className="home-hero-stats !mb-8 !grid !grid-cols-1 !gap-4 !border-0 !bg-transparent sm:!grid-cols-2 xl:!grid-cols-4">
+                {[
+                  ['PRFs tracked', fmt(homeSummary.prf_count), 'prf'],
+                  ['MRNs tracked', fmt(homeSummary.mrn_count), 'mrn'],
+                  ['Pending PR / PO', fmt(homeSummary.pending_count), 'prpo'],
+                  ['On-hand stock value', mvr(homeSummary.stock_value), 'stock'],
+                ].map(([label, value, icon]) => (
+                  <div key={label} className="!min-h-[132px] !rounded-xl !border !border-slate-200 !bg-white !p-5 !shadow-sm">
+                    <div className="mb-5 flex items-start justify-between">
+                      <span className="!text-[11px] !font-medium !uppercase !tracking-[0.08em] !text-slate-500">{label}</span>
+                      <span className="grid h-9 w-9 place-items-center rounded-lg bg-blue-50 text-blue-600">
+                        <LineIcon name={icon} className="h-[18px] w-[18px]" />
+                      </span>
+                    </div>
+                    <strong className="!block !text-[28px] !font-semibold !leading-none !tracking-tight !text-slate-900">{value}</strong>
+                  </div>
+                ))}
               </div>
 
-              <div className="home-section-head">
-                <span className="eyebrow">WAREHOUSE MODULES</span>
-                <h2>Quick access</h2>
-                <p>Open the area you need directly from the home page.</p>
+              <div className="home-section-head !mb-4">
+                <span className="eyebrow !text-[10px] !font-semibold !tracking-[0.14em] !text-blue-600">WAREHOUSE MODULES</span>
+                <h2 className="!mt-1 !text-xl !font-semibold !tracking-tight !text-slate-900">Quick access</h2>
+                <p className="!mt-1 !block !text-sm !text-slate-500">Open the area you need directly from the home page.</p>
               </div>
 
-              <div className="home-module-grid">
+              <div className="home-module-grid !grid !grid-cols-1 !gap-4 md:!grid-cols-2 xl:!grid-cols-3">
                 {[
                   ['prf', 'PRF Tracker', 'Track PRF / IPF requests and movement into procurement.'],
                   ['prpo', 'PR & PO Tracker', 'Follow PRs, POs, delivery, receipts and ageing.'],
@@ -2667,10 +2721,22 @@ export default function App() {
                   ['meeting', 'Wednesday Meeting', 'Open the weekly management meeting view.'],
                   ['history', 'History', 'Review source uploads and update history.'],
                 ].map(([key, title, text]) => (
-                  <button key={key} className="home-module-card" onClick={() => setView(key)}>
-                    <span>{title}</span>
-                    <p>{text}</p>
-                    <b>Open →</b>
+                  <button
+                    key={key}
+                    className="home-module-card group !min-h-[168px] !rounded-xl !border !border-slate-200 !bg-white !p-5 !text-left !shadow-sm transition-all duration-200 hover:!-translate-y-0.5 hover:!border-slate-300 hover:!shadow-md"
+                    onClick={() => setView(key)}
+                  >
+                    <div className="mb-5 flex items-start justify-between">
+                      <span className="grid h-10 w-10 place-items-center rounded-xl bg-slate-100 text-slate-700 transition group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <LineIcon name={key} className="h-5 w-5" />
+                      </span>
+                      <span className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-slate-400 transition group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:text-blue-600">
+                        <LineIcon name="arrow" className="h-4 w-4" />
+                      </span>
+                    </div>
+                    <span className="!block !text-[15px] !font-semibold !tracking-tight !text-slate-900">{title}</span>
+                    <p className="!mt-1.5 !text-[12px] !leading-5 !text-slate-500">{text}</p>
+                    <div className="!mt-auto !pt-4 !text-[11px] !font-medium !text-slate-400 group-hover:!text-blue-600">View live module</div>
                   </button>
                 ))}
               </div>
