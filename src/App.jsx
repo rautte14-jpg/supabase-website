@@ -3677,6 +3677,7 @@ export default function App() {
                       >
                         <span>{status}</span>
                         <strong>{fmt(count)}</strong>
+                        <span className={mrnStatusFilter === status ? 'mrn-card-chevron open' : 'mrn-card-chevron'} aria-hidden="true">⌄</span>
                       </button>
                     ))}
                   </div>
@@ -3871,6 +3872,7 @@ export default function App() {
                       >
                         <span>{workshop}</span>
                         <strong>{fmt(count)}</strong>
+                        <span className={mrnWorkshopFilter === workshop ? 'mrn-card-chevron open' : 'mrn-card-chevron'} aria-hidden="true">⌄</span>
                       </button>
                     ))}
                   </div>
