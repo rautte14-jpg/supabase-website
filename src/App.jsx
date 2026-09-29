@@ -3761,12 +3761,22 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-                {mrnWeekFilter !== 'ALL' && (
-                  <div className="prf-filter-note">
-                    Showing MRNs created {formatShortDate(mrnWeekFilter)} – {formatShortDate(addDaysIso(mrnWeekFilter, 6))}
-                    <button onClick={() => selectMrnWeek('ALL')}>Clear week</button>
+                <div className="mrn-period-context">
+                  <div>
+                    <span>SELECTED MRN PERIOD</span>
+                    <b>
+                      {mrnWeekFilter === 'ALL'
+                        ? 'All MRN creation dates'
+                        : formatShortDate(mrnWeekFilter) + ' – ' + formatShortDate(addDaysIso(mrnWeekFilter, 6))}
+                    </b>
                   </div>
-                )}
+                  <small>
+                    {mrnWeekFilter === 'ALL'
+                      ? 'Summary and breakdowns below use all MRN records.'
+                      : 'Summary and breakdowns below only use MRNs created in this selected week.'}
+                  </small>
+                  {mrnWeekFilter !== 'ALL' && <button onClick={() => selectMrnWeek('ALL')}>Clear week</button>}
+                </div>
               </section>
 
               <div className="metric-grid mtr-metrics mrn-primary-metrics mrn-summary-band">
@@ -3792,21 +3802,12 @@ export default function App() {
                     onClick={() => selectMrnControl('PENDING')}
                   />
                 </div>
-                <div className="mrn-summary-card aged">
-                  <MetricCard
-                    label="Pending 7+ Days"
-                    value={fmt(mrnSummary.pending7)}
-                    helper="No lines issued; aged 7+ days"
-                    active={mrnControlFilter === 'AGE7'}
-                    onClick={() => selectMrnControl('AGE7')}
-                  />
-                </div>
               </div>
 
               <div className="mtr-breakdown-grid mrn-analysis-grid">
                 <section className="prf-status-summary mrn-analysis-panel mrn-status-panel">
                   <div className="prf-status-head">
-                    <div><span className="eyebrow">ISSUED STATUS</span><h3>MRN records by issued status</h3></div>
+                    <div><span className="eyebrow">ISSUED STATUS · SELECTED PERIOD</span><h3>MRN records by issued status</h3></div>
                     <span>{fmt(mrnSummary.total)} records</span>
                   </div>
                   <div className="prf-status-grid">
@@ -3845,7 +3846,7 @@ export default function App() {
 
                 <section className="prf-status-summary mrn-analysis-panel mrn-workshop-panel">
                   <div className="prf-status-head">
-                    <div><span className="eyebrow">WORKSHOP</span><h3>MRNs by workshop</h3></div>
+                    <div><span className="eyebrow">WORKSHOP · SELECTED PERIOD</span><h3>MRNs by workshop</h3></div>
                     <span>Top workshops</span>
                   </div>
                   <div className="prf-status-grid">
@@ -3885,7 +3886,7 @@ export default function App() {
 
               <section className="prf-status-summary mrn-wp-panel">
                 <div className="prf-status-head">
-                  <div><span className="eyebrow">WP TYPE</span><h3>MRNs by WP type</h3></div>
+                  <div><span className="eyebrow">WP TYPE · SELECTED PERIOD</span><h3>MRNs by WP type</h3></div>
                   <span>Click to filter</span>
                 </div>
                 <div className="prf-status-grid">
@@ -3902,6 +3903,10 @@ export default function App() {
                 </div>
               </section>
 
+              <div className="mrn-section-divider">
+                <span>ERP ISSUE ACTIVITY</span>
+                <b>Independent from the MRN creation-week filter above</b>
+              </div>
               <section className="prf-status-summary sr-issues-section sr-issues-feature">
                 <div className="prf-status-head">
                   <div>
@@ -3961,17 +3966,28 @@ export default function App() {
                 )}
               </section>
 
-              {(mrnControlFilter !== 'ALL' || mrnStatusFilter !== 'ALL' || mrnWorkshopFilter !== 'ALL' || mrnWpTypeFilter !== 'ALL') && (
-                <div className="prf-filter-note prpo-age-note">
-                  Showing filtered MRNs
+              <div className="mrn-active-filter-bar">
+                <div>
+                  <span>DETAIL RECORDS</span>
+                  <b>{fmt(mrnVisibleCounts.records)} MRN records</b>
+                </div>
+                <div className="mrn-active-filter-chips">
+                  <span>Period: {mrnWeekFilter === 'ALL' ? 'All dates' : formatShortDate(mrnWeekFilter) + ' – ' + formatShortDate(addDaysIso(mrnWeekFilter, 6))}</span>
+                  {mrnStatusFilter !== 'ALL' && <span>Status: {mrnStatusFilter}</span>}
+                  {mrnWorkshopFilter !== 'ALL' && <span>Workshop: {mrnWorkshopFilter}</span>}
+                  {mrnWpTypeFilter !== 'ALL' && <span>WP Type: {mrnWpTypeFilter}</span>}
+                  {mrnControlFilter !== 'ALL' && <span>Control: {mrnControlFilter}</span>}
+                </div>
+                {(mrnControlFilter !== 'ALL' || mrnStatusFilter !== 'ALL' || mrnWorkshopFilter !== 'ALL' || mrnWpTypeFilter !== 'ALL' || mrnWeekFilter !== 'ALL') && (
                   <button onClick={() => {
+                    setMrnWeekFilter('ALL')
                     setMrnControlFilter('ALL')
                     setMrnStatusFilter('ALL')
                     setMrnWorkshopFilter('ALL')
                     setMrnWpTypeFilter('ALL')
-                  }}>Clear MRN filter</button>
-                </div>
-              )}
+                  }}>Clear filters</button>
+                )}
+              </div>
 
               <div className="prpo-visible-count">
                 <strong>{fmt(mrnVisibleCounts.records)} MRN record{mrnVisibleCounts.records === 1 ? '' : 's'}</strong>
