@@ -17,6 +17,15 @@ const NAV = [
   ['history', 'History', 'H'],
 ]
 
+const NAV_GROUPS = [
+  ['Workspace', ['home', 'overview']],
+  ['Procurement', ['prf', 'prpo']],
+  ['Materials', ['mtr', 'mrn', 'vessel']],
+  ['Inventory', ['stock']],
+  ['Reporting', ['meeting', 'history']],
+  ['Administration', ['updates']],
+]
+
 const fmt = (n, digits = 0) =>
   Number(n || 0).toLocaleString(undefined, {
     minimumFractionDigits: digits,
@@ -2489,15 +2498,22 @@ export default function App() {
           </div>
         </div>
 
-        <nav>
-          {NAV
-            .filter(([key]) => canEdit || key !== 'updates')
-            .map(([key, label, icon]) => (
-              <button key={key} className={view === key ? 'nav-item active' : 'nav-item'} onClick={() => setView(key)}>
-                <span className="nav-icon">{icon}</span>
-                <span>{label}</span>
-              </button>
-            ))}
+        <nav className="enterprise-nav">
+          {NAV_GROUPS.map(([group, keys]) => {
+            const items = NAV.filter(([key]) => keys.includes(key) && (canEdit || key !== 'updates'))
+            if (!items.length) return null
+            return (
+              <div className="nav-group" key={group}>
+                <div className="nav-group-label">{group}</div>
+                {items.map(([key, label, icon]) => (
+                  <button key={key} className={view === key ? 'nav-item active' : 'nav-item'} onClick={() => setView(key)}>
+                    <span className="nav-icon">{icon}</span>
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            )
+          })}
         </nav>
 
         <div className="sidebar-bottom">
@@ -2509,6 +2525,10 @@ export default function App() {
 
       <main className="workspace">
         <header className="topbar">
+          <div className="topbar-context">
+            <span>SRD Warehouse</span>
+            <strong>{NAV.find(([key]) => key === view)?.[1] || 'Workspace'}</strong>
+          </div>
           <div className="search-wrap">
             <span>⌕</span>
             <input
@@ -2546,26 +2566,23 @@ export default function App() {
         <section className="content">
           {view === 'home' && (
             <section className="warehouse-home">
-              <div className="home-hero">
+              <div className="home-hero enterprise-home-header">
                 <div className="home-hero-copy">
-                  <span className="home-kicker">SHIPBUILDING & REPAIR DIVISION</span>
-                  <h1>SRD Warehouse System</h1>
-                  <p>
-                    Central control for procurement, material requests, stock movement,
-                    receipts, issues and weekly warehouse follow-up.
-                  </p>
-                  <div className="home-actions">
-                    <button className="home-primary" onClick={() => setView('overview')}>Open Dashboard</button>
-                    <button className="home-secondary" onClick={() => setView('stock')}>View Stock</button>
-                  </div>
+                  <span className="home-kicker">SHIPBUILDING & REPAIR DIVISION · MATERIALS MANAGEMENT</span>
+                  <h1>Warehouse Operations</h1>
+                  <p>Procurement, material movement and inventory control workspace.</p>
                 </div>
+                <div className="home-actions">
+                  <button className="home-primary" onClick={() => setView('overview')}>Open Overview</button>
+                  <button className="home-secondary" onClick={() => setView('stock')}>Stock & Ageing</button>
+                </div>
+              </div>
 
-                <div className="home-hero-stats">
-                  <div><strong>{fmt(metrics.prf)}</strong><span>PRFs Tracked</span></div>
-                  <div><strong>{fmt(metrics.mrn)}</strong><span>MRNs Tracked</span></div>
-                  <div><strong>{fmt(metrics.pending)}</strong><span>Pending PR / PO</span></div>
-                  <div><strong>{money(metrics.stockValue)}</strong><span>Stock Value</span></div>
-                </div>
+              <div className="home-hero-stats enterprise-summary-strip">
+                <div><span>PRFs tracked</span><strong>{fmt(metrics.prf)}</strong></div>
+                <div><span>MRNs tracked</span><strong>{fmt(metrics.mrn)}</strong></div>
+                <div><span>Pending PR / PO</span><strong>{fmt(metrics.pending)}</strong></div>
+                <div><span>On-hand stock value</span><strong>{mvr(metrics.stockValue)}</strong></div>
               </div>
 
               <div className="home-section-head">
