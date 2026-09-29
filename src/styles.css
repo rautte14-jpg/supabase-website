@@ -3413,3 +3413,15 @@ tbody tr:hover {
     text-align: left;
   }
 }
+
+
+.meeting-snapshot-notice {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(147,197,253,.18);
+  border-radius: 9px;
+  background: rgba(59,130,246,.08);
+  color: #bfdbfe;
+  font-size: 9px;
+  line-height: 1.45;
+}
