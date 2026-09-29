@@ -1255,6 +1255,7 @@ export default function App() {
   const [mrnWorkshopFilter, setMrnWorkshopFilter] = useState('ALL')
   const [mrnWpTypeFilter, setMrnWpTypeFilter] = useState('ALL')
   const [srIssueFilter, setSrIssueFilter] = useState('ALL')
+  const [srIssueWeekFilter, setSrIssueWeekFilter] = useState(() => weekStartWednesday(new Date().toISOString().slice(0, 10)))
   const [stockAgeFilter, setStockAgeFilter] = useState('ALL')
 
   const canEdit = access && ['admin', 'editor'].includes(lower(access.role))
@@ -2147,10 +2148,19 @@ export default function App() {
     }
   }), [data.srIssues, mrnMatchRecords])
 
+  const srIssueWeekOptions = useMemo(() => {
+    const currentWeek = weekStartWednesday(new Date().toISOString().slice(0, 10))
+    return Array.from({ length: 8 }, (_, index) => {
+      const weekStart = addDaysIso(currentWeek, index * -7)
+      return {
+        weekStart,
+        weekEnd: addDaysIso(weekStart, 6),
+      }
+    })
+  }, [])
+
   const srIssueSummary = useMemo(() => {
-    const today = new Date()
-    const todayIsoLocal = today.toISOString().slice(0, 10)
-    const currentWeekStart = weekStartWednesday(todayIsoLocal)
+    const todayIsoLocal = new Date().toISOString().slice(0, 10)
     const monthStart = todayIsoLocal.slice(0, 7) + '-01'
 
     return {
@@ -2158,36 +2168,33 @@ export default function App() {
       completed: srIssuesEnriched.filter((r) => r.issue_state === 'Completed issue').length,
       pendingInvoice: srIssuesEnriched.filter((r) => r.issue_state === 'Pending invoice').length,
       cancelled: srIssuesEnriched.filter((r) => r.issue_state === 'Cancelled').length,
-      thisWeek: srIssuesEnriched.filter((r) => {
+      selectedWeek: srIssuesEnriched.filter((r) => {
         const d = parseFlexibleDate(r.requested_receipt_date)
-        return d && weekStartWednesday(d) === currentWeekStart
+        return d && weekStartWednesday(d) === srIssueWeekFilter
       }).length,
       thisMonth: srIssuesEnriched.filter((r) => {
         const d = parseFlexibleDate(r.requested_receipt_date)
         return d && d >= monthStart && d <= todayIsoLocal
       }).length,
-      verified: srIssuesEnriched.filter((r) => r.match_type === 'VERIFIED').length,
-      likely: srIssuesEnriched.filter((r) => r.match_type === 'LIKELY').length,
-      context: srIssuesEnriched.filter((r) => r.match_type === 'SR_CONTEXT').length,
-      ambiguous: srIssuesEnriched.filter((r) => r.match_type === 'AMBIGUOUS').length,
-      unmatched: srIssuesEnriched.filter((r) => r.match_type === 'UNMATCHED').length,
       salesOrders: new Set(srIssuesEnriched.map((r) => r.sales_order).filter(Boolean)).size,
       srs: new Set(srIssuesEnriched.map((r) => normalizedSr(r.sr_no)).filter(Boolean)).size,
     }
-  }, [srIssuesEnriched])
+  }, [srIssuesEnriched, srIssueWeekFilter])
 
   const srIssueRows = useMemo(
     () => srIssuesEnriched.filter((row) => {
       if (!matches(row)) return false
+
+      const issueDate = parseFlexibleDate(row.requested_receipt_date)
+      if (!issueDate || weekStartWednesday(issueDate) !== srIssueWeekFilter) return false
+
       if (srIssueFilter === 'ALL') return true
       if (srIssueFilter === 'COMPLETED') return row.issue_state === 'Completed issue'
       if (srIssueFilter === 'PENDING') return row.issue_state === 'Pending invoice'
       if (srIssueFilter === 'CANCELLED') return row.issue_state === 'Cancelled'
-      if (srIssueFilter === 'VERIFIED') return row.match_type === 'VERIFIED'
-      if (srIssueFilter === 'REVIEW') return ['LIKELY', 'AMBIGUOUS', 'UNMATCHED'].includes(row.match_type)
       return true
     }),
-    [srIssuesEnriched, srIssueFilter, query],
+    [srIssuesEnriched, srIssueFilter, srIssueWeekFilter, query],
   )
 
   const stockOnHandValue = (row) =>
@@ -3880,7 +3887,21 @@ export default function App() {
                       <MetricCard label="Completed Issue" value={fmt(srIssueSummary.completed)} helper="Invoiced or delivered lines" active={srIssueFilter === 'COMPLETED'} onClick={() => setSrIssueFilter(srIssueFilter === 'COMPLETED' ? 'ALL' : 'COMPLETED')} />
                       <MetricCard label="Pending Invoice" value={fmt(srIssueSummary.pendingInvoice)} helper="ERP line status: Open order" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} />
                       <MetricCard label="Cancelled" value={fmt(srIssueSummary.cancelled)} helper="Cancelled sales-order lines" tone="bad" active={srIssueFilter === 'CANCELLED'} onClick={() => setSrIssueFilter(srIssueFilter === 'CANCELLED' ? 'ALL' : 'CANCELLED')} />
-                      <MetricCard label="This Week" value={fmt(srIssueSummary.thisWeek)} helper="Issue lines dated in the current Wednesday–Tuesday week" />
+                      <div className="metric-card sr-week-card !min-h-[108px] !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm">
+                        <div className="sr-week-card-head">
+                          <span>Selected Week</span>
+                          <select value={srIssueWeekFilter} onChange={(e) => setSrIssueWeekFilter(e.target.value)}>
+                            {srIssueWeekOptions.map((week, index) => (
+                              <option key={week.weekStart} value={week.weekStart}>
+                                {index === 0 ? 'This week · ' : index === 1 ? 'Previous week · ' : ''}
+                                {formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <strong>{fmt(srIssueSummary.selectedWeek)}</strong>
+                        <small>Issue lines in the selected Wednesday–Tuesday week</small>
+                      </div>
                       <MetricCard label="This Month" value={fmt(srIssueSummary.thisMonth)} helper="Issue lines dated in the current calendar month" />
                     </div>
 
@@ -3889,6 +3910,13 @@ export default function App() {
                       {srIssueFilter !== 'ALL' && <button onClick={() => setSrIssueFilter('ALL')}>Clear SR issue filter</button>}
                     </div>
 
+                    <div className="sr-selected-week-heading">
+                      <div>
+                        <span className="eyebrow">ITEMS FROM SELECTED WEEK</span>
+                        <h4>{formatShortDate(srIssueWeekFilter)} – {formatShortDate(addDaysIso(srIssueWeekFilter, 6))}</h4>
+                      </div>
+                      <strong>{fmt(srIssueRows.length)} issue lines</strong>
+                    </div>
                     <DataTable rows={srIssueRows} columns={srIssueColumns} limit={250} />
                   </>
                 )}
