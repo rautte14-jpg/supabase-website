@@ -2409,196 +2409,229 @@ export default function App() {
     return [...preferred, ...remaining].slice(0, 12)
   })()
 
+  const meetingWeek = prfWeekCounts[0] || { weekStart: weekStartWednesday(todayIso), weekEnd: addDaysIso(weekStartWednesday(todayIso), 6), count: 0 }
+  const previousMeetingWeek = prfWeekCounts[1] || { count: 0 }
+
+  const meetingWeeklyChange = {
+    prf: { current: prfWeekCounts[0]?.count || 0, previous: prfWeekCounts[1]?.count || 0 },
+    pr: { current: prPoWeekCounts[0]?.count || 0, previous: prPoWeekCounts[1]?.count || 0 },
+    mtr: { current: mtrWeekCounts[0]?.count || 0, previous: mtrWeekCounts[1]?.count || 0 },
+    mrn: { current: mrnWeekCounts[0]?.count || 0, previous: mrnWeekCounts[1]?.count || 0 },
+  }
+
+  const meetingProcurementExceptions = useMemo(() => {
+    const urgentRows = allPrPoRows.filter(isUrgentPendingRow)
+    const pendingPoRows = allPrPoRows.filter(isReceiptNotDoneRow)
+    const overdueRows = procurementData.filter((r) =>
+      r.expected_delivery && r.expected_delivery < todayIso && !isClosed(r.delivery_status || r.status)
+    )
+
+    const rows = [...urgentRows, ...overdueRows]
+    const seen = new Set()
+    return rows.filter((r) => {
+      const key = [r.po_no, r.pr_no, r.prf_no, r.item_code].filter(Boolean).join('|')
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    }).slice(0, 7).map((r) => ({
+      ref: r.po_no || r.pr_no || r.prf_no || '—',
+      detail: r.item_description || r.item_code || r.vessel || r.asset || 'No description',
+      issue: isUrgent(r.priority)
+        ? 'Urgent pending'
+        : (r.expected_delivery && r.expected_delivery < todayIso ? 'Delivery overdue' : 'Pending'),
+      eta: r.expected_delivery || '—',
+    }))
+  }, [allPrPoRows, procurementData, todayIso])
+
+  const meetingDecisionNotes = useMemo(
+    () => data.notes
+      .filter((n) => ['critical', 'urgent', 'high'].includes(lower(n.priority)) || n.deadline)
+      .slice(0, 8),
+    [data.notes],
+  )
+
+  const meetingAgedPercent = ageingSummary.onHandValue > 0
+    ? (ageingSummary.agedOver365 / ageingSummary.onHandValue) * 100
+    : 0
+
+  const deltaText = (current, previous, suffix = '') => {
+    const diff = Number(current || 0) - Number(previous || 0)
+    if (diff === 0) return 'No change'
+    return (diff > 0 ? '+' : '') + fmt(diff, 0) + suffix + ' vs last week'
+  }
+
   const meetingSlides = [
     {
-      kicker: 'WEEKLY CONTROL VIEW',
-      title: 'SRD Inventory Overview',
-      body: (
-        <div className="meeting-metrics">
-          <MetricCard label="PRFs tracked" value={metrics.prf} />
-          <MetricCard label="MRNs tracked" value={metrics.mrn} />
-          <MetricCard label="Pending PR / PO" value={metrics.pending} tone="warn" />
-          <MetricCard label="Urgent cases" value={metrics.urgent} tone="bad" />
-          <MetricCard label="Overdue delivery" value={metrics.overdue} tone="bad" />
-          <MetricCard label="Stock value" value={money(metrics.stockValue)} />
-        </div>
-      ),
-    },
-    {
-      kicker: 'REQUEST PIPELINE',
-      title: 'PRFs & MRNs',
-      body: (
-        <div className="meeting-two">
-          <div className="meeting-stat"><span>PRFs</span><b>{metrics.prf}</b><small>Request → PR / MTR follow-up</small></div>
-          <div className="meeting-stat"><span>MRNs</span><b>{metrics.mrn}</b><small>Material request → ERP issue against SR</small></div>
-        </div>
-      ),
-    },
-    {
-      kicker: 'PRF STATUS CONTROL',
-      title:
-        'PRF Status Breakdown' +
-        (prfWeekFilter !== 'ALL'
-          ? ' — ' + formatShortDate(prfWeekFilter) + '–' + formatShortDate(addDaysIso(prfWeekFilter, 6))
-          : ''),
+      kicker: 'MANAGEMENT REVIEW',
+      title: 'Executive Summary',
       body: (
         <>
-          <div className="meeting-week-picker">
-            <button
-              className={prfWeekFilter === 'ALL' ? 'meeting-week-chip active' : 'meeting-week-chip'}
-              onClick={() => selectPrfWeek('ALL')}
-            >
-              ALL WEEKS
-            </button>
-            {prfWeekCounts.map((week) => (
-              <button
-                key={week.weekStart}
-                className={prfWeekFilter === week.weekStart ? 'meeting-week-chip active' : 'meeting-week-chip'}
-                onClick={() => selectPrfWeek(week.weekStart)}
-              >
-                {formatShortDate(week.weekStart)}–{formatShortDate(week.weekEnd)}
-                <b>{fmt(week.count)}</b>
-              </button>
-            ))}
-          </div>
-
-          <div className="meeting-prf-total">
-            <span>{prfWeekFilter === 'ALL' ? 'Total PRFs in current register' : 'PRFs submitted in selected week'}</span>
-            <strong>{fmt(weekFilteredPrfRows.length)}</strong>
-          </div>
-
-          <div className="meeting-status-grid">
-            {meetingPrfStatuses.map(([status, count]) => (
-              <div
-                className={
-                  status === 'NOT ATTENDED' || status === 'ITEM CREATION PENDING'
-                    ? 'meeting-status-card highlight'
-                    : 'meeting-status-card'
-                }
-                key={status}
-              >
-                <span>{status}</span>
-                <b>{fmt(count)}</b>
-              </div>
-            ))}
-          </div>
-
-          {!meetingPrfStatuses.length && (
-            <EmptyState title="No PRF status data for this week" text="Choose another week or upload the PRF / IPF register." />
-          )}
-        </>
-      ),
-    },
-    {
-      kicker: 'MTR MOVEMENT CONTROL',
-      title:
-        'MTR Transfer Status' +
-        (mtrWeekFilter !== 'ALL'
-          ? ' — ' + formatShortDate(mtrWeekFilter) + '–' + formatShortDate(addDaysIso(mtrWeekFilter, 6))
-          : ''),
-      body: (
-        <>
-          <div className="meeting-week-picker">
-            <button
-              className={mtrWeekFilter === 'ALL' ? 'meeting-week-chip active' : 'meeting-week-chip'}
-              onClick={() => selectMtrWeek('ALL')}
-            >
-              ALL WEEKS
-            </button>
-            {mtrWeekCounts.map((week) => (
-              <button
-                key={week.weekStart}
-                className={mtrWeekFilter === week.weekStart ? 'meeting-week-chip active' : 'meeting-week-chip'}
-                onClick={() => selectMtrWeek(week.weekStart)}
-              >
-                {formatShortDate(week.weekStart)}–{formatShortDate(week.weekEnd)}
-                <b>{fmt(week.count)}</b>
-              </button>
-            ))}
+          <div className="meeting-period-banner">
+            <div>
+              <span>REVIEW PERIOD</span>
+              <b>{formatShortDate(meetingWeek.weekStart)} – {formatShortDate(meetingWeek.weekEnd)}</b>
+            </div>
+            <small>Wednesday–Tuesday operational review</small>
           </div>
           <div className="meeting-metrics">
-            <MetricCard label="MTRs" value={fmt(mtrSummary.totalMtrs)} helper="Distinct MTR numbers" />
-            <MetricCard label="Fully transferred" value={fmt(mtrSummary.fullyTransferred)} />
-            <MetricCard label="Partially transferred" value={fmt(mtrSummary.partiallyTransferred)} tone="warn" />
-            <MetricCard label="Not transferred" value={fmt(mtrSummary.notTransferred)} tone="bad" />
-            <MetricCard label="Stock available, pending" value={fmt(mtrSummary.stockAvailablePending)} tone="bad" helper="Item lines" />
-            <MetricCard label="30+ day pending" value={fmt(mtrSummary.aged30)} tone="bad" helper="Item lines" />
+            <MetricCard label="Pending PR / PO" value={fmt(metrics.pending)} tone="warn" helper="Open procurement lines" />
+            <MetricCard label="Urgent Cases" value={fmt(metrics.urgent)} tone="bad" helper="High-priority open lines" />
+            <MetricCard label="Overdue Deliveries" value={fmt(metrics.overdue)} tone="bad" helper="ETA already passed" />
+            <MetricCard label="MTR 30+ Days" value={fmt(mtrSummary.aged30)} tone="bad" helper="Pending item lines" />
+            <MetricCard label="MRN 30+ Days" value={fmt(mrnSummary.pending30)} tone="bad" helper="Pending MRNs" />
+            <MetricCard label="Stock Value Over 1 Year" value={mvr(ageingSummary.agedOver365)} tone="warn" helper={meetingAgedPercent.toFixed(1) + '% of on-hand value'} />
           </div>
         </>
       ),
     },
     {
-      kicker: 'MRN / ISSUE CONTROL',
-      title:
-        'MRN Issue Status' +
-        (mrnWeekFilter !== 'ALL'
-          ? ' — ' + formatShortDate(mrnWeekFilter) + '–' + formatShortDate(addDaysIso(mrnWeekFilter, 6))
-          : ''),
+      kicker: 'WHAT CHANGED',
+      title: 'This Week vs Last Week',
       body: (
-        <>
-          <div className="meeting-week-picker">
-            <button
-              className={mrnWeekFilter === 'ALL' ? 'meeting-week-chip active' : 'meeting-week-chip'}
-              onClick={() => selectMrnWeek('ALL')}
-            >
-              ALL WEEKS
-            </button>
-            {mrnWeekCounts.map((week) => (
-              <button
-                key={week.weekStart}
-                className={mrnWeekFilter === week.weekStart ? 'meeting-week-chip active' : 'meeting-week-chip'}
-                onClick={() => selectMrnWeek(week.weekStart)}
-              >
-                {formatShortDate(week.weekStart)}–{formatShortDate(week.weekEnd)}
-                <b>{fmt(week.count)}</b>
-              </button>
-            ))}
-          </div>
-          <div className="meeting-metrics">
-            <MetricCard label="MRNs" value={fmt(mrnSummary.total)} helper="Distinct MRN numbers" />
-            <MetricCard label="Issued" value={fmt(mrnSummary.issued)} />
-            <MetricCard label="Pending / Not issued" value={fmt(mrnSummary.pending)} tone="bad" />
-            <MetricCard label="14+ day pending" value={fmt(mrnSummary.pending14)} tone="warn" />
-            <MetricCard label="30+ day pending" value={fmt(mrnSummary.pending30)} tone="bad" />
-            <MetricCard label="Pending without SVO / Journal" value={fmt(mrnSummary.noJournal)} tone="bad" />
-          </div>
-        </>
-      ),
-    },
-    {
-      kicker: 'MOVEMENT',
-      title: 'Receipts & Issues — last 7 days',
-      body: (
-        <div className="meeting-two">
-          <div className="meeting-stat"><span>Received</span><b>{fmt(metrics.receipts, 2)}</b><small>Total quantity</small></div>
-          <div className="meeting-stat"><span>Issued</span><b>{fmt(metrics.issues, 2)}</b><small>Total quantity</small></div>
-        </div>
-      ),
-    },
-    {
-      kicker: 'INVENTORY HEALTH',
-      title: 'Stock & Ageing',
-      body: (
-        <div className="meeting-two">
-          <div className="meeting-stat"><span>Current stock value</span><b>{money(metrics.stockValue)}</b><small>From latest on-hand upload</small></div>
-          <div className="meeting-stat"><span>Aged stock value</span><b>{money(metrics.agedValue)}</b><small>Based on uploaded ageing bands</small></div>
-        </div>
-      ),
-    },
-    {
-      kicker: 'DECISIONS & OWNERS',
-      title: 'Open Actions',
-      body: (
-        <div className="meeting-list">
-          {data.notes.slice(0, 10).map((n) => (
-            <div key={n.id}>
-              <b>{n.entity_key}</b>
-              <span>{n.action || n.remark || 'No action text'}</span>
-              <small>{n.owner || 'No owner'} {n.deadline ? '• ' + n.deadline : ''}</small>
+        <div className="meeting-change-grid">
+          {[
+            ['PRFs submitted', meetingWeeklyChange.prf.current, meetingWeeklyChange.prf.previous],
+            ['PRs submitted', meetingWeeklyChange.pr.current, meetingWeeklyChange.pr.previous],
+            ['MTRs requested', meetingWeeklyChange.mtr.current, meetingWeeklyChange.mtr.previous],
+            ['MRNs created', meetingWeeklyChange.mrn.current, meetingWeeklyChange.mrn.previous],
+          ].map(([label, current, previous]) => (
+            <div className="meeting-change-card" key={label}>
+              <span>{label}</span>
+              <b>{fmt(current)}</b>
+              <div><small>Last week {fmt(previous)}</small><strong>{deltaText(current, previous)}</strong></div>
             </div>
           ))}
-          {!data.notes.length && <EmptyState title="No actions recorded yet" text="Use Add update on tracker rows." />}
+          <div className="meeting-change-card wide">
+            <span>On-hand stock value</span>
+            <b>{mvr(ageingComparison.currentOnHand || ageingSummary.onHandValue)}</b>
+            <div>
+              <small>{ageingComparison.previous ? 'Previous ' + mvr(ageingComparison.previousOnHand) : 'Baseline only'}</small>
+              <strong>{ageingComparison.onHandChange === null ? 'Comparison available after next upload' : ((ageingComparison.onHandChange >= 0 ? '+' : '') + mvr(ageingComparison.onHandChange) + ' · ' + ageingComparison.onHandPercent.toFixed(2) + '%')}</strong>
+            </div>
+          </div>
+          <div className="meeting-change-card wide">
+            <span>Stock value over 1 year</span>
+            <b>{mvr(ageingComparison.currentValue || ageingSummary.agedOver365)}</b>
+            <div>
+              <small>{ageingComparison.previous ? 'Previous ' + mvr(ageingComparison.previousValue) : 'Baseline only'}</small>
+              <strong>{ageingComparison.change === null ? 'Comparison available after next upload' : ((ageingComparison.change >= 0 ? '+' : '') + mvr(ageingComparison.change) + ' · ' + ageingComparison.percent.toFixed(2) + '%')}</strong>
+            </div>
+          </div>
         </div>
+      ),
+    },
+    {
+      kicker: 'PROCUREMENT EXCEPTIONS',
+      title: 'Items Requiring Attention',
+      body: (
+        <>
+          <div className="meeting-exception-metrics">
+            <div><span>Urgent pending items</span><b>{fmt(allPrPoRows.filter(isUrgentPendingRow).length)}</b></div>
+            <div><span>Pending PO</span><b>{fmt(allPrPoRows.filter(isReceiptNotDoneRow).length)}</b></div>
+            <div><span>6+ month aged PRs</span><b>{fmt(prPoAgeing.agedSixPlus)}</b></div>
+            <div><span>Oldest open PR</span><b>{fmt(prPoAgeing.oldestOpenDays)}d</b></div>
+          </div>
+          <div className="meeting-exception-table">
+            <div className="meeting-exception-head"><span>Reference</span><span>Issue / item</span><span>Exception</span><span>ETA</span></div>
+            {meetingProcurementExceptions.map((x, i) => (
+              <div className="meeting-exception-row" key={x.ref + i}>
+                <b>{x.ref}</b>
+                <span>{x.detail}</span>
+                <em>{x.issue}</em>
+                <small>{x.eta}</small>
+              </div>
+            ))}
+            {!meetingProcurementExceptions.length && <div className="meeting-no-exceptions">No urgent or overdue procurement exceptions found.</div>}
+          </div>
+        </>
+      ),
+    },
+    {
+      kicker: 'MATERIAL EXCEPTIONS',
+      title: 'Transfer & Issue Bottlenecks',
+      body: (
+        <div className="meeting-control-grid">
+          <section>
+            <div className="meeting-control-head"><span>MTR</span><b>Transfer Control</b></div>
+            <div className="meeting-control-row"><span>Stock available but still pending</span><strong>{fmt(mtrSummary.stockAvailablePending)}</strong></div>
+            <div className="meeting-control-row"><span>Pending due to no stock</span><strong>{fmt(mtrSummary.pendingNoStock)}</strong></div>
+            <div className="meeting-control-row"><span>Pending 14+ days</span><strong>{fmt(mtrSummary.aged14)}</strong></div>
+            <div className="meeting-control-row critical"><span>Pending 30+ days</span><strong>{fmt(mtrSummary.aged30)}</strong></div>
+          </section>
+          <section>
+            <div className="meeting-control-head"><span>MRN</span><b>Issue Control</b></div>
+            <div className="meeting-control-row"><span>Pending / not issued</span><strong>{fmt(mrnSummary.pending)}</strong></div>
+            <div className="meeting-control-row"><span>Pending 14+ days</span><strong>{fmt(mrnSummary.pending14)}</strong></div>
+            <div className="meeting-control-row critical"><span>Pending 30+ days</span><strong>{fmt(mrnSummary.pending30)}</strong></div>
+            <div className="meeting-control-row critical"><span>Without SVO / Journal</span><strong>{fmt(mrnSummary.noJournal)}</strong></div>
+          </section>
+        </div>
+      ),
+    },
+    {
+      kicker: 'INVENTORY RISK',
+      title: 'Stock & Ageing Review',
+      body: (
+        <>
+          <div className="meeting-inventory-hero">
+            <div><span>On-hand Value</span><b>{mvr(ageingSummary.onHandValue)}</b><small>Current inventory value on hand</small></div>
+            <div><span>Over 1 Year</span><b>{mvr(ageingSummary.agedOver365)}</b><small>{meetingAgedPercent.toFixed(1)}% of on-hand value</small></div>
+            <div><span>Top 100 High Value Items</span><b>{mvr(top100HighValueTotal)}</b><small>{fmt(top100HighValue.length)} highest-value items</small></div>
+          </div>
+          <div className="meeting-age-buckets">
+            <div><span>0–1 Year</span><b>{mvr(ageingSummary.p1)}</b></div>
+            <div><span>1–3 Years</span><b>{mvr(ageingSummary.p2)}</b></div>
+            <div><span>3–4 Years</span><b>{mvr(ageingSummary.p3)}</b></div>
+            <div><span>4–5 Years</span><b>{mvr(ageingSummary.p4)}</b></div>
+            <div><span>Over 5 Years</span><b>{mvr(ageingSummary.p5)}</b></div>
+          </div>
+        </>
+      ),
+    },
+    {
+      kicker: 'OWNERSHIP & FOLLOW-UP',
+      title: 'Open Actions',
+      body: (
+        <div className="meeting-actions-table">
+          <div className="meeting-actions-head"><span>Reference</span><span>Action / issue</span><span>Owner</span><span>Deadline</span></div>
+          {data.notes.slice(0, 9).map((n) => (
+            <div className="meeting-actions-row" key={n.id}>
+              <b>{n.entity_key}</b>
+              <span>{n.action || n.remark || 'No action text'}</span>
+              <small>{n.owner || 'Unassigned'}</small>
+              <em>{n.deadline || '—'}</em>
+            </div>
+          ))}
+          {!data.notes.length && <div className="meeting-no-exceptions">No open actions recorded.</div>}
+        </div>
+      ),
+    },
+    {
+      kicker: 'MANAGEMENT DECISIONS',
+      title: 'Decisions Required',
+      body: (
+        <>
+          <div className="meeting-decision-intro">
+            <span>{fmt(meetingDecisionNotes.length)}</span>
+            <div><b>Items flagged for management attention</b><small>High-priority actions or items with a deadline.</small></div>
+          </div>
+          <div className="meeting-decisions">
+            {meetingDecisionNotes.map((n, index) => (
+              <div key={n.id || index}>
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                <section>
+                  <b>{n.entity_key}</b>
+                  <p>{n.action || n.remark || 'Decision / follow-up required'}</p>
+                </section>
+                <aside>
+                  <strong>{n.owner || 'Unassigned'}</strong>
+                  <small>{n.deadline || n.eta || 'No date'}</small>
+                </aside>
+              </div>
+            ))}
+            {!meetingDecisionNotes.length && <div className="meeting-no-exceptions">No high-priority decisions are currently flagged.</div>}
+          </div>
+        </>
       ),
     },
   ]
