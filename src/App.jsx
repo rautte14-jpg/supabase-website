@@ -2584,7 +2584,7 @@ export default function App() {
       ),
     },
     {
-      kicker: 'WHAT CHANGED',
+      kicker: 'WEEKLY ACTIVITY',
       title: 'This Week vs Last Week',
       body: (
         <div className="meeting-change-grid">
@@ -2616,7 +2616,14 @@ export default function App() {
               <strong>{snapshotDeltaText('agedOver365', mvr)}</strong>
             </div>
           </div>
-
+        </div>
+      ),
+    },
+    {
+      kicker: 'STATE CHANGE',
+      title: 'Operational Position vs Last Snapshot',
+      body: (
+        <div className="meeting-change-grid operational">
           {[
             ['Pending PR / PO', 'pendingPrPo'],
             ['Urgent cases', 'urgentCases'],
