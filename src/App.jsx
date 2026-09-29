@@ -1843,7 +1843,6 @@ export default function App() {
     let requestedQty = 0
     let transferredQty = 0
     let remainingQty = 0
-    let stockAvailablePending = 0
     let pendingNoStock = 0
     let aged7 = 0
     let aged14 = 0
@@ -1860,7 +1859,6 @@ export default function App() {
       transferredQty += transferred
       remainingQty += remaining
 
-      if (pending && mtrStockAvailable(row)) stockAvailablePending += 1
       if (pending && !mtrStockAvailable(row)) pendingNoStock += 1
 
       const age = mtrAgeDays(row)
@@ -1904,7 +1902,6 @@ export default function App() {
       requestedQty,
       transferredQty,
       remainingQty,
-      stockAvailablePending,
       pendingNoStock,
       aged7,
       aged14,
@@ -1943,7 +1940,6 @@ export default function App() {
       if (mtrControlFilter === 'FULL' && !mtrSummary.fullyTransferredMtrs.has(mtrNo)) return false
       if (mtrControlFilter === 'PARTIAL' && !mtrSummary.partiallyTransferredMtrs.has(mtrNo)) return false
       if (mtrControlFilter === 'NOT_TRANSFERRED' && !mtrSummary.notTransferredMtrs.has(mtrNo)) return false
-      if (mtrControlFilter === 'STOCK_PENDING' && !(pending && mtrStockAvailable(row))) return false
       if (mtrControlFilter === 'NO_STOCK' && !(pending && !mtrStockAvailable(row))) return false
       if (mtrControlFilter === 'AGE7' && !(pending && mtrAgeDays(row) >= 7)) return false
       if (mtrControlFilter === 'AGE14' && !(pending && mtrAgeDays(row) >= 14)) return false
@@ -2715,7 +2711,6 @@ export default function App() {
       agedPrSixPlus: prPoAgeing.agedSixPlus,
       oldestOpenPrDays: prPoAgeing.oldestOpenDays,
       mtrPending: mtrSummary.notTransferred + mtrSummary.partiallyTransferred,
-      mtrStockAvailablePending: mtrSummary.stockAvailablePending,
       mtrNoStock: mtrSummary.pendingNoStock,
       mtr14: mtrSummary.aged14,
       mtr30: mtrSummary.aged30,
@@ -2986,7 +2981,6 @@ export default function App() {
         <div className="meeting-control-grid">
           <section>
             <div className="meeting-control-head"><span>MTR</span><b>Transfer Control</b></div>
-            <div className="meeting-control-row"><span>Stock available but still pending</span><strong>{fmt(mtrSummary.stockAvailablePending)}</strong></div>
             <div className="meeting-control-row"><span>Pending due to no stock</span><strong>{fmt(mtrSummary.pendingNoStock)}</strong></div>
             <div className="meeting-control-row"><span>Pending 14+ days</span><strong>{fmt(mtrSummary.aged14)}</strong></div>
             <div className="meeting-control-row critical"><span>Pending 30+ days</span><strong>{fmt(mtrSummary.aged30)}</strong></div>
@@ -3654,14 +3648,6 @@ export default function App() {
                 <MetricCard label="Total Requested Qty" value={fmt(mtrSummary.requestedQty, 2)} />
                 <MetricCard label="Total Transferred Qty" value={fmt(mtrSummary.transferredQty, 2)} />
                 <MetricCard label="Total Remaining Qty" value={fmt(mtrSummary.remainingQty, 2)} tone="warn" />
-                <MetricCard
-                  label="Stock Available but MTR Pending"
-                  value={fmt(mtrSummary.stockAvailablePending)}
-                  helper="Pending item lines with SRD stock available"
-                  tone="bad"
-                  active={mtrControlFilter === 'STOCK_PENDING'}
-                  onClick={() => selectMtrControl('STOCK_PENDING')}
-                />
                 <MetricCard
                   label="Pending Due to No Stock"
                   value={fmt(mtrSummary.pendingNoStock)}
