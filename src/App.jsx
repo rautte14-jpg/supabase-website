@@ -510,6 +510,24 @@ function StatusPill({ value }) {
   return <span className={'status-pill ' + cls}>{text}</span>
 }
 
+function PrfStatusBadge({ value }) {
+  const text = prfStatusLabel(value)
+  const l = lower(text)
+  const complete = ['complete', 'completed', 'received', 'closed', 'delivered'].some((x) => l.includes(x))
+  const pending = ['submitted', 'pending', 'not attended', 'processing', 'progress'].some((x) => l.includes(x))
+  const cls = complete
+    ? 'border-emerald-200/60 bg-emerald-50 text-emerald-700'
+    : pending
+      ? 'border-amber-200/60 bg-amber-50 text-amber-700'
+      : 'border-slate-200 bg-slate-50 text-slate-600'
+
+  return (
+    <span className={'inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ' + cls}>
+      {text}
+    </span>
+  )
+}
+
 function EmptyState({ title = 'No records yet', text = 'Use Update Centre to load the latest source file.' }) {
   return (
     <div className="empty-state">
@@ -519,11 +537,11 @@ function EmptyState({ title = 'No records yet', text = 'Use Update Centre to loa
   )
 }
 
-function DataTable({ rows, columns, onUpdate, noteType, noteMap, limit = 300 }) {
+function DataTable({ rows, columns, onUpdate, noteType, noteMap, limit = 300, className = '' }) {
   const visible = rows.slice(0, limit)
   if (!rows.length) return <EmptyState />
   return (
-    <div className="table-wrap">
+    <div className={'table-wrap ' + className}>
       <table>
         <thead>
           <tr>
@@ -2233,7 +2251,7 @@ export default function App() {
     { key: 'pr_no', label: 'PR' },
     { key: 'po_no', label: 'PO' },
     { key: 'vessel', label: 'Vessel / Asset', render: (v, r) => v || r.asset || '—' },
-    { key: 'sr_wo', label: 'SR / WO' },
+    { key: 'sr_wo', label: 'SR / WO', render: (v) => <span className="font-mono text-[11px] font-medium text-slate-700">{v || '—'}</span> },
     { key: 'priority', label: 'Priority', render: (v) => <StatusPill value={v} /> },
     { key: 'supplier', label: 'Supplier' },
     { key: 'item_code', label: 'Item' },
@@ -2789,7 +2807,7 @@ export default function App() {
             <>
               <PageHeader title="PRF Tracker" subtitle="PRF / IPF requests and their movement into PR, MTR and PO." />
 
-              <section className="prf-weekly-summary">
+              <section className="prf-weekly-summary !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm">
                 <div className="prf-status-head">
                   <div>
                     <span className="eyebrow">WEEKLY SUBMISSIONS</span>
@@ -2798,23 +2816,23 @@ export default function App() {
                   <span>Wednesday–Tuesday</span>
                 </div>
 
-                <div className="prf-week-grid">
+                <div className="prf-week-grid !grid !gap-2 sm:!grid-cols-3 lg:!grid-cols-6">
                   <button
-                    className={prfWeekFilter === 'ALL' ? 'prf-week-card active' : 'prf-week-card'}
+                    className={'prf-week-card !min-h-[64px] !rounded-lg !border !px-3 !py-2.5 ' + (prfWeekFilter === 'ALL' ? '!border-blue-200 !bg-blue-50 !text-blue-700' : '!border-slate-200 !bg-white hover:!border-slate-300 hover:!bg-slate-50')}
                     onClick={() => selectPrfWeek('ALL')}
                   >
-                    <span>ALL WEEKS</span>
-                    <strong>{fmt(allPrfRows.filter((r) => r.pr_date).length)}</strong>
+                    <span className="!text-[10px] !font-semibold !uppercase !tracking-wider !text-blue-600">ALL PRFs</span>
+                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{fmt(allPrfRows.filter((r) => r.pr_date).length)}</strong>
                   </button>
 
                   {prfWeekCounts.map((week) => (
                     <button
                       key={week.weekStart}
-                      className={prfWeekFilter === week.weekStart ? 'prf-week-card active' : 'prf-week-card'}
+                      className={'prf-week-card !min-h-[64px] !rounded-lg !border !px-3 !py-2.5 ' + (prfWeekFilter === week.weekStart ? '!border-blue-200 !bg-blue-50' : '!border-slate-200 !bg-white hover:!border-slate-300 hover:!bg-slate-50')}
                       onClick={() => selectPrfWeek(week.weekStart)}
                     >
-                      <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
-                      <strong>{fmt(week.count)} {week.count === 1 ? 'PRF' : 'PRFs'}</strong>
+                      <span className="!text-[10px] !font-semibold !uppercase !tracking-wider !text-slate-400">{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
+                      <strong className="!text-lg !font-semibold !tracking-tight !text-slate-800">{fmt(week.count)} {week.count === 1 ? 'PRF' : 'PRFs'}</strong>
                     </button>
                   ))}
                 </div>
@@ -2827,7 +2845,7 @@ export default function App() {
                 )}
               </section>
 
-              <section className="prf-status-summary">
+              <section className="prf-status-summary !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm">
                 <div className="prf-status-head">
                   <div>
                     <span className="eyebrow">STATUS SUMMARY</span>
@@ -2844,23 +2862,23 @@ export default function App() {
                   </span>
                 </div>
 
-                <div className="prf-status-grid">
+                <div className="prf-status-grid !grid !gap-2 sm:!grid-cols-3 lg:!grid-cols-6">
                   <button
-                    className={prfStatusFilter === 'ALL' ? 'prf-status-card active' : 'prf-status-card'}
+                    className={'prf-status-card !min-h-[64px] !rounded-lg !border !px-3 !py-2.5 ' + (prfStatusFilter === 'ALL' ? '!border-blue-200 !bg-blue-50' : '!border-slate-200 !bg-white hover:!border-slate-300 hover:!bg-slate-50')}
                     onClick={() => setPrfStatusFilter('ALL')}
                   >
-                    <span>{prfWeekFilter === 'ALL' ? 'ALL PRFs' : 'ALL IN WEEK'}</span>
-                    <strong>{fmt(weekFilteredPrfRows.length)}</strong>
+                    <span className="!text-[10px] !font-semibold !uppercase !tracking-wider !text-blue-600">{prfWeekFilter === 'ALL' ? 'ALL PRFs' : 'ALL IN WEEK'}</span>
+                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{fmt(weekFilteredPrfRows.length)}</strong>
                   </button>
 
                   {prfStatusCounts.map(([status, count]) => (
                     <button
                       key={status}
-                      className={prfStatusFilter === status ? 'prf-status-card active' : 'prf-status-card'}
+                      className={'prf-status-card !min-h-[64px] !rounded-lg !border !px-3 !py-2.5 ' + (prfStatusFilter === status ? '!border-blue-200 !bg-blue-50' : '!border-slate-200 !bg-white hover:!border-slate-300 hover:!bg-slate-50')}
                       onClick={() => setPrfStatusFilter(status)}
                     >
-                      <span>{status}</span>
-                      <strong>{fmt(count)}</strong>
+                      <span className="!text-[10px] !font-semibold !uppercase !tracking-wider !text-slate-400">{status}</span>
+                      <strong className="!text-lg !font-semibold !tracking-tight !text-slate-800">{fmt(count)}</strong>
                     </button>
                   ))}
                 </div>
@@ -2874,13 +2892,14 @@ export default function App() {
               </section>
 
               <DataTable
+                className="prf-data-table !rounded-xl !border !border-slate-200 !bg-white !shadow-sm"
                 rows={prfRows}
                 noteType="procurement"
                 noteMap={noteMap}
                 onUpdate={canEdit ? openNote : undefined}
                 columns={[
-                  { key: 'prf_no', label: 'PRF / IPF' },
-                  { key: 'linked_pr_mtr', label: 'PR / MTR' },
+                  { key: 'prf_no', label: 'PRF / IPF', render: (v) => <span className="font-mono text-[11px] font-semibold text-slate-900">{v || '—'}</span> },
+                  { key: 'linked_pr_mtr', label: 'PR / MTR', render: (v) => <span className="font-mono text-[11px] font-medium text-slate-700">{v || '—'}</span> },
                   { key: 'workshop', label: 'Workshop' },
                   { key: 'asset', label: 'Asset / Service', render: (v, r) => v || r.vessel || '—' },
                   { key: 'sr_wo', label: 'SR / WO' },
@@ -2890,8 +2909,8 @@ export default function App() {
                   { key: 'required_date', label: 'Required Date' },
                   { key: 'processed_date', label: 'Processed Date' },
                   { key: 'requested_by', label: 'Requested By' },
-                  { key: 'status', label: 'Status', render: (v) => <StatusPill value={prfStatusLabel(v)} /> },
-                  { key: 'latest_updates', label: 'Latest Updates' },
+                  { key: 'status', label: 'Status', render: (v) => <PrfStatusBadge value={v} /> },
+                  { key: 'latest_updates', label: 'Latest Updates', render: (v) => <span className="block max-w-[320px] whitespace-normal text-[11px] leading-5 text-slate-600">{v || '—'}</span> },
                   { key: 'cancel_reject_reason', label: 'Cancel / Reject Reason' },
                 ]}
               />
