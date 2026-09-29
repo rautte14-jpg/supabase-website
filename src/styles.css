@@ -4023,3 +4023,57 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* SR issue selected-period context */
+.sr-issue-context-bar {
+  display: grid;
+  grid-template-columns: 1.4fr .7fr .6fr .8fr auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.sr-issue-context-bar > div {
+  min-width: 0;
+}
+
+.sr-issue-context-bar span,
+.sr-issue-context-bar b {
+  display: block;
+}
+
+.sr-issue-context-bar span {
+  color: #94a3b8;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.sr-issue-context-bar b {
+  margin-top: 2px;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.sr-issue-context-bar button {
+  padding: 5px 8px;
+  border: 1px solid #dbe3ec;
+  border-radius: 7px;
+  background: #fff;
+  color: #475569;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+@media (max-width: 980px) {
+  .sr-issue-context-bar {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+  }
+}
