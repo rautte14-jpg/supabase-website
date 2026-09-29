@@ -917,6 +917,10 @@ function ImportPanel({ onApplied, email }) {
         const { error } = await supabase.from('material_records').delete().eq('document_type', source)
         if (error) throw error
         await insertBatches('material_records', mapped)
+      } else if (source === 'SR_ISSUES') {
+        const { error } = await supabase.from('sr_issue_records').delete().neq('id', 0)
+        if (error) throw error
+        await insertBatches('sr_issue_records', mapped)
       } else if (source === 'TRANSACTIONS') {
         const { error } = await supabase.from('inventory_transactions').delete().neq('id', 0)
         if (error) throw error
@@ -1194,6 +1198,7 @@ export default function App() {
     material: [],
     stock: [],
     transactions: [],
+    srIssues: [],
     lld: [],
     notes: [],
     sourceUpdates: [],
@@ -1204,6 +1209,7 @@ export default function App() {
     material: false,
     stock: false,
     transactions: false,
+    srIssues: false,
     lld: false,
     notes: false,
     sourceUpdates: false,
@@ -1273,6 +1279,7 @@ export default function App() {
     material: ['material_records', 'updated_at', false],
     stock: ['stock_items', 'item_code', true],
     transactions: ['inventory_transactions', 'physical_date', false],
+    srIssues: ['sr_issue_records', 'requested_receipt_date', false],
     lld: ['lld_updates', 'updated_at', false],
     notes: ['case_notes', 'updated_at', false],
     sourceUpdates: ['source_updates', 'imported_at', false],
@@ -1285,8 +1292,8 @@ export default function App() {
     prf: ['procurement', 'lld', 'notes'],
     prpo: ['procurement', 'lld', 'notes'],
     mtr: ['material', 'notes'],
-    mrn: ['material', 'notes'],
-    vessel: ['procurement', 'material', 'transactions', 'lld'],
+    mrn: ['material', 'srIssues', 'notes'],
+    vessel: ['procurement', 'material', 'transactions', 'srIssues', 'lld'],
     stock: ['stock', 'snapshots'],
     updates: ['sourceUpdates'],
     meeting: ['procurement', 'material', 'stock', 'transactions', 'lld', 'notes', 'sourceUpdates', 'snapshots'],
@@ -3867,6 +3874,7 @@ export default function App() {
                   material: false,
                   stock: false,
                   transactions: false,
+                  srIssues: false,
                   lld: false,
                   notes: false,
                   sourceUpdates: false,
