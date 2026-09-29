@@ -476,9 +476,14 @@ function AccessDenied({ email }) {
 function MetricCard({ label, value, helper, tone = 'default', onClick, active = false }) {
   const className = [
     'metric-card',
+    '!min-h-[108px] !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm',
+    '[&>span]:!text-[10px] [&>span]:!font-semibold [&>span]:!uppercase [&>span]:!tracking-wider [&>span]:!text-slate-500',
+    '[&>strong]:!mt-3 [&>strong]:!text-[24px] [&>strong]:!font-semibold [&>strong]:!tracking-tight [&>strong]:!text-slate-900',
+    '[&>small]:!mt-1 [&>small]:!text-[11px] [&>small]:!leading-4 [&>small]:!text-slate-500',
+    'transition-all duration-150',
     tone,
-    onClick ? 'clickable' : '',
-    active ? 'active' : '',
+    onClick ? 'clickable hover:!border-slate-300 hover:!shadow-md' : '',
+    active ? 'active !border-blue-200 !bg-blue-50/70' : '',
   ].filter(Boolean).join(' ')
 
   if (onClick) {
@@ -503,11 +508,19 @@ function MetricCard({ label, value, helper, tone = 'default', onClick, active = 
 function StatusPill({ value }) {
   const text = String(value || '—')
   const l = text.toLowerCase()
-  let cls = ''
-  if (['urgent', 'critical', 'overdue', 'pending', 'delayed'].some((x) => l.includes(x))) cls = 'bad'
-  if (['received', 'complete', 'completed', 'delivered', 'closed'].some((x) => l.includes(x))) cls = 'good'
-  if (['progress', 'partial', 'transit', 'processing'].some((x) => l.includes(x))) cls = 'warn'
-  return <span className={'status-pill ' + cls}>{text}</span>
+  let cls = 'border-slate-200 bg-slate-50 text-slate-600'
+  if (['urgent', 'critical', 'overdue', 'delayed', 'rejected', 'cancelled', 'canceled'].some((x) => l.includes(x))) {
+    cls = 'border-rose-200/70 bg-rose-50 text-rose-700'
+  } else if (['received', 'complete', 'completed', 'delivered', 'closed', 'issued'].some((x) => l.includes(x))) {
+    cls = 'border-emerald-200/70 bg-emerald-50 text-emerald-700'
+  } else if (['pending', 'submitted', 'progress', 'partial', 'transit', 'processing', 'waiting'].some((x) => l.includes(x))) {
+    cls = 'border-amber-200/70 bg-amber-50 text-amber-700'
+  }
+  return (
+    <span className={'status-pill !inline-flex !max-w-none !items-center !whitespace-nowrap !rounded-full !border !px-2.5 !py-1 !text-[10px] !font-semibold !uppercase !tracking-wide ' + cls}>
+      {text}
+    </span>
+  )
 }
 
 function PrfStatusBadge({ value }) {
@@ -541,7 +554,7 @@ function DataTable({ rows, columns, onUpdate, noteType, noteMap, limit = 300, cl
   const visible = rows.slice(0, limit)
   if (!rows.length) return <EmptyState />
   return (
-    <div className={'table-wrap ' + className}>
+    <div className={'table-wrap !rounded-xl !border !border-slate-200 !bg-white !shadow-sm [&_thead]:!bg-slate-50 [&_th]:!bg-slate-50 [&_th]:!px-3 [&_th]:!py-3 [&_th]:!text-[10px] [&_th]:!font-semibold [&_th]:!uppercase [&_th]:!tracking-wider [&_th]:!text-slate-500 [&_tbody_tr]:!border-b [&_tbody_tr]:!border-slate-100 [&_tbody_tr]:transition-colors hover:[&_tbody_tr]:!bg-slate-50/70 [&_td]:!px-3 [&_td]:!py-3 [&_td]:!text-[11px] [&_td]:!leading-5 [&_td]:!text-slate-700 [&_.mini-button]:!rounded-md [&_.mini-button]:!border [&_.mini-button]:!border-slate-200 [&_.mini-button]:!bg-slate-50 [&_.mini-button]:!px-3 [&_.mini-button]:!py-1 [&_.mini-button]:!text-xs [&_.mini-button]:!font-medium [&_.mini-button]:!text-slate-600 [&_.mini-button]:!transition-colors hover:[&_.mini-button]:!border-blue-200 hover:[&_.mini-button]:!bg-blue-50 hover:[&_.mini-button]:!text-blue-600 ' + className}>
       <table>
         <thead>
           <tr>
@@ -579,12 +592,12 @@ function DataTable({ rows, columns, onUpdate, noteType, noteMap, limit = 300, cl
 
 function PageHeader({ title, subtitle, actions }) {
   return (
-    <div className="page-header">
+    <div className="page-header !mb-5 !items-center !border-b !border-slate-200 !pb-4">
       <div>
-        <h1>{title}</h1>
-        {subtitle && <p>{subtitle}</p>}
+        <h1 className="!text-2xl !font-semibold !tracking-tight !text-slate-900">{title}</h1>
+        {subtitle && <p className="!mt-1 !text-sm !text-slate-500">{subtitle}</p>}
       </div>
-      {actions && <div className="page-actions">{actions}</div>}
+      {actions && <div className="page-actions !items-center !gap-2">{actions}</div>}
     </div>
   )
 }
