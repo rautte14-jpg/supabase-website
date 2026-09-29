@@ -2699,52 +2699,41 @@ export default function App() {
       ),
     },
     {
-      kicker: 'WEEKLY ACTIVITY',
-      title: 'This Week vs Last Week',
+      kicker: 'CURRENT WEEK ACTIVITY',
+      title: 'Activity This Week',
       body: (
-        <div className="meeting-change-grid">
-          {[
-            ['PRFs submitted', meetingWeeklyChange.prf.current, meetingWeeklyChange.prf.previous],
-            ['PRs submitted', meetingWeeklyChange.pr.current, meetingWeeklyChange.pr.previous],
-            ['MTRs requested', meetingWeeklyChange.mtr.current, meetingWeeklyChange.mtr.previous],
-            ['MRNs created', meetingWeeklyChange.mrn.current, meetingWeeklyChange.mrn.previous],
-          ].map(([label, current, previous]) => (
-            <div className="meeting-change-card" key={label}>
-              <span>{label}</span>
-              <b>{fmt(current)}</b>
-              <div><small>Last week {fmt(previous)}</small><strong>{deltaText(current, previous)}</strong></div>
-            </div>
-          ))}
-          <div className="meeting-change-card wide">
-            <span>On-hand stock value</span>
-            <b>{mvr(meetingStateCurrent.onHandValue)}</b>
+        <>
+          <div className="meeting-period-banner">
             <div>
-              <small>{meetingStatePrevious ? 'Last snapshot ' + mvr(meetingStatePrevious.onHandValue || 0) : 'No verified prior snapshot'}</small>
-              <strong>{snapshotDeltaText('onHandValue', mvr)}</strong>
+              <span>REVIEW PERIOD</span>
+              <b>{formatShortDate(meetingWeek.weekStart)} – {formatShortDate(meetingWeek.weekEnd)}</b>
             </div>
+            <small>Current Wednesday–Tuesday activity only</small>
           </div>
-          <div className="meeting-change-card wide">
-            <span>Stock value over 1 year</span>
-            <b>{mvr(meetingStateCurrent.agedOver365)}</b>
-            <div>
-              <small>{meetingStatePrevious ? 'Last snapshot ' + mvr(meetingStatePrevious.agedOver365 || 0) : 'No verified prior snapshot'}</small>
-              <strong>{snapshotDeltaText('agedOver365', mvr)}</strong>
-            </div>
+          <div className="meeting-change-grid">
+            {[
+              ['PRFs submitted', meetingWeeklyChange.prf.current],
+              ['PRs raised', meetingWeeklyChange.pr.current],
+              ['MTRs requested', meetingWeeklyChange.mtr.current],
+              ['MRNs created', meetingWeeklyChange.mrn.current],
+              ['Received item lines', prPoReceiptWeekCounts[0]?.lines || 0],
+              ['Received quantity', prPoReceiptWeekCounts[0]?.qty || 0],
+            ].map(([label, value]) => (
+              <div className="meeting-change-card" key={label}>
+                <span>{label}</span>
+                <b>{label === 'Received quantity' ? fmt(value, 2) : fmt(value)}</b>
+                <div><small>Current week</small><strong>Live activity</strong></div>
+              </div>
+            ))}
           </div>
-        </div>
+        </>
       ),
     },
     {
-      kicker: 'STATE CHANGE',
-      title: 'Operational Position vs Last Verified Snapshot',
+      kicker: 'CURRENT OPERATIONAL POSITION',
+      title: 'What Needs Attention Now',
       body: (
-        <>
-          {!meetingStatePrevious && (
-            <div className="meeting-snapshot-notice">
-              Operational comparison starts once two verified weekly snapshots exist. Legacy reconstructed snapshots are excluded.
-            </div>
-          )}
-          <div className="meeting-change-grid operational">
+        <div className="meeting-change-grid operational">
           {[
             ['Pending PR / PO', 'pendingPrPo'],
             ['Urgent cases', 'urgentCases'],
@@ -2758,14 +2747,10 @@ export default function App() {
             <div className="meeting-change-card compact" key={key}>
               <span>{label}</span>
               <b>{fmt(meetingStateCurrent[key])}</b>
-              <div>
-                <small>{meetingStatePrevious ? 'Last snapshot ' + fmt(meetingStatePrevious[key] || 0) : 'No verified prior snapshot'}</small>
-                <strong>{snapshotDeltaText(key)}</strong>
-              </div>
+              <div><small>Current live position</small><strong>Review / follow up</strong></div>
             </div>
           ))}
-          </div>
-        </>
+        </div>
       ),
     },
     {
