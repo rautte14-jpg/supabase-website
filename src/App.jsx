@@ -3796,7 +3796,6 @@ export default function App() {
                 <MetricCard label="On-hand quantity" value={fmt(ageingSummary.onHandQty, 2)} helper="Physical on-hand quantity" />
                 <MetricCard label="On-hand value" value={mvr(ageingSummary.onHandValue)} helper="Value of current on-hand stock" />
                 <MetricCard label="Top 100 High Value Items" value={fmt(top100HighValue.length) + ' Items'} helper={'Combined on-hand value: ' + mvr(top100HighValueTotal)} tone="warn" active={stockAgeFilter === 'HIGH100'} onClick={() => setStockAgeFilter(stockAgeFilter === 'HIGH100' ? 'ALL' : 'HIGH100')} />
-                <MetricCard label="P1 — 0 to 1 Year" value={mvr(ageingSummary.p1)} helper="Stock aged 0–365 days" active={stockAgeFilter === 'P1'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P1' ? 'ALL' : 'P1')} />
                 <MetricCard label="P2 — 1 to 3 Years" value={mvr(ageingSummary.p2)} helper="Stock aged 366–1095 days" active={stockAgeFilter === 'P2'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P2' ? 'ALL' : 'P2')} />
                 <MetricCard label="P3 — 3 to 4 Years" value={mvr(ageingSummary.p3)} helper="Stock aged 1096–1460 days" active={stockAgeFilter === 'P3'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P3' ? 'ALL' : 'P3')} />
                 <MetricCard label="P4 — 4 to 5 Years" value={mvr(ageingSummary.p4)} helper="Stock aged 1461–1825 days" active={stockAgeFilter === 'P4'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P4' ? 'ALL' : 'P4')} />
