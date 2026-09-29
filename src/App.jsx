@@ -335,6 +335,11 @@ function mrnStatusLabel(row) {
   const status = String(rawStatus || '').trim()
   return status || 'NOT ISSUED'
 }
+function mrnStatusDisplay(value) {
+  const status = String(value || '').trim()
+  return !status || status.toUpperCase() === 'BLANK' ? 'NOT ISSUED' : status
+}
+
 
 function mrnIsIssued(row) {
   const status = lower(mrnStatusLabel(row))
@@ -1512,7 +1517,8 @@ export default function App() {
   }
 
   function selectMrnStatus(status) {
-    setMrnStatusFilter((current) => current === status ? 'ALL' : status)
+    const normalizedStatus = mrnStatusDisplay(status)
+    setMrnStatusFilter((current) => current === normalizedStatus ? 'ALL' : normalizedStatus)
     setMrnControlFilter('ALL')
     setMrnWorkshopFilter('ALL')
     setMrnWpTypeFilter('ALL')
@@ -3676,9 +3682,9 @@ export default function App() {
                         className={mtrStatusFilter === status ? 'prf-status-card active' : 'prf-status-card'}
                         onClick={() => selectMtrStatus(status)}
                       >
-                        <span>{status}</span>
+                        <span>{mrnStatusDisplay(status)}</span>
                         <strong>{fmt(count)}</strong>
-                        <span className={mrnStatusFilter === status ? 'mrn-card-chevron open' : 'mrn-card-chevron'} aria-hidden="true">⌄</span>
+                        <span className={mrnStatusFilter === mrnStatusDisplay(status) ? 'mrn-card-chevron open' : 'mrn-card-chevron'} aria-hidden="true">⌄</span>
                       </button>
                     ))}
                   </div>
@@ -3807,8 +3813,8 @@ export default function App() {
                     {mrnStatusCounts.slice(0, 12).map(([status, count]) => (
                       <button
                         key={status}
-                        className={mrnStatusFilter === status ? 'prf-status-card active' : 'prf-status-card'}
-                        onClick={() => selectMrnStatus(status)}
+                        className={mrnStatusFilter === mrnStatusDisplay(status) ? 'prf-status-card active' : 'prf-status-card'}
+                        onClick={() => selectMrnStatus(mrnStatusDisplay(status))}
                       >
                         <span>{status}</span>
                         <strong>{fmt(count)}</strong>
