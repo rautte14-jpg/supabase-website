@@ -353,7 +353,7 @@ function mrnIsCancelled(row) {
 }
 
 function mrnIsPending(row) {
-  return !mrnIsIssued(row) && !mrnIsCancelled(row)
+  return mrnStatusLabel(row) === 'BLANK'
 }
 
 function mrnAgeDays(row) {
