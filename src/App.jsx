@@ -3541,44 +3541,6 @@ export default function App() {
                 <DataTable rows={prPoReceiptRows} columns={receiptItemColumns} limit={150} />
               </section>
 
-              <div className="prpo-table-separator">
-                <span>GENERAL PR REGISTER</span>
-                <b>Independent from the Received Date filter above</b>
-              </div>
-
-              <div className="prpo-table-heading">
-                <div>
-                  <span className="eyebrow">PR SUBMISSION / OPEN REGISTER</span>
-                  <h3>PR Lines</h3>
-                </div>
-                <div>
-                  <strong>{fmt(prPoVisibleCounts.prs)} PR{prPoVisibleCounts.prs === 1 ? '' : 's'}</strong>
-                  <span>{fmt(prPoVisibleCounts.lines)} item line{prPoVisibleCounts.lines === 1 ? '' : 's'} shown</span>
-                </div>
-              </div>
-
-              {prPoAgeFilter !== 'ALL' && (
-                <div className="prf-filter-note prpo-age-note">
-                  Showing <b>{prPoAgeFilter === '3TO6' ? '3–6 month aged open PRs' : '6+ month aged open PRs'}</b>
-                  <button onClick={() => selectPrPoAge('ALL')}>Clear ageing filter</button>
-                </div>
-              )}
-
-              {prPoUrgentFilter && (
-                <div className="prf-filter-note prpo-age-note">
-                  Showing <b>urgent pending item lines</b>
-                  <button onClick={() => setPrPoUrgentFilter(false)}>Clear urgent filter</button>
-                </div>
-              )}
-
-              {prPoReceiptPendingFilter && (
-                <div className="prf-filter-note prpo-age-note">
-                  Showing <b>items where receipt is not done</b>
-                  <button onClick={() => setPrPoReceiptPendingFilter(false)}>Clear receipt filter</button>
-                </div>
-              )}
-
-              <DataTable rows={prpoRows} columns={prPoColumns} noteType="procurement" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} />
             </>
           )}
 
