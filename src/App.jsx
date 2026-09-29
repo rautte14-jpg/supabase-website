@@ -2626,12 +2626,12 @@ export default function App() {
       </aside>
 
       <main className="workspace">
-        <header className="topbar !min-h-[68px] !border-b !border-slate-200 !bg-white/95 !px-7 !shadow-sm backdrop-blur">
+        <header className="topbar !min-h-[68px] !border-b !border-slate-200 !bg-white/95 !px-7 !shadow-sm backdrop-blur !items-center">
           <div className="topbar-context !border-slate-200">
             <span>SRD Warehouse</span>
             <strong>{NAV.find(([key]) => key === view)?.[1] || 'Workspace'}</strong>
           </div>
-          <div className="search-wrap !min-h-[42px] !max-w-2xl !rounded-xl !border-slate-200 !bg-slate-50 !px-3.5 transition focus-within:!border-blue-400 focus-within:!bg-white focus-within:!shadow-[0_0_0_3px_rgba(59,130,246,0.10)]">
+          <div className="search-wrap !min-h-[42px] !max-w-xl !rounded-xl !border-slate-200 !bg-slate-50 !px-3.5 transition focus-within:!border-blue-400 focus-within:!bg-white focus-within:!shadow-[0_0_0_3px_rgba(59,130,246,0.10)]">
             <LineIcon name="search" className="h-[18px] w-[18px] text-slate-400" />
             <input
               placeholder="Search PRF, PR, PO, MTR, MRN, item, vessel or SR…"
@@ -2640,7 +2640,7 @@ export default function App() {
             />
             {search && <button onClick={() => setSearch('')}>×</button>}
           </div>
-          <div className="top-actions">
+          <div className="top-actions !items-center">
             <button className="secondary !inline-flex !items-center !gap-2 !rounded-lg !border-slate-200 !bg-white !px-3.5 !py-2 !text-sm !font-medium !text-slate-700 hover:!bg-slate-50" onClick={refreshCurrentView}>
               <LineIcon name="refresh" className="h-4 w-4" />{loading ? 'Refreshing…' : 'Refresh'}
             </button>
@@ -2673,7 +2673,7 @@ export default function App() {
 
         <section className="content !bg-[#F8FAFC]">
           {view === 'home' && (
-            <section className="warehouse-home mx-auto max-w-[1500px]">
+            <section className="warehouse-home mx-auto w-full max-w-7xl px-6 lg:px-8">
               <div className="home-hero enterprise-home-header !mb-6 !rounded-2xl !border !border-slate-200 !bg-white !px-7 !py-6 !shadow-sm">
                 <div className="home-hero-copy">
                   <span className="home-kicker !text-[10px] !font-semibold !tracking-[0.14em] !text-blue-600">SHIPBUILDING & REPAIR DIVISION · MATERIALS MANAGEMENT</span>
@@ -2686,7 +2686,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="home-hero-stats !mb-8 !grid !grid-cols-1 !gap-4 !border-0 !bg-transparent sm:!grid-cols-2 xl:!grid-cols-4">
+              <div className="home-hero-stats !mb-8 !grid !grid-cols-1 !gap-6 !border-0 !bg-transparent sm:!grid-cols-2 lg:!grid-cols-4">
                 {[
                   ['PRFs tracked', fmt(homeSummary.prf_count), 'prf'],
                   ['MRNs tracked', fmt(homeSummary.mrn_count), 'mrn'],
@@ -2711,7 +2711,7 @@ export default function App() {
                 <p className="!mt-1 !block !text-sm !text-slate-500">Open the area you need directly from the home page.</p>
               </div>
 
-              <div className="home-module-grid !grid !grid-cols-1 !gap-4 md:!grid-cols-2 xl:!grid-cols-3">
+              <div className="home-module-grid !grid !grid-cols-1 !gap-6 sm:!grid-cols-2 lg:!grid-cols-4">
                 {[
                   ['prf', 'PRF Tracker', 'Track PRF / IPF requests and movement into procurement.'],
                   ['prpo', 'PR & PO Tracker', 'Follow PRs, POs, delivery, receipts and ageing.'],
@@ -2734,9 +2734,9 @@ export default function App() {
                         <LineIcon name="arrow" className="h-4 w-4" />
                       </span>
                     </div>
-                    <span className="!block !text-[15px] !font-semibold !tracking-tight !text-slate-900">{title}</span>
-                    <p className="!mt-1.5 !text-[12px] !leading-5 !text-slate-500">{text}</p>
-                    <div className="!mt-auto !pt-4 !text-[11px] !font-medium !text-slate-400 group-hover:!text-blue-600">View live module</div>
+                    <span className="!block !text-lg !font-semibold !tracking-tight !text-slate-800">{title}</span>
+                    <p className="!mt-1.5 !text-[13px] !leading-5 !text-slate-600">{text}</p>
+                    <div className="!mt-auto !pt-4 !text-[11px] !font-medium !text-slate-500 group-hover:!text-blue-600 group-hover:underline underline-offset-4">Show me details</div>
                   </button>
                 ))}
               </div>
