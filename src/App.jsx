@@ -3786,13 +3786,6 @@ export default function App() {
                   active={mrnControlFilter === 'AGE7'}
                   onClick={() => selectMrnControl('AGE7')}
                 />
-                <MetricCard
-                  label="MRNs With SVO / Journal"
-                  value={fmt(mrnSummary.withJournal)}
-                  helper="MRNs linked to an ERP issue reference"
-                  active={mrnControlFilter === 'WITH_JOURNAL'}
-                  onClick={() => selectMrnControl('WITH_JOURNAL')}
-                />
               </div>
 
               <div className="mtr-breakdown-grid">
