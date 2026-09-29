@@ -3425,3 +3425,30 @@ tbody tr:hover {
   font-size: 9px;
   line-height: 1.45;
 }
+
+
+/* MRN actual SR issue verification */
+.sr-issues-section {
+  margin-top: 14px;
+}
+
+.sr-issue-metrics {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-bottom: 10px;
+}
+
+.sr-issues-section .table-wrap {
+  margin-top: 10px;
+}
+
+@media (max-width: 1280px) {
+  .sr-issue-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .sr-issue-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
