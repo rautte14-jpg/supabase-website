@@ -380,6 +380,19 @@ function mrnSourceId(row) {
   return String(rawField(row, ['ID']) || row?.id || '').trim()
 }
 
+function normalizedWorkshop(value) {
+  return String(value || '').trim().toUpperCase()
+}
+
+function normalizedSr(value) {
+  const text = String(value || '').trim().toUpperCase().replace(/\s+/g, '')
+  const standard = text.match(/\bSR-?(\d+)\b/)
+  if (standard) return 'SR' + standard[1]
+  const internal = text.match(/\bISR-?(\d+)-?(\d+)?\b/)
+  if (internal) return 'ISR-' + internal[1] + (internal[2] ? '-' + internal[2] : '')
+  return text === '0' || text === '-' ? '' : text
+}
+
 
 function AuthScreen() {
   const [email, setEmail] = useState('')
@@ -1241,6 +1254,7 @@ export default function App() {
   const [mrnStatusFilter, setMrnStatusFilter] = useState('ALL')
   const [mrnWorkshopFilter, setMrnWorkshopFilter] = useState('ALL')
   const [mrnWpTypeFilter, setMrnWpTypeFilter] = useState('ALL')
+  const [srIssueFilter, setSrIssueFilter] = useState('ALL')
   const [stockAgeFilter, setStockAgeFilter] = useState('ALL')
 
   const canEdit = access && ['admin', 'editor'].includes(lower(access.role))
@@ -2067,6 +2081,99 @@ export default function App() {
     records: mrnRows.length,
     mrnNumbers: new Set(mrnRows.map((r) => r.document_no).filter(Boolean)).size,
   }), [mrnRows])
+  const mrnMatchRecords = useMemo(
+    () => allMrnRows.map((row) => ({
+      sourceId: mrnSourceId(row),
+      mrnNo: String(row.document_no || '').trim(),
+      workshop: normalizedWorkshop(rawField(row, ['WORKSHOP NAME']) || row.workshop),
+      srNo: normalizedSr(rawField(row, ['SR NUMBER', 'SR Number']) || row.sr_wo),
+      createdDate: mrnCreatedDate(row),
+      row,
+    })).filter((x) => x.sourceId),
+    [allMrnRows],
+  )
+
+  const srIssuesEnriched = useMemo(() => data.srIssues.map((issue) => {
+    const workshop = normalizedWorkshop(issue.workshop)
+    const srNo = normalizedSr(issue.sr_no)
+    const mrnNo = String(issue.mrn_no || '').trim()
+    const issueDate = parseFlexibleDate(issue.requested_receipt_date)
+
+    let candidates = []
+    let matchType = 'UNMATCHED'
+    let matched = null
+
+    if (mrnNo && workshop) {
+      candidates = mrnMatchRecords.filter((m) =>
+        m.mrnNo === mrnNo &&
+        m.workshop === workshop &&
+        (!srNo || !m.srNo || m.srNo === srNo)
+      )
+
+      if (candidates.length === 1) {
+        matched = candidates[0]
+        matchType = 'VERIFIED'
+      } else if (candidates.length > 1 && issueDate) {
+        const prior = candidates
+          .filter((m) => m.createdDate && m.createdDate <= issueDate)
+          .sort((a, b) => String(b.createdDate).localeCompare(String(a.createdDate)))
+        if (prior.length && (!prior[1] || prior[0].createdDate !== prior[1].createdDate)) {
+          matched = prior[0]
+          matchType = 'LIKELY'
+        } else {
+          matchType = 'AMBIGUOUS'
+        }
+      } else if (candidates.length > 1) {
+        matchType = 'AMBIGUOUS'
+      }
+    }
+
+    if (matchType === 'UNMATCHED' && workshop && srNo) {
+      const context = mrnMatchRecords.filter((m) => m.workshop === workshop && m.srNo === srNo)
+      if (context.length === 1) {
+        matched = context[0]
+        matchType = 'SR_CONTEXT'
+      } else if (context.length > 1) {
+        matchType = 'AMBIGUOUS'
+      }
+    }
+
+    return {
+      ...issue,
+      match_type: matchType,
+      matched_mrn_source_id: matched?.sourceId || '',
+      matched_mrn_no: matched?.mrnNo || '',
+      matched_mrn_created: matched?.createdDate || '',
+    }
+  }), [data.srIssues, mrnMatchRecords])
+
+  const srIssueSummary = useMemo(() => ({
+    total: srIssuesEnriched.length,
+    completed: srIssuesEnriched.filter((r) => r.issue_state === 'Completed issue').length,
+    pendingInvoice: srIssuesEnriched.filter((r) => r.issue_state === 'Pending invoice').length,
+    cancelled: srIssuesEnriched.filter((r) => r.issue_state === 'Cancelled').length,
+    verified: srIssuesEnriched.filter((r) => r.match_type === 'VERIFIED').length,
+    likely: srIssuesEnriched.filter((r) => r.match_type === 'LIKELY').length,
+    context: srIssuesEnriched.filter((r) => r.match_type === 'SR_CONTEXT').length,
+    ambiguous: srIssuesEnriched.filter((r) => r.match_type === 'AMBIGUOUS').length,
+    unmatched: srIssuesEnriched.filter((r) => r.match_type === 'UNMATCHED').length,
+    salesOrders: new Set(srIssuesEnriched.map((r) => r.sales_order).filter(Boolean)).size,
+    srs: new Set(srIssuesEnriched.map((r) => normalizedSr(r.sr_no)).filter(Boolean)).size,
+  }), [srIssuesEnriched])
+
+  const srIssueRows = useMemo(
+    () => srIssuesEnriched.filter((row) => {
+      if (!matches(row)) return false
+      if (srIssueFilter === 'ALL') return true
+      if (srIssueFilter === 'COMPLETED') return row.issue_state === 'Completed issue'
+      if (srIssueFilter === 'PENDING') return row.issue_state === 'Pending invoice'
+      if (srIssueFilter === 'CANCELLED') return row.issue_state === 'Cancelled'
+      if (srIssueFilter === 'VERIFIED') return row.match_type === 'VERIFIED'
+      if (srIssueFilter === 'REVIEW') return ['LIKELY', 'AMBIGUOUS', 'UNMATCHED'].includes(row.match_type)
+      return true
+    }),
+    [srIssuesEnriched, srIssueFilter, query],
+  )
 
   const stockOnHandValue = (row) =>
     hasRawField(row, ['On-hand value', 'On Hand Value'])
@@ -2464,6 +2571,32 @@ export default function App() {
     { key: 'raw_modified_by', label: 'Modified By', render: (_v, r) => displayValue(rawField(r, ['Modified by', 'Modified By'])) },
     { key: 'raw_item_type', label: 'Item Type', render: (_v, r) => displayValue(rawField(r, ['Item Type'])) },
     { key: 'raw_path', label: 'Path', render: (_v, r) => displayValue(rawField(r, ['Path'])) },
+  ]
+
+  const srIssueColumns = [
+    { key: 'requested_receipt_date', label: 'Requested Receipt Date' },
+    { key: 'sales_order', label: 'Sales Order', render: (v) => <span className="font-mono text-[11px] font-semibold text-slate-800">{v || '—'}</span> },
+    { key: 'item_code', label: 'Item', render: (v) => <span className="font-mono text-[11px] text-slate-700">{v || '—'}</span> },
+    { key: 'item_description', label: 'Product Name' },
+    { key: 'quantity', label: 'Qty' },
+    { key: 'unit', label: 'Unit' },
+    { key: 'workshop', label: 'Workshop' },
+    { key: 'sr_no', label: 'SR' },
+    { key: 'mrn_no', label: 'MRN in Delivery' },
+    { key: 'service_order', label: 'Service Order' },
+    { key: 'issue_state', label: 'Issue Status', render: (v) => <StatusPill value={v} /> },
+    { key: 'match_type', label: 'MRN Match', render: (v, r) => {
+      const labels = {
+        VERIFIED: 'Verified MRN',
+        LIKELY: 'Likely MRN',
+        SR_CONTEXT: 'SR context',
+        AMBIGUOUS: 'Ambiguous',
+        UNMATCHED: 'Unmatched',
+      }
+      return <StatusPill value={labels[v] || v} />
+    } },
+    { key: 'matched_mrn_source_id', label: 'Matched ID', render: (v) => v || '—' },
+    { key: 'delivery_name', label: 'Delivery Name' },
   ]
 
   const materialColumns = [
@@ -3709,6 +3842,41 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+              </section>
+
+              <section className="prf-status-summary sr-issues-section">
+                <div className="prf-status-head">
+                  <div>
+                    <span className="eyebrow">ACTUAL SR ISSUE ACTIVITY</span>
+                    <h3>Issued items / sales-order verification</h3>
+                  </div>
+                  <span>{data.srIssues.length ? fmt(data.srIssues.length) + ' issue lines loaded' : 'No SR issue file loaded'}</span>
+                </div>
+
+                {!data.srIssues.length ? (
+                  <EmptyState
+                    title="No SR issue export loaded"
+                    text="Upload the latest SR Issues / Issued Items export in Update Centre to verify actual issue activity against MRNs."
+                  />
+                ) : (
+                  <>
+                    <div className="metric-grid sr-issue-metrics">
+                      <MetricCard label="Issue Lines" value={fmt(srIssueSummary.total)} helper={fmt(srIssueSummary.salesOrders) + ' sales orders · ' + fmt(srIssueSummary.srs) + ' SRs'} active={srIssueFilter === 'ALL'} onClick={() => setSrIssueFilter('ALL')} />
+                      <MetricCard label="Completed Issue" value={fmt(srIssueSummary.completed)} helper="Invoiced or delivered lines" active={srIssueFilter === 'COMPLETED'} onClick={() => setSrIssueFilter(srIssueFilter === 'COMPLETED' ? 'ALL' : 'COMPLETED')} />
+                      <MetricCard label="Pending Invoice" value={fmt(srIssueSummary.pendingInvoice)} helper="ERP line status: Open order" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} />
+                      <MetricCard label="Cancelled" value={fmt(srIssueSummary.cancelled)} helper="Cancelled sales-order lines" tone="bad" active={srIssueFilter === 'CANCELLED'} onClick={() => setSrIssueFilter(srIssueFilter === 'CANCELLED' ? 'ALL' : 'CANCELLED')} />
+                      <MetricCard label="Verified MRN Lines" value={fmt(srIssueSummary.verified)} helper="Unique direct MRN match" active={srIssueFilter === 'VERIFIED'} onClick={() => setSrIssueFilter(srIssueFilter === 'VERIFIED' ? 'ALL' : 'VERIFIED')} />
+                      <MetricCard label="Needs Match Review" value={fmt(srIssueSummary.likely + srIssueSummary.ambiguous + srIssueSummary.unmatched)} helper="Likely, ambiguous or unmatched lines" tone="warn" active={srIssueFilter === 'REVIEW'} onClick={() => setSrIssueFilter(srIssueFilter === 'REVIEW' ? 'ALL' : 'REVIEW')} />
+                    </div>
+
+                    <div className="prf-filter-note prpo-age-note">
+                      Matching uses delivery-name MRN / workshop / SR references. Only a unique direct match is labelled <b>Verified MRN</b>.
+                      {srIssueFilter !== 'ALL' && <button onClick={() => setSrIssueFilter('ALL')}>Clear SR issue filter</button>}
+                    </div>
+
+                    <DataTable rows={srIssueRows} columns={srIssueColumns} limit={250} />
+                  </>
+                )}
               </section>
 
               {(mrnControlFilter !== 'ALL' || mrnStatusFilter !== 'ALL' || mrnWorkshopFilter !== 'ALL' || mrnWpTypeFilter !== 'ALL') && (
