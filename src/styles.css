@@ -4227,3 +4227,58 @@ tbody tr:hover {
     flex-direction: column;
   }
 }
+
+
+.prpo-receipt-detail-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 14px 0 8px;
+  padding: 10px 12px;
+  border-left: 4px solid #10b981;
+  border-radius: 8px;
+  background: #f0fdf4;
+}
+.prpo-receipt-detail-head h4 {
+  margin: 2px 0 0;
+  color: #065f46;
+  font-size: 14px;
+  font-weight: 700;
+}
+.prpo-receipt-detail-head > div:last-child {
+  text-align: right;
+}
+.prpo-receipt-detail-head strong,
+.prpo-receipt-detail-head span {
+  display: block;
+}
+.prpo-receipt-detail-head strong {
+  color: #065f46;
+  font-size: 12px;
+}
+.prpo-receipt-detail-head span {
+  color: #64748b;
+  font-size: 9px;
+}
+
+.prpo-table-separator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 20px 2px 8px;
+  padding-top: 12px;
+  border-top: 1px solid #cbd5e1;
+}
+.prpo-table-separator span {
+  color: #2563eb;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+.prpo-table-separator b {
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 600;
+}
