@@ -2252,3 +2252,132 @@ tbody tr:hover {
     border-bottom: 1px solid #dfe5ec;
   }
 }
+
+
+/* Premium non-home module refinement */
+.prf-weekly-summary,
+.prf-status-summary,
+.panel,
+.meeting-shell,
+.updates-grid > .panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 1px 3px rgba(15, 23, 42, .03);
+}
+
+.prf-weekly-summary,
+.prf-status-summary {
+  padding: 16px;
+}
+
+.prf-status-head {
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.prf-status-head > span {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.prf-week-grid,
+.prf-status-grid {
+  gap: 8px;
+}
+
+.prf-week-card,
+.prf-status-card {
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.prf-week-card span,
+.prf-status-card span {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.prf-week-card strong,
+.prf-status-card strong {
+  color: #1e293b;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -.02em;
+}
+
+.prf-week-card:hover,
+.prf-status-card:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  box-shadow: none;
+  transform: none;
+}
+
+.prf-week-card.active,
+.prf-status-card.active {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  box-shadow: none;
+}
+
+.prf-week-card.active span,
+.prf-status-card.active span,
+.prf-week-card.active strong,
+.prf-status-card.active strong {
+  color: #1d4ed8;
+}
+
+.panel {
+  padding: 16px;
+}
+
+.panel-head {
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.vessel-search input,
+.file-drop,
+.import-summary,
+.preview-box,
+.lld-box {
+  border-color: #e2e8f0;
+  border-radius: 10px;
+}
+
+.history-list > div {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 12px 0;
+}
+
+.history-list > div:last-child {
+  border-bottom: 0;
+}
+
+.history-list b {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.history-list span,
+.history-list small,
+.history-list time {
+  color: #64748b;
+}
+
+.meeting-controls .secondary,
+.meeting-controls .primary,
+.page-actions .secondary,
+.page-actions .primary {
+  border-radius: 8px;
+}
