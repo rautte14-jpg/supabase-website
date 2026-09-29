@@ -2595,12 +2595,12 @@ export default function App() {
             if (!items.length) return null
             return (
               <div className="nav-group !mb-0" key={group}>
-                <div className="nav-group-label !px-3 !pb-2 !text-[10px] !font-semibold !tracking-[0.14em] !text-slate-500">{group}</div>
+                <div className="nav-group-label !px-3 !pb-2 !text-[10px] !font-bold !uppercase !tracking-widest !text-slate-500">{group}</div>
                 {items.map(([key, label, icon]) => (
                   <button
                     key={key}
                     className={
-                      'nav-item group relative !min-h-0 !rounded-lg !px-3 !py-2.5 !text-sm !font-medium transition-all duration-200 ' +
+                      'nav-item group relative !min-h-0 !rounded-lg !pl-6 !pr-3 !py-2.5 !text-sm !font-medium transition-all duration-200 ' +
                       (view === key
                         ? '!bg-white/10 !text-white before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-blue-400'
                         : '!text-slate-300 hover:!bg-white/[0.06] hover:!text-white')
@@ -2673,8 +2673,8 @@ export default function App() {
 
         <section className="content !bg-[#F8FAFC]">
           {view === 'home' && (
-            <section className="warehouse-home mx-auto w-full max-w-7xl px-6 lg:px-8">
-              <div className="home-hero enterprise-home-header !mb-6 !rounded-2xl !border !border-slate-200 !bg-white !px-7 !py-6 !shadow-sm">
+            <section className="warehouse-home mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 lg:px-8">
+              <div className="home-hero enterprise-home-header !rounded-2xl !border !border-slate-200 !bg-white !px-7 !py-5 !shadow-sm">
                 <div className="home-hero-copy">
                   <span className="home-kicker !text-[10px] !font-semibold !tracking-[0.14em] !text-blue-600">SHIPBUILDING & REPAIR DIVISION · MATERIALS MANAGEMENT</span>
                   <h1 className="!mt-2 !text-3xl !font-semibold !tracking-tight !text-slate-900">Warehouse Operations</h1>
@@ -2686,7 +2686,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="home-hero-stats !mb-8 !grid !grid-cols-1 !gap-6 !border-0 !bg-transparent sm:!grid-cols-2 lg:!grid-cols-4">
+              <div className="home-hero-stats !grid !grid-cols-1 !gap-6 !border-0 !bg-transparent sm:!grid-cols-2 lg:!grid-cols-4">
                 {[
                   ['PRFs tracked', fmt(homeSummary.prf_count), 'prf'],
                   ['MRNs tracked', fmt(homeSummary.mrn_count), 'mrn'],
@@ -2705,7 +2705,7 @@ export default function App() {
                 ))}
               </div>
 
-              <div className="home-section-head !mb-4">
+              <div className="home-section-head !mb-0">
                 <span className="eyebrow !text-[10px] !font-semibold !tracking-[0.14em] !text-blue-600">WAREHOUSE MODULES</span>
                 <h2 className="!mt-1 !text-xl !font-semibold !tracking-tight !text-slate-900">Quick access</h2>
                 <p className="!mt-1 !block !text-sm !text-slate-500">Open the area you need directly from the home page.</p>
@@ -2736,7 +2736,7 @@ export default function App() {
                     </div>
                     <span className="!block !text-lg !font-semibold !tracking-tight !text-slate-800">{title}</span>
                     <p className="!mt-1.5 !text-[13px] !leading-5 !text-slate-600">{text}</p>
-                    <div className="!mt-auto !pt-4 !text-[11px] !font-medium !text-slate-500 group-hover:!text-blue-600 group-hover:underline underline-offset-4">Show me details</div>
+                    <div className="!mt-auto !pt-4 !text-[11px] !font-medium !text-slate-500 transition-colors group-hover:!text-blue-600 group-hover:underline underline-offset-4">Show me details</div>
                   </button>
                 ))}
               </div>
