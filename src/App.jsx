@@ -1918,13 +1918,11 @@ export default function App() {
   )
 
   const mrnWeekCounts = useMemo(() => {
-    const weekSets = new Map()
+    const counts = new Map()
     allMrnRows.forEach((row) => {
       const weekStart = weekStartWednesday(mrnCreatedDate(row))
-      const mrnNo = String(row.document_no || '').trim()
-      if (!weekStart || !mrnNo) return
-      if (!weekSets.has(weekStart)) weekSets.set(weekStart, new Set())
-      weekSets.get(weekStart).add(mrnNo)
+      if (!weekStart) return
+      counts.set(weekStart, (counts.get(weekStart) || 0) + 1)
     })
 
     const currentWeek = weekStartWednesday(new Date().toISOString().slice(0, 10))
@@ -1933,7 +1931,7 @@ export default function App() {
       return {
         weekStart,
         weekEnd: addDaysIso(weekStart, 6),
-        count: weekSets.get(weekStart)?.size || 0,
+        count: counts.get(weekStart) || 0,
       }
     })
   }, [allMrnRows])
@@ -1945,35 +1943,6 @@ export default function App() {
     [allMrnRows, mrnWeekFilter],
   )
 
-  const mrnById = useMemo(() => {
-    const map = new Map()
-
-    weekFilteredMrnRows.forEach((row) => {
-      const sourceId = mrnSourceId(row)
-      if (!sourceId) return
-
-      const status = mrnStatusLabel(row)
-      const issued = mrnIsIssued(row)
-      const cancelled = mrnIsCancelled(row)
-      const pending = !issued && !cancelled
-
-      map.set(sourceId, {
-        row,
-        sourceId,
-        mrnNo: String(row.document_no || '').trim(),
-        workshop: String(rawField(row, ['WORKSHOP NAME']) || row.workshop || '').trim() || 'BLANK',
-        status,
-        issued,
-        cancelled,
-        pending,
-        hasJournal: mrnHasJournal(row),
-        ageDays: mrnAgeDays(row),
-      })
-    })
-
-    return map
-  }, [weekFilteredMrnRows])
-
   const mrnSummary = useMemo(() => {
     const issued = new Set()
     const pending = new Set()
@@ -1984,23 +1953,27 @@ export default function App() {
     const noJournal = new Set()
     const withJournal = new Set()
 
-    for (const [sourceId, item] of mrnById.entries()) {
-      if (item.issued) issued.add(sourceId)
-      if (item.cancelled) cancelled.add(sourceId)
+    weekFilteredMrnRows.forEach((row) => {
+      const sourceId = mrnSourceId(row)
+      if (!sourceId) return
 
-      if (item.pending) {
+      if (mrnIsIssued(row)) issued.add(sourceId)
+      if (mrnIsCancelled(row)) cancelled.add(sourceId)
+
+      if (mrnIsPending(row)) {
         pending.add(sourceId)
-        if (item.ageDays >= 7) pending7.add(sourceId)
-        if (item.ageDays >= 14) pending14.add(sourceId)
-        if (item.ageDays >= 30) pending30.add(sourceId)
-        if (!item.hasJournal) noJournal.add(sourceId)
+        const age = mrnAgeDays(row)
+        if (age >= 7) pending7.add(sourceId)
+        if (age >= 14) pending14.add(sourceId)
+        if (age >= 30) pending30.add(sourceId)
+        if (!mrnHasJournal(row)) noJournal.add(sourceId)
       }
 
-      if (item.hasJournal) withJournal.add(sourceId)
-    }
+      if (mrnHasJournal(row)) withJournal.add(sourceId)
+    })
 
     return {
-      total: mrnById.size,
+      total: weekFilteredMrnRows.length,
       issued: issued.size,
       cancelled: cancelled.size,
       pending: pending.size,
@@ -2018,44 +1991,33 @@ export default function App() {
       noJournalSet: noJournal,
       withJournalSet: withJournal,
     }
-  }, [mrnById])
+  }, [weekFilteredMrnRows])
 
   const mrnStatusCounts = useMemo(() => {
     const counts = new Map()
-    for (const item of mrnById.values()) {
-      const status = item.status || 'BLANK'
+    weekFilteredMrnRows.forEach((row) => {
+      const status = mrnStatusLabel(row)
       counts.set(status, (counts.get(status) || 0) + 1)
-    }
+    })
     return [...counts.entries()].sort((a, b) => b[1] - a[1])
-  }, [mrnById])
-
+  }, [weekFilteredMrnRows])
 
   const mrnWorkshopCounts = useMemo(() => {
-    const sets = new Map()
+    const counts = new Map()
     weekFilteredMrnRows.forEach((row) => {
-      const workshop = String(row.workshop || '').trim() || 'BLANK'
-      const mrnNo = String(row.document_no || '').trim()
-      if (!mrnNo) return
-      if (!sets.has(workshop)) sets.set(workshop, new Set())
-      sets.get(workshop).add(mrnNo)
+      const workshop = String(rawField(row, ['WORKSHOP NAME']) || row.workshop || '').trim() || 'BLANK'
+      counts.set(workshop, (counts.get(workshop) || 0) + 1)
     })
-    return [...sets.entries()]
-      .map(([workshop, values]) => [workshop, values.size])
-      .sort((a, b) => b[1] - a[1])
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])
   }, [weekFilteredMrnRows])
 
   const mrnWpTypeCounts = useMemo(() => {
-    const sets = new Map()
+    const counts = new Map()
     weekFilteredMrnRows.forEach((row) => {
       const wpType = mrnWpType(row)
-      const mrnNo = String(row.document_no || '').trim()
-      if (!mrnNo) return
-      if (!sets.has(wpType)) sets.set(wpType, new Set())
-      sets.get(wpType).add(mrnNo)
+      counts.set(wpType, (counts.get(wpType) || 0) + 1)
     })
-    return [...sets.entries()]
-      .map(([wpType, values]) => [wpType, values.size])
-      .sort((a, b) => b[1] - a[1])
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])
   }, [weekFilteredMrnRows])
 
   const mrnRows = useMemo(
@@ -2073,7 +2035,7 @@ export default function App() {
 
       if (mrnStatusFilter !== 'ALL' && mrnStatusLabel(row) !== mrnStatusFilter) return false
 
-      const workshop = String(row.workshop || '').trim() || 'BLANK'
+      const workshop = String(rawField(row, ['WORKSHOP NAME']) || row.workshop || '').trim() || 'BLANK'
       if (mrnWorkshopFilter !== 'ALL' && workshop !== mrnWorkshopFilter) return false
 
       const wpType = mrnWpType(row)
@@ -2093,9 +2055,10 @@ export default function App() {
   )
 
   const mrnVisibleCounts = useMemo(() => ({
-    mrns: new Set(mrnRows.map((r) => r.document_no).filter(Boolean)).size,
-    rows: mrnRows.length,
+    records: mrnRows.length,
+    mrnNumbers: new Set(mrnRows.map((r) => r.document_no).filter(Boolean)).size,
   }), [mrnRows])
+
   const stockOnHandValue = (row) =>
     hasRawField(row, ['On-hand value', 'On Hand Value'])
       ? rawNumber(row, ['On-hand value', 'On Hand Value'])
@@ -3602,7 +3565,7 @@ export default function App() {
                     onClick={() => selectMrnWeek('ALL')}
                   >
                     <span>ALL WEEKS</span>
-                    <strong>{fmt(new Set(allMrnRows.map((r) => r.document_no).filter(Boolean)).size)} MRNs</strong>
+                    <strong>{fmt(allMrnRows.length)} MRN records</strong>
                   </button>
                   {mrnWeekCounts.map((week) => (
                     <button
@@ -3611,7 +3574,7 @@ export default function App() {
                       onClick={() => selectMrnWeek(week.weekStart)}
                     >
                       <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
-                      <strong>{fmt(week.count)} {week.count === 1 ? 'MRN' : 'MRNs'}</strong>
+                      <strong>{fmt(week.count)} {week.count === 1 ? 'record' : 'records'}</strong>
                     </button>
                   ))}
                 </div>
@@ -3624,7 +3587,7 @@ export default function App() {
               </section>
 
               <div className="metric-grid mtr-metrics">
-                <MetricCard label="Total MRNs" value={fmt(mrnSummary.total)} helper="Unique MRN records by source ID" />
+                <MetricCard label="Total MRN Records" value={fmt(mrnSummary.total)} helper="One unique source ID per record" />
                 <MetricCard
                   label="Issued MRNs"
                   value={fmt(mrnSummary.issued)}
@@ -3684,7 +3647,7 @@ export default function App() {
                 <section className="prf-status-summary">
                   <div className="prf-status-head">
                     <div><span className="eyebrow">ISSUED STATUS</span><h3>MRN records by issued status</h3></div>
-                    <span>{fmt(mrnSummary.total)} MRNs</span>
+                    <span>{fmt(mrnSummary.total)} records</span>
                   </div>
                   <div className="prf-status-grid">
                     {mrnStatusCounts.slice(0, 12).map(([status, count]) => (
@@ -3752,8 +3715,8 @@ export default function App() {
               )}
 
               <div className="prpo-visible-count">
-                <strong>{fmt(mrnVisibleCounts.mrns)} MRN{mrnVisibleCounts.mrns === 1 ? '' : 's'}</strong>
-                <span>{fmt(mrnVisibleCounts.rows)} register row{mrnVisibleCounts.rows === 1 ? '' : 's'} shown</span>
+                <strong>{fmt(mrnVisibleCounts.records)} MRN record{mrnVisibleCounts.records === 1 ? '' : 's'}</strong>
+                <span>{fmt(mrnVisibleCounts.mrnNumbers)} distinct MRN number{mrnVisibleCounts.mrnNumbers === 1 ? '' : 's'} shown</span>
               </div>
 
               <DataTable rows={mrnRows} columns={mrnColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} />
