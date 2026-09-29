@@ -61,7 +61,8 @@ const HEADER_HINTS = new Set([
   'remainingquantity', 'requestdate', 'approveddate', 'fromwarehouse',
   'onhandsrd', 'deliverystatuserp', 'workshopname', 'wptype',
   'wpnumber', 'boqnumber', 'assetservice', 'svojournalnumber',
-  'submittedby', 'issuedstatus', 'modifiedby', 'itemtype'
+  'submittedby', 'issuedstatus', 'modifiedby', 'itemtype',
+  'salesorder', 'deliveryname', 'linestatus', 'serviceorder', 'projectid'
 ])
 
 export function normalizeSheetRows(matrix) {
@@ -126,6 +127,13 @@ export function detectSource(rows, fileName = '', sheetName = '') {
   const has = (...names) => names.some((name) => keys.includes(normalized(name)))
 
   if (
+    has('Sales order') &&
+    has('Delivery name') &&
+    has('Line status') &&
+    has('Service order')
+  ) return 'SR_ISSUES'
+
+  if (
     context.includes('purchaserequisition') ||
     (has('PR No.', 'PR No') && has('PO Number') && has('ERP Status'))
   ) return 'PR'
@@ -152,6 +160,7 @@ export const SOURCE_OPTIONS = [
   ['PO', 'ERP PO List'],
   ['MTR', 'MTR Register'],
   ['MRN', 'MRN / Material Request Register'],
+  ['SR_ISSUES', 'SR Issues / Issued Items'],
   ['TRANSACTIONS', 'ERP Receipts & Issues'],
   ['STOCK', 'On-hand Stock'],
   ['AGEING', 'Inventory Ageing'],
@@ -319,6 +328,50 @@ export function mapRows(source, rows) {
       source_updated_at: new Date().toISOString(),
       raw_source: rawSource(r),
     })).filter((r) => r.document_no || r.item_code || r.sr_wo)
+  }
+
+  if (source === 'SR_ISSUES') {
+    return rows.map((r) => {
+      const deliveryName = text(r, ['Delivery name', 'Delivery Name'])
+      const workshopMatch = deliveryName.match(/(?:^|[-\s])(DAU\/LOS|DAU|EEW|MRW|MSH|MWU|NMU|OSU|PLU|SMU|STU)(?:[-\s]|$)/i)
+      const srMatch = deliveryName.match(/\bSR\s*-?\s*(\d+)\b/i)
+      const woMatch = deliveryName.match(/\bWO\s*-?\s*(\d+)\b/i)
+      const mrnMatch = deliveryName.match(/\bMRN\s*-?\s*(\d+)\b/i)
+      const lineStatus = text(r, ['Line status', 'Line Status', 'Status'])
+      const statusLower = lineStatus.toLowerCase()
+
+      let issueState = lineStatus || 'Unknown'
+      if (statusLower.includes('invoiced') || statusLower.includes('delivered')) issueState = 'Completed issue'
+      else if (statusLower.includes('open order')) issueState = 'Pending invoice'
+      else if (statusLower.includes('cancel')) issueState = 'Cancelled'
+
+      return {
+        project_id: text(r, ['Project ID', 'Project']),
+        requested_receipt_date: date(r, ['Requested receipt date', 'Requested Receipt Date', 'Date']),
+        sales_order: text(r, ['Sales order', 'Sales Order', 'SO']),
+        line_number: text(r, ['Line number', 'Line Number', 'Line']),
+        item_code: text(r, ['Item number', 'Item Number', 'Item', 'Item Code']),
+        warehouse: text(r, ['Warehouse']),
+        item_description: text(r, ['Product name', 'Product Name', 'Description']),
+        location: text(r, ['Location']),
+        quantity: number(r, ['Quantity', 'Qty']),
+        unit: text(r, ['Unit', 'UOM']),
+        customer_reference: text(r, ['Customer reference', 'Customer Reference']),
+        customer_requisition: text(r, ['Customer requisition', 'Customer Requisition']),
+        delivery_name: deliveryName,
+        line_status: lineStatus,
+        issue_state: issueState,
+        created_by: text(r, ['Created by', 'Created By']),
+        service_order: text(r, ['Service order', 'Service Order', 'SVO']),
+        category: text(r, ['Category']),
+        workshop: workshopMatch?.[1]?.toUpperCase() || '',
+        sr_no: srMatch ? 'SR' + srMatch[1] : '',
+        wo_no: woMatch ? 'WO' + woMatch[1] : '',
+        mrn_no: mrnMatch?.[1] || '',
+        source_updated_at: new Date().toISOString(),
+        raw_source: rawSource(r),
+      }
+    }).filter((r) => r.sales_order || r.item_code || r.service_order || r.delivery_name)
   }
 
   if (source === 'TRANSACTIONS') {
