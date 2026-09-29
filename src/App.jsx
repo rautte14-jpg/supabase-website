@@ -3558,7 +3558,7 @@ export default function App() {
             <>
               <PageHeader title="MTR Tracker" subtitle="Requested, transferred and remaining quantities by vessel / SR." />
 
-              <section className="prf-weekly-summary mrn-weekly-strip">
+              <section className="prf-weekly-summary mrn-weekly-strip mrn-hero-strip">
                 <div className="prf-status-head">
                   <div>
                     <span className="eyebrow">WEEKLY MTR REQUESTS</span>
@@ -3593,7 +3593,7 @@ export default function App() {
                 )}
               </section>
 
-              <div className="metric-grid mtr-metrics mrn-primary-metrics">
+              <div className="metric-grid mtr-metrics mrn-primary-metrics mrn-summary-band">
                 <MetricCard label="Total MTRs" value={fmt(mtrSummary.totalMtrs)} helper="Distinct MTR numbers" />
                 <MetricCard
                   label="Fully Transferred MTRs"
@@ -3662,7 +3662,7 @@ export default function App() {
                 />
               </div>
 
-              <div className="mtr-breakdown-grid">
+              <div className="mtr-breakdown-grid mrn-analysis-grid">
                 <section className="prf-status-summary">
                   <div className="prf-status-head">
                     <div><span className="eyebrow">ERP STATUS</span><h3>Item lines by ERP status</h3></div>
@@ -3764,13 +3764,15 @@ export default function App() {
 
               <div className="metric-grid mtr-metrics">
                 <MetricCard label="Total MRN Records" value={fmt(mrnSummary.total)} helper="One unique source ID per record" />
-                <MetricCard
-                  label="Issued MRNs"
-                  value={fmt(mrnSummary.issued)}
-                  helper="Issued / completed in ERP"
-                  active={mrnControlFilter === 'ISSUED'}
-                  onClick={() => selectMrnControl('ISSUED')}
-                />
+                <div className="mrn-summary-card issued">
+                  <MetricCard
+                    label="Issued MRNs"
+                    value={fmt(mrnSummary.issued)}
+                    helper="Issued / completed in ERP"
+                    active={mrnControlFilter === 'ISSUED'}
+                    onClick={() => selectMrnControl('ISSUED')}
+                  />
+                </div>
                 <MetricCard
                   label="Pending / Not Issued"
                   value={fmt(mrnSummary.pending)}
@@ -3890,7 +3892,7 @@ export default function App() {
                 <div className="prf-status-head">
                   <div>
                     <span className="eyebrow">ACTUAL SR ISSUE ACTIVITY</span>
-                    <h3>Issued items / sales-order verification</h3>
+                    <h3>Actual SR Issue Activity</h3><p>Sales-order issue lines, invoice status and weekly movement</p>
                   </div>
                   <span>{data.srIssues.length ? fmt(data.srIssues.length) + ' issue lines loaded' : 'No SR issue file loaded'}</span>
                 </div>
