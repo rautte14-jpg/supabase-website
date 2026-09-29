@@ -2849,7 +2849,7 @@ export default function App() {
                   onClick={togglePrPoUrgent}
                 />
                 <MetricCard
-                  label="Receipt Not Done"
+                  label="Pending PO"
                   value={fmt(prPoSummary.receiptNotDoneItems)}
                   helper="PO exists but Received Qty is still 0"
                   tone="warn"
