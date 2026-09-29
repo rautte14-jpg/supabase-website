@@ -1668,6 +1668,17 @@ export default function App() {
     [allPrLines, prPoWeekFilter],
   )
 
+
+  const prSubmissionRows = useMemo(
+    () => weekFilteredPrLines.filter((row) => matches(row)),
+    [weekFilteredPrLines, query],
+  )
+
+  const prSubmissionCounts = useMemo(() => ({
+    prs: new Set(prSubmissionRows.map((row) => String(row.pr_no || '').trim()).filter(Boolean)).size,
+    lines: prSubmissionRows.length,
+  }), [prSubmissionRows])
+
   const prPoAgeing = useMemo(() => {
     const prMap = new Map()
 
@@ -3408,14 +3419,30 @@ export default function App() {
                 </div>
 
                 <div className="prpo-filter-explainer">
-                  <span className="prpo-filter-badge">TABLE FILTER</span>
+                  <span className="prpo-filter-badge">SUBMITTED DATE FILTER</span>
                   <b>
                     {prPoWeekFilter === 'ALL'
-                      ? 'Showing PR lines from all submission dates'
-                      : 'Showing PRs raised ' + formatShortDate(prPoWeekFilter) + ' – ' + formatShortDate(addDaysIso(prPoWeekFilter, 6))}
+                      ? 'All PR submission dates'
+                      : 'PRs raised ' + formatShortDate(prPoWeekFilter) + ' – ' + formatShortDate(addDaysIso(prPoWeekFilter, 6))}
                   </b>
                   {prPoWeekFilter !== 'ALL' && <button onClick={() => selectPrPoWeek('ALL')}>Clear submission filter</button>}
                 </div>
+
+                <div className="pr-submission-detail-head">
+                  <div>
+                    <span className="eyebrow">PR LINES · SUBMITTED DATE</span>
+                    <h4>
+                      {prPoWeekFilter === 'ALL'
+                        ? 'All submitted PR lines'
+                        : formatShortDate(prPoWeekFilter) + ' – ' + formatShortDate(addDaysIso(prPoWeekFilter, 6))}
+                    </h4>
+                  </div>
+                  <div>
+                    <strong>{fmt(prSubmissionCounts.prs)} PR{prSubmissionCounts.prs === 1 ? '' : 's'}</strong>
+                    <span>{fmt(prSubmissionCounts.lines)} item line{prSubmissionCounts.lines === 1 ? '' : 's'}</span>
+                  </div>
+                </div>
+                <DataTable rows={prSubmissionRows} columns={prPoColumns} limit={250} />
               </section>
 
               <section className="prpo-section-card">
