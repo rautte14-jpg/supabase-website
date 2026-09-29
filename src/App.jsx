@@ -1216,6 +1216,7 @@ export default function App() {
   const [prfStatusFilter, setPrfStatusFilter] = useState('ALL')
   const [prfWeekFilter, setPrfWeekFilter] = useState('ALL')
   const [prPoWeekFilter, setPrPoWeekFilter] = useState('ALL')
+  const [prPoReceiptWeekFilter, setPrPoReceiptWeekFilter] = useState(() => weekStartWednesday(new Date().toISOString().slice(0, 10)))
   const [prPoAgeFilter, setPrPoAgeFilter] = useState('ALL')
   const [prPoUrgentFilter, setPrPoUrgentFilter] = useState(false)
   const [prPoReceiptPendingFilter, setPrPoReceiptPendingFilter] = useState(false)
@@ -1414,6 +1415,10 @@ export default function App() {
     setPrPoReceiptPendingFilter(false)
   }
 
+  function selectPrPoReceiptWeek(weekStart) {
+    setPrPoReceiptWeekFilter(weekStart)
+  }
+
   function selectPrPoAge(ageBand) {
     if (ageBand === 'ALL') {
       setPrPoAgeFilter('ALL')
@@ -1589,6 +1594,34 @@ export default function App() {
         weekStart,
         weekEnd: addDaysIso(weekStart, 6),
         count: weekSets.get(weekStart)?.size || 0,
+      }
+    })
+  }, [allPrLines])
+
+  const prPoReceiptWeekCounts = useMemo(() => {
+    const weekMap = new Map()
+    allPrLines.forEach((row) => {
+      const date = receivedDate(row)
+      const qty = receivedQty(row)
+      if (!date || qty <= 0) return
+      const weekStart = weekStartWednesday(date)
+      if (!weekMap.has(weekStart)) weekMap.set(weekStart, { lines: 0, prs: new Set(), qty: 0 })
+      const item = weekMap.get(weekStart)
+      item.lines += 1
+      item.qty += qty
+      if (row.pr_no) item.prs.add(String(row.pr_no).trim())
+    })
+
+    const currentWeek = weekStartWednesday(new Date().toISOString().slice(0, 10))
+    return Array.from({ length: 8 }, (_, index) => {
+      const weekStart = addDaysIso(currentWeek, index * -7)
+      const item = weekMap.get(weekStart)
+      return {
+        weekStart,
+        weekEnd: addDaysIso(weekStart, 6),
+        lines: item?.lines || 0,
+        prs: item?.prs?.size || 0,
+        qty: item?.qty || 0,
       }
     })
   }, [allPrLines])
@@ -2193,7 +2226,7 @@ export default function App() {
     const receiptRows = allPrLines.filter((row) => {
       const date = receivedDate(row)
       if (!date || receivedQty(row) <= 0) return false
-      return prPoWeekFilter === 'ALL' || weekStartWednesday(date) === prPoWeekFilter
+      return prPoReceiptWeekFilter === 'ALL' || weekStartWednesday(date) === prPoReceiptWeekFilter
     })
 
     const receivedItemQty = receiptRows.reduce(
@@ -2272,7 +2305,7 @@ export default function App() {
       receivedItemQty,
       receivedItemValue,
     }
-  }, [weekFilteredPrLines, allPrLines, prPoWeekFilter])
+  }, [weekFilteredPrLines, allPrLines, prPoReceiptWeekFilter])
 
   const today = new Date()
   const sevenDaysAgo = new Date()
@@ -3167,15 +3200,19 @@ export default function App() {
 
           {view === 'prpo' && (
             <>
-              <PageHeader title="PR & PO Tracker" subtitle="Procurement line status from PR through payment, delivery and receipt." />
+              <PageHeader
+                title="PR & PO Tracker"
+                subtitle="Separate views for PR submissions, current open procurement position, and goods received."
+              />
 
-              <section className="prf-weekly-summary">
-                <div className="prf-status-head">
+              <section className="prpo-section-card">
+                <div className="prpo-section-title">
                   <div>
-                    <span className="eyebrow">WEEKLY PR SUBMISSIONS</span>
-                    <h3>Submitted PRs by week</h3>
+                    <span className="eyebrow">01 · PR SUBMISSION ACTIVITY</span>
+                    <h3>When were PRs raised?</h3>
+                    <p>This section uses <b>Submitted Date</b>. Selecting a week filters the detailed table below.</p>
                   </div>
-                  <span>Wednesday–Tuesday</span>
+                  <span className="prpo-date-basis">DATE BASIS · SUBMITTED DATE</span>
                 </div>
 
                 <div className="prf-week-grid">
@@ -3183,7 +3220,7 @@ export default function App() {
                     className={prPoWeekFilter === 'ALL' ? 'prf-week-card active' : 'prf-week-card'}
                     onClick={() => selectPrPoWeek('ALL')}
                   >
-                    <span>ALL WEEKS</span>
+                    <span>ALL SUBMITTED PRs</span>
                     <strong>{fmt(new Set(allPrLines.map((r) => r.pr_no).filter(Boolean)).size)} PRs</strong>
                   </button>
 
@@ -3194,82 +3231,138 @@ export default function App() {
                       onClick={() => selectPrPoWeek(week.weekStart)}
                     >
                       <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
-                      <strong>{fmt(week.count)} {week.count === 1 ? 'PR' : 'PRs'}</strong>
+                      <strong>{fmt(week.count)} {week.count === 1 ? 'PR raised' : 'PRs raised'}</strong>
                     </button>
                   ))}
                 </div>
 
-                {prPoWeekFilter !== 'ALL' && (
-                  <div className="prf-filter-note">
-                    Showing PRs submitted {formatShortDate(prPoWeekFilter)} – {formatShortDate(addDaysIso(prPoWeekFilter, 6))}
-                    <button onClick={() => selectPrPoWeek('ALL')}>Clear week</button>
-                  </div>
-                )}
+                <div className="prpo-filter-explainer">
+                  <span className="prpo-filter-badge">TABLE FILTER</span>
+                  <b>
+                    {prPoWeekFilter === 'ALL'
+                      ? 'Showing PR lines from all submission dates'
+                      : 'Showing PRs raised ' + formatShortDate(prPoWeekFilter) + ' – ' + formatShortDate(addDaysIso(prPoWeekFilter, 6))}
+                  </b>
+                  {prPoWeekFilter !== 'ALL' && <button onClick={() => selectPrPoWeek('ALL')}>Clear submission filter</button>}
+                </div>
               </section>
 
-              <div className="metric-grid prpo-metrics">
-                <MetricCard
-                  label="Fully Received PRs"
-                  value={fmt(prPoSummary.fullyReceivedPrs)}
-                  helper="Distinct PRs completely received"
-                />
-                <MetricCard
-                  label="Partially Received PRs"
-                  value={fmt(prPoSummary.partReceivedPrs)}
-                  helper="Some quantity received; balance remains"
-                  tone="warn"
-                />
-                <MetricCard
-                  label="3–6 Month Aged PRs"
-                  value={fmt(prPoAgeing.agedThreeToSix)}
-                  helper="Click to show these aged PRs"
-                  tone="warn"
-                  active={prPoAgeFilter === '3TO6'}
-                  onClick={() => selectPrPoAge('3TO6')}
-                />
-                <MetricCard
-                  label="6+ Month Aged PRs"
-                  value={fmt(prPoAgeing.agedSixPlus)}
-                  helper={
-                    prPoAgeing.agedSixPlus > 0
-                      ? 'Click to show • oldest open ' + fmt(prPoAgeing.oldestOpenDays) + ' days'
-                      : 'Click to show 6+ month aged PRs'
-                  }
-                  tone="bad"
-                  active={prPoAgeFilter === '6PLUS'}
-                  onClick={() => selectPrPoAge('6PLUS')}
-                />
-                <MetricCard
-                  label="Urgent Items Pending"
-                  value={fmt(prPoSummary.urgentPendingItems)}
-                  helper="Urgent / critical / high-priority open item lines"
-                  tone="bad"
-                  active={prPoUrgentFilter}
-                  onClick={togglePrPoUrgent}
-                />
-                <MetricCard
-                  label="Pending PO"
-                  value={fmt(prPoSummary.receiptNotDoneItems)}
-                  helper="PO exists but Received Qty is still 0"
-                  tone="warn"
-                  active={prPoReceiptPendingFilter}
-                  onClick={togglePrPoReceiptPending}
-                />
-                <MetricCard
-                  label="Received Item Lines"
-                  value={fmt(prPoSummary.receivedItemLines)}
-                  helper={fmt(prPoSummary.receivedPrs) + ' PRs received in selected week'}
-                />
-                <MetricCard
-                  label="Received Item Quantity"
-                  value={fmt(prPoSummary.receivedItemQty, 2)}
-                  helper="Quantity received by Received Date"
-                />
-                <MetricCard
-                  label="Received Items Value"
-                  value={money(prPoSummary.receivedItemValue)}
-                  helper="Received share of mapped PO value"
-                />
+              <section className="prpo-section-card">
+                <div className="prpo-section-title">
+                  <div>
+                    <span className="eyebrow">02 · CURRENT OPEN POSITION</span>
+                    <h3>What needs attention now?</h3>
+                    <p>These are <b>live status metrics</b>. They are not limited to the PR submission week selected above.</p>
+                  </div>
+                  <span className="prpo-date-basis live">LIVE POSITION</span>
+                </div>
+
+                <div className="metric-grid prpo-metrics prpo-operational-metrics">
+                  <MetricCard
+                    label="3–6 Month Aged PRs"
+                    value={fmt(prPoAgeing.agedThreeToSix)}
+                    helper="Open PRs currently aged 3–6 months"
+                    tone="warn"
+                    active={prPoAgeFilter === '3TO6'}
+                    onClick={() => selectPrPoAge('3TO6')}
+                  />
+                  <MetricCard
+                    label="6+ Month Aged PRs"
+                    value={fmt(prPoAgeing.agedSixPlus)}
+                    helper={prPoAgeing.agedSixPlus > 0 ? 'Oldest open: ' + fmt(prPoAgeing.oldestOpenDays) + ' days' : 'No PRs currently over 6 months'}
+                    tone="bad"
+                    active={prPoAgeFilter === '6PLUS'}
+                    onClick={() => selectPrPoAge('6PLUS')}
+                  />
+                  <MetricCard
+                    label="Urgent Items Pending"
+                    value={fmt(prPoSummary.urgentPendingItems)}
+                    helper="Urgent / critical / high-priority open item lines"
+                    tone="bad"
+                    active={prPoUrgentFilter}
+                    onClick={togglePrPoUrgent}
+                  />
+                  <MetricCard
+                    label="Pending PO"
+                    value={fmt(prPoSummary.receiptNotDoneItems)}
+                    helper="PO exists and Received Qty is still 0"
+                    tone="warn"
+                    active={prPoReceiptPendingFilter}
+                    onClick={togglePrPoReceiptPending}
+                  />
+                </div>
+              </section>
+
+              <section className="prpo-section-card">
+                <div className="prpo-section-title">
+                  <div>
+                    <span className="eyebrow">03 · RECEIPT ACTIVITY</span>
+                    <h3>What was actually received?</h3>
+                    <p>This section uses <b>Received Date</b>, independently from the PR submission filter above.</p>
+                  </div>
+                  <span className="prpo-date-basis receipt">DATE BASIS · RECEIVED DATE</span>
+                </div>
+
+                <div className="prpo-receipt-week-grid">
+                  <button
+                    className={prPoReceiptWeekFilter === 'ALL' ? 'prpo-receipt-week active' : 'prpo-receipt-week'}
+                    onClick={() => selectPrPoReceiptWeek('ALL')}
+                  >
+                    <span>ALL RECEIPTS</span>
+                    <strong>All dates</strong>
+                  </button>
+                  {prPoReceiptWeekCounts.map((week) => (
+                    <button
+                      key={week.weekStart}
+                      className={prPoReceiptWeekFilter === week.weekStart ? 'prpo-receipt-week active' : 'prpo-receipt-week'}
+                      onClick={() => selectPrPoReceiptWeek(week.weekStart)}
+                    >
+                      <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
+                      <strong>{fmt(week.lines)} lines</strong>
+                      <small>{fmt(week.prs)} PRs · {fmt(week.qty, 2)} qty</small>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="metric-grid prpo-metrics prpo-receipt-metrics">
+                  <MetricCard
+                    label="PRs Fully Received"
+                    value={fmt(prPoSummary.fullyReceivedPrs)}
+                    helper="PRs with a receipt in this period and now fully received"
+                  />
+                  <MetricCard
+                    label="PRs Partially Received"
+                    value={fmt(prPoSummary.partReceivedPrs)}
+                    helper="PRs with a receipt in this period but balance remains"
+                    tone="warn"
+                  />
+                  <MetricCard
+                    label="Received Item Lines"
+                    value={fmt(prPoSummary.receivedItemLines)}
+                    helper={fmt(prPoSummary.receivedPrs) + ' distinct PRs received'}
+                  />
+                  <MetricCard
+                    label="Received Quantity"
+                    value={fmt(prPoSummary.receivedItemQty, 2)}
+                    helper="Quantity received by Received Date"
+                  />
+                  <MetricCard
+                    label="Received Items Value"
+                    value={money(prPoSummary.receivedItemValue)}
+                    helper="Mapped value of items received in this period"
+                  />
+                </div>
+              </section>
+
+              <div className="prpo-table-heading">
+                <div>
+                  <span className="eyebrow">DETAIL RECORDS</span>
+                  <h3>PR lines</h3>
+                </div>
+                <div>
+                  <strong>{fmt(prPoVisibleCounts.prs)} PR{prPoVisibleCounts.prs === 1 ? '' : 's'}</strong>
+                  <span>{fmt(prPoVisibleCounts.lines)} item line{prPoVisibleCounts.lines === 1 ? '' : 's'} shown</span>
+                </div>
               </div>
 
               {prPoAgeFilter !== 'ALL' && (
@@ -3292,11 +3385,6 @@ export default function App() {
                   <button onClick={() => setPrPoReceiptPendingFilter(false)}>Clear receipt filter</button>
                 </div>
               )}
-
-              <div className="prpo-visible-count">
-                <strong>{fmt(prPoVisibleCounts.prs)} PR{prPoVisibleCounts.prs === 1 ? '' : 's'}</strong>
-                <span>{fmt(prPoVisibleCounts.lines)} item line{prPoVisibleCounts.lines === 1 ? '' : 's'} shown</span>
-              </div>
 
               <DataTable rows={prpoRows} columns={prPoColumns} noteType="procurement" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} />
             </>
