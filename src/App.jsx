@@ -2981,7 +2981,7 @@ export default function App() {
         <div className="meeting-control-grid">
           <section>
             <div className="meeting-control-head"><span>MTR</span><b>Transfer Control</b></div>
-            <div className="meeting-control-row"><span>Pending due to no stock</span><strong>{fmt(mtrSummary.pendingNoStock)}</strong></div>
+            <div className="meeting-control-row"><span>Pending with no SRD on-hand</span><strong>{fmt(mtrSummary.pendingNoStock)}</strong></div>
             <div className="meeting-control-row"><span>Pending 14+ days</span><strong>{fmt(mtrSummary.aged14)}</strong></div>
             <div className="meeting-control-row critical"><span>Pending 30+ days</span><strong>{fmt(mtrSummary.aged30)}</strong></div>
           </section>
@@ -3649,9 +3649,9 @@ export default function App() {
                 <MetricCard label="Total Transferred Qty" value={fmt(mtrSummary.transferredQty, 2)} />
                 <MetricCard label="Total Remaining Qty" value={fmt(mtrSummary.remainingQty, 2)} tone="warn" />
                 <MetricCard
-                  label="Pending Due to No Stock"
+                  label="Pending with No SRD On-Hand"
                   value={fmt(mtrSummary.pendingNoStock)}
-                  helper="Pending item lines without SRD stock"
+                  helper="Pending item lines where SRD on-hand is not available"
                   tone="warn"
                   active={mtrControlFilter === 'NO_STOCK'}
                   onClick={() => selectMtrControl('NO_STOCK')}
