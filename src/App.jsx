@@ -2528,7 +2528,6 @@ export default function App() {
     { key: 'pr_no', label: 'PR No.', render: (v) => displayValue(v, true) },
     { key: 'po_no', label: 'PO Number', render: (v) => displayValue(v, true) },
     { key: 'priority', label: 'Priority', render: (v) => <StatusPill value={v} /> },
-    { key: 'raw_line_no', label: '#', render: (_v, r) => displayValue(rawField(r, ['#'])) },
     { key: 'item_code', label: 'Item ID', render: (v) => displayValue(v, true) },
     { key: 'item_description', label: 'Product Name', render: (v) => displayValue(v, true) },
     { key: 'qty_requested', label: 'Quantity', render: (v, r) => v ?? rawField(r, ['Quantity']) ?? '—' },
@@ -2538,12 +2537,9 @@ export default function App() {
       const value = v ?? numericRowField(r, 'amount', ['PO Value'])
       return value === null || value === undefined || value === '' ? '—' : money(value)
     } },
-    { key: 'raw_on_hand', label: 'On-Hand', render: (_v, r) => displayValue(rawField(r, ['On-Hand', 'On Hand'])) },
     { key: 'status', label: 'ERP Status', render: (v, r) => <StatusPill value={v || rawField(r, ['ERP Status']) || '—'} /> },
     { key: 'pr_date', label: 'Submitted Date', render: (v, r) => v || rawField(r, ['Submitted Date']) || '—' },
     { key: 'expected_delivery', label: 'PO Delivery Date', render: (v, r) => v || rawField(r, ['PO Delivery Date']) || '—' },
-    { key: 'raw_po_erp_status', label: 'PO ERP Status', render: (_v, r) => <StatusPill value={rawField(r, ['PO ERP Status', 'PO ERP']) || '—'} /> },
-    { key: 'supplier', label: 'Supplier', render: (v) => displayValue(v) },
     { key: 'raw_received_date', label: 'Received Date', render: (_v, r) => displayValue(rawField(r, ['Received Date'])) },
   ]
 
