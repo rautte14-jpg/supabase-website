@@ -2372,6 +2372,8 @@ export default function App() {
   ]
 
   async function saveSnapshot() {
+    const periodStart = weekStartWednesday(todayIso)
+    const periodEnd = addDaysIso(periodStart, 6)
     const urgentCases = procurementData
       .filter((r) => isUrgent(r.priority) || (r.expected_delivery && r.expected_delivery < todayIso))
       .slice(0, 30)
@@ -2383,12 +2385,71 @@ export default function App() {
         eta: r.expected_delivery,
         status: r.delivery_status || r.status,
       }))
-    const { error } = await supabase.from('weekly_snapshots').insert({
-      label: 'Wednesday Meeting ' + todayIso,
-      metrics,
-      priority_cases: urgentCases,
-      created_by: session.user.email,
-    })
+
+    const decisionCount = data.notes.filter(
+      (n) => ['critical', 'urgent', 'high'].includes(lower(n.priority)) || n.deadline
+    ).length
+
+    const snapshotMetrics = {
+      kind: 'MEETING',
+      periodStart,
+      periodEnd,
+      prfSubmitted: prfWeekCounts[0]?.count || 0,
+      prSubmitted: prPoWeekCounts[0]?.count || 0,
+      mtrRequested: mtrWeekCounts[0]?.count || 0,
+      mrnCreated: mrnWeekCounts[0]?.count || 0,
+      pendingPrPo: metrics.pending,
+      urgentCases: metrics.urgent,
+      overdueDeliveries: metrics.overdue,
+      pendingPo: allPrPoRows.filter(isReceiptNotDoneRow).length,
+      agedPrSixPlus: prPoAgeing.agedSixPlus,
+      oldestOpenPrDays: prPoAgeing.oldestOpenDays,
+      mtrPending: mtrSummary.notTransferred + mtrSummary.partiallyTransferred,
+      mtrStockAvailablePending: mtrSummary.stockAvailablePending,
+      mtrNoStock: mtrSummary.pendingNoStock,
+      mtr14: mtrSummary.aged14,
+      mtr30: mtrSummary.aged30,
+      mrnPending: mrnSummary.pending,
+      mrn14: mrnSummary.pending14,
+      mrn30: mrnSummary.pending30,
+      mrnNoJournal: mrnSummary.noJournal,
+      onHandValue: ageingSummary.onHandValue,
+      agedOver365: ageingSummary.agedOver365,
+      p1: ageingSummary.p1,
+      p2: ageingSummary.p2,
+      p3: ageingSummary.p3,
+      p4: ageingSummary.p4,
+      p5: ageingSummary.p5,
+      top100HighValue: top100HighValueTotal,
+      openActions: data.notes.length,
+      decisionsRequired: decisionCount,
+    }
+
+    const existing = data.snapshots.find(
+      (s) => s.snapshot_date === periodStart && s.metrics?.kind === 'MEETING'
+    )
+
+    let error
+    if (existing) {
+      ;({ error } = await supabase
+        .from('weekly_snapshots')
+        .update({
+          label: 'Wednesday Meeting — ' + periodStart + ' to ' + periodEnd,
+          metrics: snapshotMetrics,
+          priority_cases: urgentCases,
+          created_by: session.user.email,
+        })
+        .eq('id', existing.id))
+    } else {
+      ;({ error } = await supabase.from('weekly_snapshots').insert({
+        snapshot_date: periodStart,
+        label: 'Wednesday Meeting — ' + periodStart + ' to ' + periodEnd,
+        metrics: snapshotMetrics,
+        priority_cases: urgentCases,
+        created_by: session.user.email,
+      }))
+    }
+
     if (!error) await loadTables(['snapshots'], true)
   }
 
@@ -2418,6 +2479,44 @@ export default function App() {
     mtr: { current: mtrWeekCounts[0]?.count || 0, previous: mtrWeekCounts[1]?.count || 0 },
     mrn: { current: mrnWeekCounts[0]?.count || 0, previous: mrnWeekCounts[1]?.count || 0 },
   }
+  const meetingSnapshots = useMemo(
+    () => data.snapshots
+      .filter((s) => s.metrics?.kind === 'MEETING')
+      .sort((a, b) => String(a.snapshot_date).localeCompare(String(b.snapshot_date))),
+    [data.snapshots],
+  )
+
+  const currentMeetingSnapshot = meetingSnapshots.find((s) => s.snapshot_date === meetingWeek.weekStart) || null
+  const previousMeetingSnapshot = [...meetingSnapshots]
+    .reverse()
+    .find((s) => s.snapshot_date < meetingWeek.weekStart) || null
+
+  const meetingStateCurrent = {
+    pendingPrPo: metrics.pending,
+    urgentCases: metrics.urgent,
+    overdueDeliveries: metrics.overdue,
+    mtr30: mtrSummary.aged30,
+    mrn30: mrnSummary.pending30,
+    mrnNoJournal: mrnSummary.noJournal,
+    onHandValue: ageingSummary.onHandValue,
+    agedOver365: ageingSummary.agedOver365,
+    openActions: data.notes.length,
+    decisionsRequired: data.notes.filter(
+      (n) => ['critical', 'urgent', 'high'].includes(lower(n.priority)) || n.deadline
+    ).length,
+  }
+
+  const meetingStatePrevious = previousMeetingSnapshot?.metrics || null
+
+  const snapshotDeltaText = (key, formatter = (v) => fmt(v)) => {
+    if (!meetingStatePrevious) return 'Save weekly snapshots to compare'
+    const current = Number(meetingStateCurrent[key] || 0)
+    const previous = Number(meetingStatePrevious[key] || 0)
+    const diff = current - previous
+    if (diff === 0) return 'No change vs last snapshot'
+    return (diff > 0 ? '+' : '−') + formatter(Math.abs(diff)) + ' vs last snapshot'
+  }
+
 
   const meetingProcurementExceptions = useMemo(() => {
     const urgentRows = allPrPoRows.filter(isUrgentPendingRow)
@@ -2503,20 +2602,40 @@ export default function App() {
           ))}
           <div className="meeting-change-card wide">
             <span>On-hand stock value</span>
-            <b>{mvr(ageingComparison.currentOnHand || ageingSummary.onHandValue)}</b>
+            <b>{mvr(meetingStateCurrent.onHandValue)}</b>
             <div>
-              <small>{ageingComparison.previous ? 'Previous ' + mvr(ageingComparison.previousOnHand) : 'Baseline only'}</small>
-              <strong>{ageingComparison.onHandChange === null ? 'Comparison available after next upload' : ((ageingComparison.onHandChange >= 0 ? '+' : '') + mvr(ageingComparison.onHandChange) + ' · ' + ageingComparison.onHandPercent.toFixed(2) + '%')}</strong>
+              <small>{meetingStatePrevious ? 'Last snapshot ' + mvr(meetingStatePrevious.onHandValue || 0) : 'No prior meeting snapshot'}</small>
+              <strong>{snapshotDeltaText('onHandValue', mvr)}</strong>
             </div>
           </div>
           <div className="meeting-change-card wide">
             <span>Stock value over 1 year</span>
-            <b>{mvr(ageingComparison.currentValue || ageingSummary.agedOver365)}</b>
+            <b>{mvr(meetingStateCurrent.agedOver365)}</b>
             <div>
-              <small>{ageingComparison.previous ? 'Previous ' + mvr(ageingComparison.previousValue) : 'Baseline only'}</small>
-              <strong>{ageingComparison.change === null ? 'Comparison available after next upload' : ((ageingComparison.change >= 0 ? '+' : '') + mvr(ageingComparison.change) + ' · ' + ageingComparison.percent.toFixed(2) + '%')}</strong>
+              <small>{meetingStatePrevious ? 'Last snapshot ' + mvr(meetingStatePrevious.agedOver365 || 0) : 'No prior meeting snapshot'}</small>
+              <strong>{snapshotDeltaText('agedOver365', mvr)}</strong>
             </div>
           </div>
+
+          {[
+            ['Pending PR / PO', 'pendingPrPo'],
+            ['Urgent cases', 'urgentCases'],
+            ['Overdue deliveries', 'overdueDeliveries'],
+            ['MTR 30+ days', 'mtr30'],
+            ['MRN 30+ days', 'mrn30'],
+            ['MRN without SVO / Journal', 'mrnNoJournal'],
+            ['Open actions', 'openActions'],
+            ['Decisions required', 'decisionsRequired'],
+          ].map(([label, key]) => (
+            <div className="meeting-change-card compact" key={key}>
+              <span>{label}</span>
+              <b>{fmt(meetingStateCurrent[key])}</b>
+              <div>
+                <small>{meetingStatePrevious ? 'Last snapshot ' + fmt(meetingStatePrevious[key] || 0) : 'No prior snapshot'}</small>
+                <strong>{snapshotDeltaText(key)}</strong>
+              </div>
+            </div>
+          ))}
         </div>
       ),
     },
