@@ -3727,7 +3727,7 @@ export default function App() {
             <>
               <PageHeader title="MRN & Issues" subtitle="Material request progress from creation through ERP issue / journal posting." />
 
-              <section className="prf-weekly-summary">
+              <section className="prf-weekly-summary mrn-weekly-strip mrn-hero-strip">
                 <div className="prf-status-head">
                   <div>
                     <span className="eyebrow">WEEKLY MRNs CREATED</span>
@@ -3762,8 +3762,10 @@ export default function App() {
                 )}
               </section>
 
-              <div className="metric-grid mtr-metrics">
-                <MetricCard label="Total MRN Records" value={fmt(mrnSummary.total)} helper="One unique source ID per record" />
+              <div className="metric-grid mtr-metrics mrn-primary-metrics mrn-summary-band">
+                <div className="mrn-summary-card total">
+                  <MetricCard label="Total MRN Records" value={fmt(mrnSummary.total)} helper="One unique source ID per record" />
+                </div>
                 <div className="mrn-summary-card issued">
                   <MetricCard
                     label="Issued MRNs"
@@ -3773,24 +3775,28 @@ export default function App() {
                     onClick={() => selectMrnControl('ISSUED')}
                   />
                 </div>
-                <MetricCard
-                  label="Pending / Not Issued"
-                  value={fmt(mrnSummary.pending)}
-                  helper="No lines issued yet"
-                  tone="bad"
-                  active={mrnControlFilter === 'PENDING'}
-                  onClick={() => selectMrnControl('PENDING')}
-                />
-                <MetricCard
-                  label="Pending 7+ Days"
-                  value={fmt(mrnSummary.pending7)}
-                  helper="No lines issued; aged 7+ days"
-                  active={mrnControlFilter === 'AGE7'}
-                  onClick={() => selectMrnControl('AGE7')}
-                />
+                <div className="mrn-summary-card pending">
+                  <MetricCard
+                    label="Pending / Not Issued"
+                    value={fmt(mrnSummary.pending)}
+                    helper="No lines issued yet"
+                    tone="bad"
+                    active={mrnControlFilter === 'PENDING'}
+                    onClick={() => selectMrnControl('PENDING')}
+                  />
+                </div>
+                <div className="mrn-summary-card aged">
+                  <MetricCard
+                    label="Pending 7+ Days"
+                    value={fmt(mrnSummary.pending7)}
+                    helper="No lines issued; aged 7+ days"
+                    active={mrnControlFilter === 'AGE7'}
+                    onClick={() => selectMrnControl('AGE7')}
+                  />
+                </div>
               </div>
 
-              <div className="mtr-breakdown-grid">
+              <div className="mtr-breakdown-grid mrn-analysis-grid">
                 <section className="prf-status-summary mrn-analysis-panel mrn-status-panel">
                   <div className="prf-status-head">
                     <div><span className="eyebrow">ISSUED STATUS</span><h3>MRN records by issued status</h3></div>
@@ -3805,6 +3811,7 @@ export default function App() {
                       >
                         <span>{status}</span>
                         <strong>{fmt(count)}</strong>
+                        <span className={mrnStatusFilter === status ? 'mrn-card-chevron open' : 'mrn-card-chevron'} aria-hidden="true">⌄</span>
                       </button>
                     ))}
                   </div>
@@ -3927,9 +3934,12 @@ export default function App() {
                       <div className="sr-kpi-accent sr-kpi-month"><MetricCard label="This Month" value={fmt(srIssueSummary.thisMonth)} helper="Issue lines dated in the current calendar month" /></div>
                     </div>
 
-                    <div className="prf-filter-note prpo-age-note">
-                      Matching uses delivery-name MRN / workshop / SR references. Only a unique direct match is labelled <b>Verified MRN</b>.
-                      {srIssueFilter !== 'ALL' && <button onClick={() => setSrIssueFilter('ALL')}>Clear SR issue filter</button>}
+                    <div className="sr-issue-context-bar">
+                      <div><span>Selected period</span><b>{formatShortDate(srIssueWeekFilter)} – {formatShortDate(addDaysIso(srIssueWeekFilter, 6))}</b></div>
+                      <div><span>Issue lines</span><b>{fmt(srIssueRows.length)}</b></div>
+                      <div><span>SRs</span><b>{fmt(new Set(srIssueRows.map((r) => normalizedSr(r.sr_no)).filter(Boolean)).size)}</b></div>
+                      <div><span>Sales orders</span><b>{fmt(new Set(srIssueRows.map((r) => r.sales_order).filter(Boolean)).size)}</b></div>
+                      {srIssueFilter !== 'ALL' && <button onClick={() => setSrIssueFilter('ALL')}>Clear issue filter</button>}
                     </div>
 
                     <div className="sr-selected-week-heading">
