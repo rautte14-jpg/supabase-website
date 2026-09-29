@@ -3573,19 +3573,71 @@ export default function App() {
                 }
               />
               <section className="meeting-shell">
-                <div className="meeting-slide">
-                  <span className="meeting-kicker">{meetingSlides[slide].kicker}</span>
-                  <h2>{meetingSlides[slide].title}</h2>
-                  <div className="meeting-body">{meetingSlides[slide].body}</div>
-                  <footer>
-                    <span>SRD Warehouse System</span>
-                    <span>{slide + 1} / {meetingSlides.length}</span>
-                  </footer>
-                </div>
-                <div className="meeting-controls">
-                  <button className="secondary" onClick={() => setSlide(Math.max(0, slide - 1))} disabled={slide === 0}>← Previous</button>
-                  <div>{meetingSlides.map((_, i) => <button key={i} className={i === slide ? 'dot active' : 'dot'} onClick={() => setSlide(i)} />)}</div>
-                  <button className="primary" onClick={() => setSlide(Math.min(meetingSlides.length - 1, slide + 1))} disabled={slide === meetingSlides.length - 1}>Next →</button>
+                <div className="meeting-workspace">
+                  <aside className="meeting-agenda">
+                    <div className="meeting-agenda-head">
+                      <span>WEEKLY REVIEW</span>
+                      <strong>Meeting agenda</strong>
+                    </div>
+                    <div className="meeting-agenda-list">
+                      {meetingSlides.map((item, i) => (
+                        <button
+                          key={item.title}
+                          className={i === slide ? 'meeting-agenda-item active' : 'meeting-agenda-item'}
+                          onClick={() => setSlide(i)}
+                        >
+                          <span>{String(i + 1).padStart(2, '0')}</span>
+                          <div>
+                            <small>{item.kicker}</small>
+                            <b>{item.title.split(' — ')[0]}</b>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="meeting-agenda-foot">
+                      <span>SRD Warehouse System</span>
+                      <small>Wednesday management review</small>
+                    </div>
+                  </aside>
+
+                  <div className="meeting-stage">
+                    <div className="meeting-slide-topline">
+                      <span>Slide {slide + 1} of {meetingSlides.length}</span>
+                      <div>
+                        <i style={{ width: ((slide + 1) / meetingSlides.length * 100) + '%' }} />
+                      </div>
+                    </div>
+
+                    <div className="meeting-slide">
+                      <div className="meeting-slide-header">
+                        <div>
+                          <span className="meeting-kicker">{meetingSlides[slide].kicker}</span>
+                          <h2>{meetingSlides[slide].title}</h2>
+                        </div>
+                        <div className="meeting-slide-mark">SRD</div>
+                      </div>
+                      <div className="meeting-body">{meetingSlides[slide].body}</div>
+                      <footer>
+                        <span>Shipbuilding & Repair Division · Materials Management</span>
+                        <span>{new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      </footer>
+                    </div>
+
+                    <div className="meeting-controls">
+                      <button className="secondary" onClick={() => setSlide(Math.max(0, slide - 1))} disabled={slide === 0}>← Previous</button>
+                      <div className="meeting-control-center">
+                        {meetingSlides.map((_, i) => (
+                          <button
+                            key={i}
+                            aria-label={'Go to slide ' + (i + 1)}
+                            className={i === slide ? 'dot active' : 'dot'}
+                            onClick={() => setSlide(i)}
+                          />
+                        ))}
+                      </div>
+                      <button className="primary" onClick={() => setSlide(Math.min(meetingSlides.length - 1, slide + 1))} disabled={slide === meetingSlides.length - 1}>Next →</button>
+                    </div>
+                  </div>
                 </div>
               </section>
             </>
