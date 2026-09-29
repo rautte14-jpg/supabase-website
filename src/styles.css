@@ -3500,3 +3500,72 @@ tbody tr:hover {
   font-size: 11px;
   font-weight: 650;
 }
+
+
+/* Expandable MRN breakdown card cue */
+.prf-status-card {
+  position: relative;
+}
+
+.mrn-card-chevron {
+  position: absolute;
+  top: 8px;
+  right: 9px;
+  color: #94a3b8 !important;
+  font-size: 11px !important;
+  line-height: 1;
+  transition: transform .16s ease, color .16s ease;
+  pointer-events: none;
+}
+
+.prf-status-card:hover .mrn-card-chevron {
+  color: #2563eb !important;
+}
+
+.mrn-card-chevron.open {
+  transform: rotate(180deg);
+  color: #2563eb !important;
+}
+
+.mrn-breakdown-expand {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.mrn-breakdown-expand-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.mrn-breakdown-expand-head h4 {
+  margin: 2px 0 0;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.mrn-breakdown-expand-head > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mrn-breakdown-expand-head strong {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.mrn-breakdown-expand-head button {
+  padding: 4px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 9px;
+  font-weight: 650;
+}
