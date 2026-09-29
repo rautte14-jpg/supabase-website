@@ -2558,6 +2558,12 @@ export default function App() {
     { key: 'raw_received_date', label: 'Received Date', render: (_v, r) => displayValue(rawField(r, ['Received Date'])) },
   ]
 
+  const prSubmissionColumns = [
+    { key: 'pr_no', label: 'PR Number', render: (v) => displayValue(v, true) },
+    { key: 'raw_pr_name', label: 'PR Description', render: (_v, r) => displayValue(rawField(r, ['PR Name', 'PR Description']), true) },
+    { key: 'pr_date', label: 'Submitted Date', render: (v, r) => v || rawField(r, ['Submitted Date']) || '—' },
+  ]
+
   const receiptItemColumns = [
     { key: 'raw_pr_name', label: 'PR Name', render: (_v, r) => displayValue(rawField(r, ['PR Name']), true) },
     { key: 'pr_no', label: 'PR No.', render: (v) => displayValue(v, true) },
@@ -3442,7 +3448,7 @@ export default function App() {
                     <span>{fmt(prSubmissionCounts.lines)} item line{prSubmissionCounts.lines === 1 ? '' : 's'}</span>
                   </div>
                 </div>
-                <DataTable rows={prSubmissionRows} columns={prPoColumns} limit={250} />
+                <DataTable rows={prSubmissionRows} columns={prSubmissionColumns} limit={250} />
               </section>
 
               <section className="prpo-section-card">
