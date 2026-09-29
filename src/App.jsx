@@ -1941,37 +1941,77 @@ export default function App() {
     [allMrnRows, mrnWeekFilter],
   )
 
+  const mrnByNumber = useMemo(() => {
+    const map = new Map()
+
+    weekFilteredMrnRows.forEach((row) => {
+      const mrnNo = String(row.document_no || '').trim()
+      if (!mrnNo) return
+
+      if (!map.has(mrnNo)) {
+        map.set(mrnNo, {
+          rows: [],
+          hasIssued: false,
+          hasPending: false,
+          hasCancelled: false,
+          hasJournal: false,
+          ageDays: 0,
+        })
+      }
+
+      const item = map.get(mrnNo)
+      item.rows.push(row)
+      item.hasIssued = item.hasIssued || mrnIsIssued(row)
+      item.hasCancelled = item.hasCancelled || mrnIsCancelled(row)
+      item.hasPending = item.hasPending || mrnIsPending(row)
+      item.hasJournal = item.hasJournal || mrnHasJournal(row)
+      item.ageDays = Math.max(item.ageDays, mrnAgeDays(row))
+    })
+
+    for (const item of map.values()) {
+      if (item.hasIssued && item.hasPending) item.finalStatus = 'PARTIALLY ISSUED'
+      else if (item.hasIssued) item.finalStatus = 'FULLY ISSUED'
+      else if (item.hasPending) item.finalStatus = 'PENDING / NOT ISSUED'
+      else if (item.hasCancelled) item.finalStatus = 'CANCELLED / REJECTED'
+      else item.finalStatus = 'BLANK'
+    }
+
+    return map
+  }, [weekFilteredMrnRows])
+
   const mrnSummary = useMemo(() => {
-    const all = new Set()
     const issued = new Set()
+    const partial = new Set()
     const pending = new Set()
+    const cancelled = new Set()
     const pending7 = new Set()
     const pending14 = new Set()
     const pending30 = new Set()
     const noJournal = new Set()
     const withJournal = new Set()
 
-    weekFilteredMrnRows.forEach((row) => {
-      const mrnNo = String(row.document_no || '').trim()
-      if (!mrnNo) return
-      all.add(mrnNo)
+    for (const [mrnNo, item] of mrnByNumber.entries()) {
+      if (item.finalStatus === 'FULLY ISSUED') issued.add(mrnNo)
+      if (item.finalStatus === 'PARTIALLY ISSUED') partial.add(mrnNo)
+      if (item.finalStatus === 'CANCELLED / REJECTED') cancelled.add(mrnNo)
 
-      if (mrnIsIssued(row)) issued.add(mrnNo)
-      if (mrnIsPending(row)) {
+      // Ageing applies only to MRNs with no issued lines at all.
+      if (item.finalStatus === 'PENDING / NOT ISSUED') {
         pending.add(mrnNo)
-        const age = mrnAgeDays(row)
-        if (age >= 7) pending7.add(mrnNo)
-        if (age >= 14) pending14.add(mrnNo)
-        if (age >= 30) pending30.add(mrnNo)
-        if (!mrnHasJournal(row)) noJournal.add(mrnNo)
+        if (item.ageDays >= 7) pending7.add(mrnNo)
+        if (item.ageDays >= 14) pending14.add(mrnNo)
+        if (item.ageDays >= 30) pending30.add(mrnNo)
+        if (!item.hasJournal) noJournal.add(mrnNo)
       }
 
-      if (mrnHasJournal(row)) withJournal.add(mrnNo)
-    })
+      if (item.hasJournal) withJournal.add(mrnNo)
+    }
 
     return {
-      total: all.size,
+      total: mrnByNumber.size,
       issued: issued.size,
+      partial: partial.size,
+      cancelled: cancelled.size,
       pending: pending.size,
       pending7: pending7.size,
       pending14: pending14.size,
@@ -1979,6 +2019,8 @@ export default function App() {
       noJournal: noJournal.size,
       withJournal: withJournal.size,
       issuedSet: issued,
+      partialSet: partial,
+      cancelledSet: cancelled,
       pendingSet: pending,
       pending7Set: pending7,
       pending14Set: pending14,
@@ -1986,21 +2028,21 @@ export default function App() {
       noJournalSet: noJournal,
       withJournalSet: withJournal,
     }
-  }, [weekFilteredMrnRows])
+  }, [mrnByNumber])
 
   const mrnStatusCounts = useMemo(() => {
-    const sets = new Map()
-    weekFilteredMrnRows.forEach((row) => {
-      const status = mrnStatusLabel(row)
-      const mrnNo = String(row.document_no || '').trim()
-      if (!mrnNo) return
-      if (!sets.has(status)) sets.set(status, new Set())
-      sets.get(status).add(mrnNo)
+    const counts = new Map()
+    for (const item of mrnByNumber.values()) {
+      counts.set(item.finalStatus, (counts.get(item.finalStatus) || 0) + 1)
+    }
+    const order = ['FULLY ISSUED', 'PARTIALLY ISSUED', 'PENDING / NOT ISSUED', 'CANCELLED / REJECTED', 'BLANK']
+    return [...counts.entries()].sort((a, b) => {
+      const ai = order.indexOf(a[0])
+      const bi = order.indexOf(b[0])
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
     })
-    return [...sets.entries()]
-      .map(([status, values]) => [status, values.size])
-      .sort((a, b) => b[1] - a[1])
-  }, [weekFilteredMrnRows])
+  }, [mrnByNumber])
+
 
   const mrnWorkshopCounts = useMemo(() => {
     const sets = new Map()
@@ -2036,6 +2078,7 @@ export default function App() {
 
       const mrnNo = String(row.document_no || '').trim()
       if (mrnControlFilter === 'ISSUED' && !mrnSummary.issuedSet.has(mrnNo)) return false
+      if (mrnControlFilter === 'PARTIAL' && !mrnSummary.partialSet.has(mrnNo)) return false
       if (mrnControlFilter === 'PENDING' && !mrnSummary.pendingSet.has(mrnNo)) return false
       if (mrnControlFilter === 'AGE7' && !mrnSummary.pending7Set.has(mrnNo)) return false
       if (mrnControlFilter === 'AGE14' && !mrnSummary.pending14Set.has(mrnNo)) return false
@@ -2043,7 +2086,7 @@ export default function App() {
       if (mrnControlFilter === 'NO_JOURNAL' && !mrnSummary.noJournalSet.has(mrnNo)) return false
       if (mrnControlFilter === 'WITH_JOURNAL' && !mrnSummary.withJournalSet.has(mrnNo)) return false
 
-      if (mrnStatusFilter !== 'ALL' && mrnStatusLabel(row) !== mrnStatusFilter) return false
+      if (mrnStatusFilter !== 'ALL' && mrnByNumber.get(mrnNo)?.finalStatus !== mrnStatusFilter) return false
 
       const workshop = String(row.workshop || '').trim() || 'BLANK'
       if (mrnWorkshopFilter !== 'ALL' && workshop !== mrnWorkshopFilter) return false
@@ -2061,6 +2104,7 @@ export default function App() {
       mrnWorkshopFilter,
       mrnWpTypeFilter,
       mrnSummary,
+      mrnByNumber,
     ],
   )
 
@@ -3598,16 +3642,24 @@ export default function App() {
               <div className="metric-grid mtr-metrics">
                 <MetricCard label="Total MRNs" value={fmt(mrnSummary.total)} helper="Distinct MRN numbers" />
                 <MetricCard
-                  label="Issued MRNs"
+                  label="Fully Issued MRNs"
                   value={fmt(mrnSummary.issued)}
-                  helper="Issued / completed in ERP"
+                  helper="All active lines issued / completed"
                   active={mrnControlFilter === 'ISSUED'}
                   onClick={() => selectMrnControl('ISSUED')}
                 />
                 <MetricCard
+                  label="Partially Issued MRNs"
+                  value={fmt(mrnSummary.partial)}
+                  helper="Some lines issued; some still pending"
+                  tone="warn"
+                  active={mrnControlFilter === 'PARTIAL'}
+                  onClick={() => selectMrnControl('PARTIAL')}
+                />
+                <MetricCard
                   label="Pending / Not Issued"
                   value={fmt(mrnSummary.pending)}
-                  helper="Still waiting for ERP issue"
+                  helper="No lines issued yet"
                   tone="bad"
                   active={mrnControlFilter === 'PENDING'}
                   onClick={() => selectMrnControl('PENDING')}
@@ -3615,14 +3667,14 @@ export default function App() {
                 <MetricCard
                   label="Pending 7+ Days"
                   value={fmt(mrnSummary.pending7)}
-                  helper="Pending MRNs"
+                  helper="No lines issued; aged 7+ days"
                   active={mrnControlFilter === 'AGE7'}
                   onClick={() => selectMrnControl('AGE7')}
                 />
                 <MetricCard
                   label="Pending 14+ Days"
                   value={fmt(mrnSummary.pending14)}
-                  helper="Pending MRNs"
+                  helper="No lines issued; aged 14+ days"
                   tone="warn"
                   active={mrnControlFilter === 'AGE14'}
                   onClick={() => selectMrnControl('AGE14')}
@@ -3630,7 +3682,7 @@ export default function App() {
                 <MetricCard
                   label="Pending 30+ Days"
                   value={fmt(mrnSummary.pending30)}
-                  helper="Pending MRNs"
+                  helper="No lines issued; aged 30+ days"
                   tone="bad"
                   active={mrnControlFilter === 'AGE30'}
                   onClick={() => selectMrnControl('AGE30')}
@@ -3655,7 +3707,7 @@ export default function App() {
               <div className="mtr-breakdown-grid">
                 <section className="prf-status-summary">
                   <div className="prf-status-head">
-                    <div><span className="eyebrow">ISSUED STATUS</span><h3>MRNs by issued status</h3></div>
+                    <div><span className="eyebrow">MRN COMPLETION STATUS</span><h3>One final status per MRN</h3></div>
                     <span>{fmt(mrnSummary.total)} MRNs</span>
                   </div>
                   <div className="prf-status-grid">
