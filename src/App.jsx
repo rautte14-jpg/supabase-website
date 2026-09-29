@@ -341,7 +341,8 @@ function mrnIsIssued(row) {
     status.includes('issued') ||
     status.includes('complete') ||
     status.includes('completed') ||
-    status.includes('posted')
+    status.includes('posted') ||
+    status.includes('material released')
   ) && !status.includes('not issued') && !status.includes('unissued')
 }
 
