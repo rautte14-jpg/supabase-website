@@ -3569,3 +3569,245 @@ tbody tr:hover {
   font-size: 9px;
   font-weight: 650;
 }
+
+
+/* MRN & Issues visual hierarchy refinement */
+.mrn-weekly-strip {
+  padding: 14px 16px;
+  background: #fbfdff;
+}
+.mrn-weekly-strip .prf-status-head {
+  margin-bottom: 10px;
+}
+.mrn-weekly-strip .prf-week-grid {
+  gap: 7px;
+}
+.mrn-weekly-strip .prf-week-card {
+  min-height: 54px !important;
+  padding: 8px 10px !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+.mrn-weekly-strip .prf-week-card span {
+  font-size: 8px !important;
+}
+.mrn-weekly-strip .prf-week-card strong {
+  margin-top: 4px;
+  font-size: 15px !important;
+}
+.mrn-weekly-strip .prf-week-card:not(.active) {
+  background: #f8fafc !important;
+  border-color: #e8eef5 !important;
+}
+.mrn-weekly-strip .prf-week-card.active {
+  background: #eff6ff !important;
+  border-color: #bfdbfe !important;
+}
+
+.mrn-primary-metrics {
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.mrn-primary-metrics .metric-card {
+  min-height: 94px !important;
+  padding: 13px 14px !important;
+  box-shadow: none !important;
+}
+.mrn-primary-metrics .metric-card > strong {
+  margin-top: 8px !important;
+  font-size: 23px !important;
+}
+.mrn-primary-metrics .metric-card > small {
+  margin-top: 3px !important;
+}
+
+.mtr-breakdown-grid {
+  gap: 12px;
+}
+.mrn-analysis-panel {
+  padding: 14px !important;
+  border-color: #e6edf5 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
+  box-shadow: none !important;
+}
+.mrn-analysis-panel .prf-status-head {
+  margin-bottom: 9px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #edf2f7;
+}
+.mrn-analysis-panel .prf-status-grid {
+  gap: 7px;
+}
+.mrn-analysis-panel .prf-status-card {
+  min-height: 58px !important;
+  padding: 9px 11px !important;
+  border-color: #e7edf4 !important;
+  background: rgba(255,255,255,.86) !important;
+  box-shadow: none !important;
+}
+.mrn-analysis-panel .prf-status-card strong {
+  margin-top: 3px;
+  font-size: 18px !important;
+}
+.mrn-analysis-panel .prf-status-card:hover {
+  border-color: #bfd2e7 !important;
+  background: #f8fbff !important;
+}
+.mrn-analysis-panel .prf-status-card.active {
+  border-color: #bfdbfe !important;
+  background: #eff6ff !important;
+}
+
+.mrn-wp-panel {
+  margin-top: 12px;
+  padding: 12px 14px !important;
+  background: #fbfcfe !important;
+  box-shadow: none !important;
+}
+.mrn-wp-panel .prf-status-head {
+  margin-bottom: 8px;
+}
+.mrn-wp-panel .prf-status-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.mrn-wp-panel .prf-status-card {
+  min-height: 52px !important;
+  padding: 8px 11px !important;
+  border-radius: 9px !important;
+  box-shadow: none !important;
+  background: #fff !important;
+}
+.mrn-wp-panel .prf-status-card strong {
+  margin-top: 3px;
+  font-size: 16px !important;
+}
+
+.sr-issues-feature {
+  margin-top: 14px;
+  padding: 0 !important;
+  overflow: hidden;
+  border-color: #dbe7f5 !important;
+  background: #fff !important;
+  box-shadow: 0 2px 8px rgba(15,23,42,.045) !important;
+}
+.sr-issues-feature > .prf-status-head {
+  margin: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid #dbe7f5;
+  background: linear-gradient(90deg, #f7fbff 0%, #eef6ff 100%);
+}
+.sr-issues-feature > .prf-status-head h3 {
+  color: #0f172a;
+}
+.sr-issues-feature > .prf-status-head > span {
+  color: #64748b;
+}
+.sr-issues-feature > :not(.prf-status-head) {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+.sr-issues-feature .sr-issue-metrics {
+  gap: 9px;
+  padding-top: 14px;
+}
+.sr-issues-feature .metric-card {
+  min-height: 96px !important;
+  padding: 13px 14px !important;
+  box-shadow: none !important;
+}
+.sr-issues-feature .metric-card > strong {
+  margin-top: 8px !important;
+  font-size: 22px !important;
+}
+.sr-issues-feature .metric-card > small {
+  margin-top: 3px !important;
+}
+
+.sr-kpi-accent {
+  border-radius: 12px;
+}
+.sr-kpi-accent .metric-card {
+  height: 100%;
+}
+.sr-kpi-completed .metric-card {
+  border-color: #bbf7d0 !important;
+  background: #f0fdf4 !important;
+}
+.sr-kpi-completed .metric-card > span,
+.sr-kpi-completed .metric-card > strong {
+  color: #166534 !important;
+}
+.sr-kpi-pending .metric-card {
+  border-color: #fde68a !important;
+  background: #fffbeb !important;
+}
+.sr-kpi-pending .metric-card > span,
+.sr-kpi-pending .metric-card > strong {
+  color: #92400e !important;
+}
+.sr-kpi-cancelled .metric-card {
+  border-color: #fecaca !important;
+  background: #fff7f7 !important;
+}
+.sr-kpi-cancelled .metric-card > span,
+.sr-kpi-cancelled .metric-card > strong {
+  color: #b91c1c !important;
+}
+.sr-kpi-month .metric-card {
+  background: #f8fafc !important;
+}
+.sr-week-card {
+  min-width: 0;
+  border-color: #bfdbfe !important;
+  background: #eff6ff !important;
+}
+.sr-week-card > strong {
+  color: #1d4ed8 !important;
+}
+.sr-week-card-head select {
+  max-width: 165px;
+  background: #fff;
+  border-color: #bfdbfe;
+}
+
+.sr-selected-week-heading {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+.sr-selected-week-heading h4 {
+  font-size: 13px;
+}
+.sr-selected-week-heading > strong {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.sr-issues-feature .prf-filter-note {
+  margin-top: 10px;
+  margin-bottom: 0;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+.sr-issues-feature .table-wrap {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1180px) {
+  .mrn-primary-metrics {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .mrn-primary-metrics,
+  .mrn-wp-panel .prf-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
