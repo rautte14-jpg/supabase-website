@@ -4282,3 +4282,37 @@ tbody tr:hover {
   font-size: 9px;
   font-weight: 600;
 }
+
+
+.pr-submission-detail-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 14px 0 8px;
+  padding: 10px 12px;
+  border-left: 4px solid #2563eb;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+.pr-submission-detail-head h4 {
+  margin: 2px 0 0;
+  color: #1e3a8a;
+  font-size: 14px;
+  font-weight: 700;
+}
+.pr-submission-detail-head > div:last-child {
+  text-align: right;
+}
+.pr-submission-detail-head strong,
+.pr-submission-detail-head span {
+  display: block;
+}
+.pr-submission-detail-head strong {
+  color: #1e3a8a;
+  font-size: 12px;
+}
+.pr-submission-detail-head span {
+  color: #64748b;
+  font-size: 9px;
+}
