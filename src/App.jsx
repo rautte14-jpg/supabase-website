@@ -3787,22 +3787,6 @@ export default function App() {
                   onClick={() => selectMrnControl('AGE7')}
                 />
                 <MetricCard
-                  label="Pending 14+ Days"
-                  value={fmt(mrnSummary.pending14)}
-                  helper="No lines issued; aged 14+ days"
-                  tone="warn"
-                  active={mrnControlFilter === 'AGE14'}
-                  onClick={() => selectMrnControl('AGE14')}
-                />
-                <MetricCard
-                  label="Pending 30+ Days"
-                  value={fmt(mrnSummary.pending30)}
-                  helper="No lines issued; aged 30+ days"
-                  tone="bad"
-                  active={mrnControlFilter === 'AGE30'}
-                  onClick={() => selectMrnControl('AGE30')}
-                />
-                <MetricCard
                   label="Pending Without SVO / Journal"
                   value={fmt(mrnSummary.noJournal)}
                   helper="Pending MRNs without ERP issue reference"
