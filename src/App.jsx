@@ -2147,19 +2147,34 @@ export default function App() {
     }
   }), [data.srIssues, mrnMatchRecords])
 
-  const srIssueSummary = useMemo(() => ({
-    total: srIssuesEnriched.length,
-    completed: srIssuesEnriched.filter((r) => r.issue_state === 'Completed issue').length,
-    pendingInvoice: srIssuesEnriched.filter((r) => r.issue_state === 'Pending invoice').length,
-    cancelled: srIssuesEnriched.filter((r) => r.issue_state === 'Cancelled').length,
-    verified: srIssuesEnriched.filter((r) => r.match_type === 'VERIFIED').length,
-    likely: srIssuesEnriched.filter((r) => r.match_type === 'LIKELY').length,
-    context: srIssuesEnriched.filter((r) => r.match_type === 'SR_CONTEXT').length,
-    ambiguous: srIssuesEnriched.filter((r) => r.match_type === 'AMBIGUOUS').length,
-    unmatched: srIssuesEnriched.filter((r) => r.match_type === 'UNMATCHED').length,
-    salesOrders: new Set(srIssuesEnriched.map((r) => r.sales_order).filter(Boolean)).size,
-    srs: new Set(srIssuesEnriched.map((r) => normalizedSr(r.sr_no)).filter(Boolean)).size,
-  }), [srIssuesEnriched])
+  const srIssueSummary = useMemo(() => {
+    const today = new Date()
+    const todayIsoLocal = today.toISOString().slice(0, 10)
+    const currentWeekStart = weekStartWednesday(todayIsoLocal)
+    const monthStart = todayIsoLocal.slice(0, 7) + '-01'
+
+    return {
+      total: srIssuesEnriched.length,
+      completed: srIssuesEnriched.filter((r) => r.issue_state === 'Completed issue').length,
+      pendingInvoice: srIssuesEnriched.filter((r) => r.issue_state === 'Pending invoice').length,
+      cancelled: srIssuesEnriched.filter((r) => r.issue_state === 'Cancelled').length,
+      thisWeek: srIssuesEnriched.filter((r) => {
+        const d = parseFlexibleDate(r.requested_receipt_date)
+        return d && weekStartWednesday(d) === currentWeekStart
+      }).length,
+      thisMonth: srIssuesEnriched.filter((r) => {
+        const d = parseFlexibleDate(r.requested_receipt_date)
+        return d && d >= monthStart && d <= todayIsoLocal
+      }).length,
+      verified: srIssuesEnriched.filter((r) => r.match_type === 'VERIFIED').length,
+      likely: srIssuesEnriched.filter((r) => r.match_type === 'LIKELY').length,
+      context: srIssuesEnriched.filter((r) => r.match_type === 'SR_CONTEXT').length,
+      ambiguous: srIssuesEnriched.filter((r) => r.match_type === 'AMBIGUOUS').length,
+      unmatched: srIssuesEnriched.filter((r) => r.match_type === 'UNMATCHED').length,
+      salesOrders: new Set(srIssuesEnriched.map((r) => r.sales_order).filter(Boolean)).size,
+      srs: new Set(srIssuesEnriched.map((r) => normalizedSr(r.sr_no)).filter(Boolean)).size,
+    }
+  }, [srIssuesEnriched])
 
   const srIssueRows = useMemo(
     () => srIssuesEnriched.filter((row) => {
@@ -3865,8 +3880,8 @@ export default function App() {
                       <MetricCard label="Completed Issue" value={fmt(srIssueSummary.completed)} helper="Invoiced or delivered lines" active={srIssueFilter === 'COMPLETED'} onClick={() => setSrIssueFilter(srIssueFilter === 'COMPLETED' ? 'ALL' : 'COMPLETED')} />
                       <MetricCard label="Pending Invoice" value={fmt(srIssueSummary.pendingInvoice)} helper="ERP line status: Open order" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} />
                       <MetricCard label="Cancelled" value={fmt(srIssueSummary.cancelled)} helper="Cancelled sales-order lines" tone="bad" active={srIssueFilter === 'CANCELLED'} onClick={() => setSrIssueFilter(srIssueFilter === 'CANCELLED' ? 'ALL' : 'CANCELLED')} />
-                      <MetricCard label="Verified MRN Lines" value={fmt(srIssueSummary.verified)} helper="Unique direct MRN match" active={srIssueFilter === 'VERIFIED'} onClick={() => setSrIssueFilter(srIssueFilter === 'VERIFIED' ? 'ALL' : 'VERIFIED')} />
-                      <MetricCard label="Needs Match Review" value={fmt(srIssueSummary.likely + srIssueSummary.ambiguous + srIssueSummary.unmatched)} helper="Likely, ambiguous or unmatched lines" tone="warn" active={srIssueFilter === 'REVIEW'} onClick={() => setSrIssueFilter(srIssueFilter === 'REVIEW' ? 'ALL' : 'REVIEW')} />
+                      <MetricCard label="This Week" value={fmt(srIssueSummary.thisWeek)} helper="Issue lines dated in the current Wednesday–Tuesday week" />
+                      <MetricCard label="This Month" value={fmt(srIssueSummary.thisMonth)} helper="Issue lines dated in the current calendar month" />
                     </div>
 
                     <div className="prf-filter-note prpo-age-note">
