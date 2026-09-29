@@ -2326,6 +2326,15 @@ export default function App() {
 
   const transactionRows = useMemo(() => data.transactions.filter(matches), [data.transactions, query])
 
+  const prPoReceiptRows = useMemo(
+    () => allPrLines.filter((row) => {
+      const date = receivedDate(row)
+      if (!date || receivedQty(row) <= 0) return false
+      return prPoReceiptWeekFilter === 'ALL' || weekStartWednesday(date) === prPoReceiptWeekFilter
+    }),
+    [allPrLines, prPoReceiptWeekFilter],
+  )
+
   const prPoSummary = useMemo(() => {
     // Submission-based population: used for PRs submitted in the selected week.
     const submittedRows = weekFilteredPrLines
@@ -2358,12 +2367,7 @@ export default function App() {
       if (!status.includes('cancel') && !status.includes('reject')) item.activeLines += 1
     })
 
-    // Receipt-based population: used for receipt KPIs so older PRs received this week are included.
-    const receiptRows = allPrLines.filter((row) => {
-      const date = receivedDate(row)
-      if (!date || receivedQty(row) <= 0) return false
-      return prPoReceiptWeekFilter === 'ALL' || weekStartWednesday(date) === prPoReceiptWeekFilter
-    })
+    const receiptRows = prPoReceiptRows
 
     const receivedItemQty = receiptRows.reduce(
       (sum, row) => sum + receivedQty(row),
@@ -2441,7 +2445,7 @@ export default function App() {
       receivedItemQty,
       receivedItemValue,
     }
-  }, [weekFilteredPrLines, allPrLines, prPoReceiptWeekFilter])
+  }, [weekFilteredPrLines, allPrLines, prPoReceiptRows])
 
   const today = new Date()
   const sevenDaysAgo = new Date()
@@ -2541,6 +2545,21 @@ export default function App() {
     { key: 'pr_date', label: 'Submitted Date', render: (v, r) => v || rawField(r, ['Submitted Date']) || '—' },
     { key: 'expected_delivery', label: 'PO Delivery Date', render: (v, r) => v || rawField(r, ['PO Delivery Date']) || '—' },
     { key: 'raw_received_date', label: 'Received Date', render: (_v, r) => displayValue(rawField(r, ['Received Date'])) },
+  ]
+
+  const receiptItemColumns = [
+    { key: 'raw_pr_name', label: 'PR Name', render: (_v, r) => displayValue(rawField(r, ['PR Name']), true) },
+    { key: 'pr_no', label: 'PR No.', render: (v) => displayValue(v, true) },
+    { key: 'po_no', label: 'PO Number', render: (v) => displayValue(v, true) },
+    { key: 'item_code', label: 'Item ID', render: (v) => displayValue(v, true) },
+    { key: 'item_description', label: 'Product Name', render: (v) => displayValue(v, true) },
+    { key: 'qty_received', label: 'Received Qty', render: (v, r) => v ?? rawField(r, ['Received Qty']) ?? '—' },
+    { key: 'unit', label: 'Unit', render: (v) => displayValue(v) },
+    { key: 'raw_received_date', label: 'Received Date', render: (_v, r) => displayValue(rawField(r, ['Received Date'])) },
+    { key: 'amount', label: 'PO Value', render: (v, r) => {
+      const value = v ?? numericRowField(r, 'amount', ['PO Value'])
+      return value === null || value === undefined || value === '' ? '—' : money(value)
+    } },
   ]
 
   const mtrColumns = [
@@ -3504,12 +3523,33 @@ export default function App() {
                     helper="Mapped value of items received in this period"
                   />
                 </div>
+
+                <div className="prpo-receipt-detail-head">
+                  <div>
+                    <span className="eyebrow">RECEIVED ITEMS · SELECTED PERIOD</span>
+                    <h4>
+                      {prPoReceiptWeekFilter === 'ALL'
+                        ? 'All received items'
+                        : formatShortDate(prPoReceiptWeekFilter) + ' – ' + formatShortDate(addDaysIso(prPoReceiptWeekFilter, 6))}
+                    </h4>
+                  </div>
+                  <div>
+                    <strong>{fmt(prPoReceiptRows.length)} item lines</strong>
+                    <span>{fmt(new Set(prPoReceiptRows.map((r) => r.pr_no).filter(Boolean)).size)} PRs</span>
+                  </div>
+                </div>
+                <DataTable rows={prPoReceiptRows} columns={receiptItemColumns} limit={150} />
               </section>
+
+              <div className="prpo-table-separator">
+                <span>GENERAL PR REGISTER</span>
+                <b>Independent from the Received Date filter above</b>
+              </div>
 
               <div className="prpo-table-heading">
                 <div>
-                  <span className="eyebrow">DETAIL RECORDS</span>
-                  <h3>PR lines</h3>
+                  <span className="eyebrow">PR SUBMISSION / OPEN REGISTER</span>
+                  <h3>PR Lines</h3>
                 </div>
                 <div>
                   <strong>{fmt(prPoVisibleCounts.prs)} PR{prPoVisibleCounts.prs === 1 ? '' : 's'}</strong>
