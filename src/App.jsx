@@ -331,7 +331,8 @@ function mrnCreatedDate(row) {
 }
 
 function mrnStatusLabel(row) {
-  return String(row?.status || rawField(row, ['Issued Status']) || '').trim() || 'BLANK'
+  const rawStatus = rawField(row, ['Issued Status'])
+  return String(rawStatus || '').trim() || 'BLANK'
 }
 
 function mrnIsIssued(row) {
@@ -2452,7 +2453,7 @@ export default function App() {
     { key: 'asset', label: 'Asset / Service', render: (v, r) => displayValue(v || r.vessel || rawField(r, ['ASSET / SERVICE', 'Asset / Service'])) },
     { key: 'raw_svo_journal', label: 'SVO / Journal Number', render: (_v, r) => displayValue(rawField(r, ['SVO / JOURNAL NUMBER', 'SVO / Journal Number'])) },
     { key: 'raw_submitted_by', label: 'Submitted By', render: (_v, r) => displayValue(rawField(r, ['SUBMITTED BY', 'Submitted By'])) },
-    { key: 'status', label: 'Issued Status', render: (v, r) => <StatusPill value={v || rawField(r, ['Issued Status']) || '—'} /> },
+    { key: 'status', label: 'Issued Status', render: (_v, r) => <StatusPill value={mrnStatusLabel(r) === 'BLANK' ? '—' : mrnStatusLabel(r)} /> },
     { key: 'raw_modified_by', label: 'Modified By', render: (_v, r) => displayValue(rawField(r, ['Modified by', 'Modified By'])) },
     { key: 'raw_item_type', label: 'Item Type', render: (_v, r) => displayValue(rawField(r, ['Item Type'])) },
     { key: 'raw_path', label: 'Path', render: (_v, r) => displayValue(rawField(r, ['Path'])) },
