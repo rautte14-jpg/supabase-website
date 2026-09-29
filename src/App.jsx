@@ -2595,6 +2595,17 @@ export default function App() {
     { key: 'raw_path', label: 'Path', render: (_v, r) => displayValue(rawField(r, ['Path'])) },
   ]
 
+  const mrnQuickColumns = [
+    { key: 'raw_id', label: 'ID', render: (_v, r) => displayValue(rawField(r, ['ID'])) },
+    { key: 'document_date', label: 'Created', render: (v, r) => v || rawField(r, ['Created']) || '—' },
+    { key: 'workshop', label: 'Workshop', render: (v, r) => displayValue(v || rawField(r, ['WORKSHOP NAME', 'Workshop Name'])) },
+    { key: 'document_no', label: 'MRN', render: (v, r) => displayValue(v || rawField(r, ['MRN NUMBER', 'MRN Number']), true) },
+    { key: 'sr_wo', label: 'SR', render: (v, r) => displayValue(v || rawField(r, ['SR NUMBER', 'SR Number']), true) },
+    { key: 'asset', label: 'Asset / Service', render: (v, r) => displayValue(v || r.vessel || rawField(r, ['ASSET / SERVICE', 'Asset / Service'])) },
+    { key: 'raw_svo_journal', label: 'SVO / Journal', render: (_v, r) => displayValue(rawField(r, ['SVO / JOURNAL NUMBER', 'SVO / Journal Number'])) },
+    { key: 'status', label: 'Issued Status', render: (_v, r) => <StatusPill value={mrnStatusLabel(r) === 'BLANK' ? '—' : mrnStatusLabel(r)} /> },
+  ]
+
   const srIssueColumns = [
     { key: 'requested_receipt_date', label: 'Requested Receipt Date' },
     { key: 'sales_order', label: 'Sales Order', render: (v) => <span className="font-mono text-[11px] font-semibold text-slate-800">{v || '—'}</span> },
@@ -3825,6 +3836,25 @@ export default function App() {
                       </button>
                     ))}
                   </div>
+                  {mrnStatusFilter !== 'ALL' && (
+                    <div className="mrn-breakdown-expand">
+                      <div className="mrn-breakdown-expand-head">
+                        <div>
+                          <span className="eyebrow">ISSUED STATUS DETAILS</span>
+                          <h4>{mrnStatusFilter}</h4>
+                        </div>
+                        <div>
+                          <strong>{fmt(weekFilteredMrnRows.filter((row) => mrnStatusLabel(row) === mrnStatusFilter).length)} records</strong>
+                          <button onClick={() => selectMrnStatus(mrnStatusFilter)}>Collapse</button>
+                        </div>
+                      </div>
+                      <DataTable
+                        rows={weekFilteredMrnRows.filter((row) => mrnStatusLabel(row) === mrnStatusFilter)}
+                        columns={mrnQuickColumns}
+                        limit={150}
+                      />
+                    </div>
+                  )}
                 </section>
 
                 <section className="prf-status-summary">
@@ -3844,6 +3874,25 @@ export default function App() {
                       </button>
                     ))}
                   </div>
+                  {mrnWorkshopFilter !== 'ALL' && (
+                    <div className="mrn-breakdown-expand">
+                      <div className="mrn-breakdown-expand-head">
+                        <div>
+                          <span className="eyebrow">WORKSHOP DETAILS</span>
+                          <h4>{mrnWorkshopFilter}</h4>
+                        </div>
+                        <div>
+                          <strong>{fmt(weekFilteredMrnRows.filter((row) => (String(rawField(row, ['WORKSHOP NAME']) || row.workshop || '').trim() || 'BLANK') === mrnWorkshopFilter).length)} records</strong>
+                          <button onClick={() => selectMrnWorkshop(mrnWorkshopFilter)}>Collapse</button>
+                        </div>
+                      </div>
+                      <DataTable
+                        rows={weekFilteredMrnRows.filter((row) => (String(rawField(row, ['WORKSHOP NAME']) || row.workshop || '').trim() || 'BLANK') === mrnWorkshopFilter)}
+                        columns={mrnQuickColumns}
+                        limit={150}
+                      />
+                    </div>
+                  )}
                 </section>
               </div>
 
