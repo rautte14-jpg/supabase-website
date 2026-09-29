@@ -1669,15 +1669,25 @@ export default function App() {
   )
 
 
-  const prSubmissionRows = useMemo(
+  const prSubmissionLineRows = useMemo(
     () => weekFilteredPrLines.filter((row) => matches(row)),
     [weekFilteredPrLines, query],
   )
 
+  const prSubmissionRows = useMemo(() => {
+    const uniquePrs = new Map()
+    prSubmissionLineRows.forEach((row) => {
+      const prNo = String(row.pr_no || '').trim()
+      if (!prNo || uniquePrs.has(prNo)) return
+      uniquePrs.set(prNo, row)
+    })
+    return Array.from(uniquePrs.values())
+  }, [prSubmissionLineRows])
+
   const prSubmissionCounts = useMemo(() => ({
-    prs: new Set(prSubmissionRows.map((row) => String(row.pr_no || '').trim()).filter(Boolean)).size,
-    lines: prSubmissionRows.length,
-  }), [prSubmissionRows])
+    prs: prSubmissionRows.length,
+    lines: prSubmissionLineRows.length,
+  }), [prSubmissionRows, prSubmissionLineRows])
 
   const prPoAgeing = useMemo(() => {
     const prMap = new Map()
@@ -3436,10 +3446,10 @@ export default function App() {
 
                 <div className="pr-submission-detail-head">
                   <div>
-                    <span className="eyebrow">PR LINES · SUBMITTED DATE</span>
+                    <span className="eyebrow">PRs · SUBMITTED DATE</span>
                     <h4>
                       {prPoWeekFilter === 'ALL'
-                        ? 'All submitted PR lines'
+                        ? 'All submitted PRs'
                         : formatShortDate(prPoWeekFilter) + ' – ' + formatShortDate(addDaysIso(prPoWeekFilter, 6))}
                     </h4>
                   </div>
