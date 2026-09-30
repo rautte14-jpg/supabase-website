@@ -134,6 +134,11 @@ export function detectSource(rows, fileName = '', sheetName = '') {
   ) return 'SR_ISSUES'
 
   if (
+    context.includes('pendingpayment') ||
+    (has('PO Number') && has('PO Date') && has('Supplier') && has('Status') && has('Priority') && has('PO Value'))
+  ) return 'PENDING_PAYMENTS'
+
+  if (
     context.includes('purchaserequisition') ||
     (has('PR No.', 'PR No') && has('PO Number') && has('ERP Status'))
   ) return 'PR'
@@ -158,6 +163,7 @@ export const SOURCE_OPTIONS = [
   ['PRF', 'PRF / IPF Register'],
   ['PR', 'ERP PR Lines'],
   ['PO', 'ERP PO List'],
+  ['PENDING_PAYMENTS', 'Pending Payment List'],
   ['MTR', 'MTR Register'],
   ['MRN', 'MRN / Material Request Register'],
   ['SR_ISSUES', 'SR Issues / Issued Items'],
@@ -167,6 +173,20 @@ export const SOURCE_OPTIONS = [
 ]
 
 export function mapRows(source, rows) {
+  if (source === 'PENDING_PAYMENTS') {
+    return rows.map((r) => ({
+      po_no: text(r, ['PO Number', 'PO No', 'PO']),
+      po_date: date(r, ['PO Date', 'Purchase Order Date']),
+      supplier: text(r, ['Supplier', 'Vendor', 'Supplier Name']),
+      status: text(r, ['Status', 'Payment Status']),
+      priority: text(r, ['Priority', 'Urgency']),
+      po_value: number(r, ['PO Value', 'Amount', 'PO Amount', 'Value']),
+      source_updated_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      raw_source: rawSource(r),
+    })).filter((r) => meaningful(r.po_no, true))
+  }
+
   if (source === 'PRF') {
     return rows.map((r) => {
       const linked = text(r, ['PR/MTR Number', 'PR / MTR Number', 'PR-MTR Number', 'Linked PR/MTR'])
