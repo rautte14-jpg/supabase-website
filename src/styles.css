@@ -4316,3 +4316,211 @@ tbody tr:hover {
   color: #64748b;
   font-size: 9px;
 }
+
+
+/* Stock & Ageing week-to-week comparison */
+.ageing-comparison-panel .panel-head p {
+  margin: 5px 0 0;
+  color: #77859a;
+  font-size: 12px;
+}
+
+.ageing-compare-legend {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  margin: 2px 0 16px;
+  color: #637493;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ageing-compare-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.ageing-swatch {
+  width: 22px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.ageing-swatch.previous,
+.ageing-bar.previous {
+  background: #aebbd0;
+}
+
+.ageing-swatch.current,
+.ageing-bar.current {
+  background: #173b75;
+}
+
+.ageing-bucket-chart {
+  display: grid;
+  gap: 10px;
+}
+
+.ageing-bucket-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr) 190px;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid #e5eaf2;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+
+.ageing-bucket-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ageing-bucket-label strong {
+  color: #173675;
+  font-size: 15px;
+}
+
+.ageing-bucket-label span {
+  color: #7b8aa2;
+  font-size: 11px;
+}
+
+.ageing-bars {
+  display: grid;
+  gap: 8px;
+}
+
+.ageing-bar-line {
+  display: grid;
+  grid-template-columns: 58px minmax(120px, 1fr) 155px;
+  gap: 10px;
+  align-items: center;
+}
+
+.ageing-bar-caption {
+  color: #7b8aa2;
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.ageing-bar-track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf1f6;
+}
+
+.ageing-bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  min-width: 3px;
+}
+
+.ageing-bar-line b {
+  text-align: right;
+  color: #223654;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ageing-bucket-change {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.ageing-bucket-change span {
+  color: #8997ac;
+  font-size: 9px;
+  letter-spacing: .09em;
+  font-weight: 850;
+}
+
+.ageing-bucket-change strong {
+  color: #52647f;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.ageing-bucket-change.up strong {
+  color: #a66b10;
+}
+
+.ageing-bucket-change.down strong {
+  color: #18866f;
+}
+
+.ageing-comparison-foot {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.ageing-comparison-foot > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f3f6fa;
+}
+
+.ageing-comparison-foot span {
+  color: #6e7f99;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.ageing-comparison-foot b {
+  color: #173675;
+  font-size: 12px;
+}
+
+.ageing-comparison-foot em {
+  padding: 0 6px;
+  color: #8997ac;
+  font-style: normal;
+}
+
+@media (max-width: 1000px) {
+  .ageing-bucket-row {
+    grid-template-columns: 100px minmax(0, 1fr);
+  }
+
+  .ageing-bucket-change {
+    grid-column: 2;
+    align-items: flex-start;
+  }
+
+  .ageing-bar-line {
+    grid-template-columns: 54px minmax(100px, 1fr);
+  }
+
+  .ageing-bar-line b {
+    grid-column: 2;
+    text-align: left;
+  }
+}
+
+@media (max-width: 700px) {
+  .ageing-bucket-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ageing-bucket-change {
+    grid-column: 1;
+  }
+
+  .ageing-comparison-foot {
+    grid-template-columns: 1fr;
+  }
+}
