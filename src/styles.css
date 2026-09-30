@@ -4975,3 +4975,91 @@ tbody tr:hover {
     max-height: none;
   }
 }
+
+
+/* Warehouse SR issue weekly selector and drilldown */
+.warehouse-issue-metrics .warehouse-issue-metric {
+  width: 100%;
+  min-height: 94px;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 12px;
+  background: rgba(255,255,255,.055);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.warehouse-issue-metrics .warehouse-issue-metric:hover,
+.warehouse-issue-metrics .warehouse-issue-metric.active {
+  border-color: rgba(147,197,253,.55);
+  background: rgba(59,130,246,.14);
+}
+
+.warehouse-issue-metrics .warehouse-issue-metric span,
+.warehouse-issue-metrics .warehouse-issue-metric small {
+  display: block;
+  color: #9fb1cc;
+}
+
+.warehouse-issue-metrics .warehouse-issue-metric span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.warehouse-issue-metrics .warehouse-issue-metric b {
+  display: block;
+  margin: 8px 0 5px;
+  color: #fff;
+  font-size: 27px;
+}
+
+.warehouse-issue-metrics .warehouse-issue-metric small {
+  font-size: 9px;
+}
+
+.warehouse-issue-table {
+  max-height: 390px;
+  overflow: auto;
+}
+
+.warehouse-issue-row {
+  display: grid;
+  grid-template-columns: 105px 110px 120px minmax(240px, 1.5fr) 75px 130px 110px 110px 125px;
+  gap: 10px;
+  align-items: center;
+  min-width: 1190px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #edf1f6;
+  font-size: 11px;
+}
+
+.warehouse-issue-row:last-child {
+  border-bottom: 0;
+}
+
+.warehouse-issue-row > span {
+  color: #3f506a;
+}
+
+.warehouse-issue-row b {
+  color: #173675;
+}
+
+.warehouse-issue-row em {
+  justify-self: start;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #eef2f7;
+  color: #42536e;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.warehouse-presentation-shell:fullscreen .warehouse-issue-table,
+.warehouse-presentation-shell:fullscreen .warehouse-receipt-table {
+  max-height: 48vh;
+}
