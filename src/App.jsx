@@ -1365,7 +1365,7 @@ export default function App() {
 
   const VIEW_TABLES = {
     home: [],
-    overview: ['procurement', 'material', 'stock', 'transactions', 'lld', 'notes', 'sourceUpdates', 'snapshots'],
+    overview: ['procurement', 'material', 'stock', 'transactions', 'srIssues', 'lld', 'notes', 'sourceUpdates', 'snapshots', 'pendingPayments'],
     prf: ['procurement', 'lld', 'notes'],
     prpo: ['procurement', 'lld', 'notes'],
     payments: ['pendingPayments'],
@@ -3736,6 +3736,89 @@ export default function App() {
         ? 'Urgent Pending Payment POs'
         : pendingPaymentDetailFilter
 
+  const overviewMonth = useMemo(() => {
+    const monthStart = todayIso.slice(0, 7) + '-01'
+    const inMonth = (date) => Boolean(date && date >= monthStart && date <= todayIso)
+
+    const submittedPrNos = new Set()
+    const receivedPrNos = new Set()
+    let receivedQtyMonth = 0
+    let receivedValueMonth = 0
+
+    allPrLines.forEach((row) => {
+      const prNo = String(row.pr_no || '').trim()
+      if (prNo && inMonth(prSubmittedDate(row))) submittedPrNos.add(prNo)
+
+      const rDate = receivedDate(row)
+      const rQty = receivedQty(row)
+      if (rDate && inMonth(rDate) && rQty > 0) {
+        if (prNo) receivedPrNos.add(prNo)
+        receivedQtyMonth += rQty
+
+        const amount = numericRowField(row, 'amount', [
+          'Amount', 'PO Amount', 'PO Value', 'Total Amount', 'Value',
+          'Line Amount', 'Net Amount', 'Line Value', 'Total Value', 'Purchase Amount',
+        ]) ?? 0
+        const requested = requestedQty(row)
+        receivedValueMonth += amount > 0
+          ? (requested > 0 ? amount * Math.min(1, rQty / requested) : amount)
+          : 0
+      }
+    })
+
+    const mtrNos = new Set(
+      allMtrRows
+        .filter((row) => inMonth(mtrRequestDate(row)))
+        .map((row) => String(row.document_no || '').trim())
+        .filter(Boolean),
+    )
+
+    const mrnRowsMonth = allMrnRows.filter((row) => inMonth(mrnCreatedDate(row)))
+    const mrnNos = new Set(mrnRowsMonth.map((row) => String(row.document_no || '').trim()).filter(Boolean))
+    const pendingMrnNos = new Set(
+      mrnRowsMonth
+        .filter((row) => mrnIsPending(row))
+        .map((row) => String(row.document_no || '').trim())
+        .filter(Boolean),
+    )
+
+    const issueRows = srIssuesEnriched.filter((row) => inMonth(parseFlexibleDate(row.requested_receipt_date)))
+    const issueQty = issueRows.reduce((sum, row) => sum + Math.abs(Number(row.quantity || 0)), 0)
+    const issueValue = 0
+
+    const pendingPaymentValue = (data.pendingPayments || []).reduce((sum, row) => sum + Number(row.po_value || 0), 0)
+
+    return {
+      monthStart,
+      submittedPrs: submittedPrNos.size,
+      receivedPrs: receivedPrNos.size,
+      receivedQty: receivedQtyMonth,
+      receivedValue: receivedValueMonth,
+      mtrs: mtrNos.size,
+      mrns: mrnNos.size,
+      pendingMrns: pendingMrnNos.size,
+      issueRecords: issueRows.length,
+      issueQty,
+      issueValue,
+      pendingPaymentPos: (data.pendingPayments || []).length,
+      pendingPaymentValue,
+      stockQty: ageingSummary.onHandQty,
+      stockValue: ageingSummary.onHandValue,
+      agedValue: ageingSummary.agedOver365,
+    }
+  }, [
+    todayIso,
+    allPrLines,
+    allMtrRows,
+    allMrnRows,
+    srIssuesEnriched,
+    data.pendingPayments,
+    ageingSummary,
+  ])
+
+  const overviewMovementMax = Math.max(overviewMonth.receivedQty, overviewMonth.issueQty, 1)
+  const overviewMonthLabel = new Date(todayIso + 'T12:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+
   if (checking) return <div className="splash">Loading SRD Warehouse System…</div>
   if (!session) return <AuthScreen />
   if (recoveringPassword) return <PasswordRecovery />
@@ -3909,40 +3992,170 @@ export default function App() {
 
           {view === 'overview' && (
             <>
-              <PageHeader title="Overview" subtitle="Live control view across SRD inventory and procurement sources." />
-              <div className="metric-grid">
-                <MetricCard label="PRFs tracked" value={metrics.prf} helper="Request register" />
-                <MetricCard label="MRNs tracked" value={metrics.mrn} helper="Material requests" />
-                <MetricCard label="Pending PR / PO" value={metrics.pending} tone="warn" />
-                <MetricCard label="Urgent items" value={metrics.urgent} tone="bad" />
-                <MetricCard label="Delivery delays" value={metrics.overdue} tone="bad" />
-                <MetricCard label="Receipts — 7 days" value={fmt(metrics.receipts, 2)} />
-                <MetricCard label="Issues — 7 days" value={fmt(metrics.issues, 2)} />
-                <MetricCard label="Stock value" value={money(metrics.stockValue)} />
-              </div>
+              <PageHeader
+                title="Overview"
+                subtitle="Month-to-date warehouse, procurement and materials control at a glance."
+              />
 
-              <div className="dashboard-grid">
-                <section className="panel">
-                  <div className="panel-head"><div><span className="eyebrow">SOURCE HEALTH</span><h3>Latest updates</h3></div></div>
-                  <div className="source-list">
-                    {['PRF','PR','PO','MTR','MRN','TRANSACTIONS','STOCK','AGEING','LLD'].map((s) => {
-                      const x = lastSource.get(s)
-                      return <div key={s}><b>{humanSource(s)}</b><span>{x ? new Date(x.imported_at).toLocaleString() : 'Not loaded'}</span><small>{x ? fmt(x.row_count) + ' rows' : '—'}</small></div>
-                    })}
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                  <div>
+                    <span className="eyebrow">SRD WAREHOUSE OVERVIEW</span>
+                    <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-800">{overviewMonthLabel}</h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {formatShortDate(overviewMonth.monthStart)} – {formatShortDate(todayIso)} · live month-to-date position
+                    </p>
+                  </div>
+                  <button className="secondary" onClick={refreshCurrentView} disabled={loading}>
+                    {loading ? 'Refreshing…' : 'Refresh data'}
+                  </button>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    ['PRs Submitted', fmt(overviewMonth.submittedPrs), 'Procurement activity', 'prpo', 'blue'],
+                    ['PRs Received', fmt(overviewMonth.receivedPrs), 'Distinct PRs received this month', 'prpo', 'emerald'],
+                    ['Received Quantity', fmt(overviewMonth.receivedQty, 2), 'Total quantity received', 'prpo', 'emerald'],
+                    ['Received Value', mvr(overviewMonth.receivedValue), 'Month-to-date received value', 'prpo', 'teal'],
+                    ['Pending Payment POs', fmt(overviewMonth.pendingPaymentPos), 'Current pending-payment list', 'payments', 'amber'],
+                    ['Pending Payment Value', mvr(overviewMonth.pendingPaymentValue), 'Combined pending PO value', 'payments', 'amber'],
+                    ['MTRs Created', fmt(overviewMonth.mtrs), 'Created this month', 'mtr', 'violet'],
+                    ['MRNs Created', fmt(overviewMonth.mrns), 'Created this month', 'mrn', 'indigo'],
+                    ['Pending / Not Issued MRNs', fmt(overviewMonth.pendingMrns), 'Created this month and still pending', 'mrn', 'rose'],
+                    ['SR Issue Records', fmt(overviewMonth.issueRecords), 'Issue records this month', 'mrn', 'cyan'],
+                    ['Stock Value', mvr(overviewMonth.stockValue), 'Current SRD on-hand value', 'stock', 'slate'],
+                    ['Stock Over 1 Year', mvr(overviewMonth.agedValue), 'Current ageing exposure', 'stock', 'orange'],
+                  ].map(([label, value, helper, target, accent]) => (
+                    <button
+                      key={label}
+                      onClick={() => setView(target)}
+                      className={
+                        'group rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md ' +
+                        (accent === 'emerald' ? 'hover:bg-emerald-50/30' :
+                         accent === 'amber' ? 'hover:bg-amber-50/30' :
+                         accent === 'rose' ? 'hover:bg-rose-50/30' :
+                         accent === 'violet' ? 'hover:bg-violet-50/30' :
+                         accent === 'indigo' ? 'hover:bg-indigo-50/30' :
+                         accent === 'cyan' ? 'hover:bg-cyan-50/30' :
+                         accent === 'orange' ? 'hover:bg-orange-50/30' :
+                         accent === 'teal' ? 'hover:bg-teal-50/30' :
+                         accent === 'blue' ? 'hover:bg-blue-50/30' :
+                         'hover:bg-slate-50')
+                      }
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</span>
+                        <span className="text-slate-300 transition group-hover:text-blue-500">↗</span>
+                      </div>
+                      <strong className="mt-3 block text-2xl font-semibold tracking-tight text-slate-900">{value}</strong>
+                      <small className="mt-1 block text-[11px] leading-4 text-slate-500">{helper}</small>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <div className="mt-4 grid gap-4 xl:grid-cols-[1.45fr_.85fr]">
+                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <span className="eyebrow">MATERIAL MOVEMENT</span>
+                      <h3 className="mt-1 text-base font-semibold text-slate-800">Received vs Issued — {overviewMonthLabel}</h3>
+                      <p className="mt-1 text-xs text-slate-500">Quantity movement for the current month.</p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-semibold text-slate-500">MONTH TO DATE</span>
+                  </div>
+
+                  <div className="mt-7 space-y-6">
+                    <div>
+                      <div className="mb-2 flex items-end justify-between">
+                        <div>
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Received Quantity</span>
+                          <b className="mt-1 block text-xl font-semibold text-slate-900">{fmt(overviewMonth.receivedQty, 2)}</b>
+                        </div>
+                        <small className="text-[11px] text-slate-500">{fmt(overviewMonth.receivedPrs)} PRs received</small>
+                      </div>
+                      <div className="h-8 overflow-hidden rounded-lg bg-slate-100">
+                        <div
+                          className="h-full rounded-lg bg-emerald-500 transition-all"
+                          style={{ width: Math.max(2, (overviewMonth.receivedQty / overviewMovementMax) * 100) + '%' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-2 flex items-end justify-between">
+                        <div>
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">Issued Quantity</span>
+                          <b className="mt-1 block text-xl font-semibold text-slate-900">{fmt(overviewMonth.issueQty, 2)}</b>
+                        </div>
+                        <small className="text-[11px] text-slate-500">{fmt(overviewMonth.issueRecords)} issue records</small>
+                      </div>
+                      <div className="h-8 overflow-hidden rounded-lg bg-slate-100">
+                        <div
+                          className="h-full rounded-lg bg-amber-500 transition-all"
+                          style={{ width: Math.max(2, (overviewMonth.issueQty / overviewMovementMax) * 100) + '%' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-7 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-3">
+                    <div className="rounded-lg bg-slate-50 p-3">
+                      <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Receipt Value</span>
+                      <b className="mt-1 block text-sm text-slate-800">{mvr(overviewMonth.receivedValue)}</b>
+                    </div>
+                    <div className="rounded-lg bg-slate-50 p-3">
+                      <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Current Inventory Value</span>
+                      <b className="mt-1 block text-sm text-slate-800">{mvr(overviewMonth.stockValue)}</b>
+                    </div>
+                    <div className="rounded-lg bg-slate-50 p-3">
+                      <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Aged Over 1 Year</span>
+                      <b className="mt-1 block text-sm text-slate-800">{mvr(overviewMonth.agedValue)}</b>
+                    </div>
                   </div>
                 </section>
 
-                <section className="panel">
-                  <div className="panel-head"><div><span className="eyebrow">FOLLOW-UP</span><h3>Open actions</h3></div><button className="link-button" onClick={() => setView('meeting')}>Meeting view →</button></div>
-                  <div className="action-list">
-                    {data.notes.slice(0, 7).map((n) => (
-                      <div key={n.id}>
-                        <StatusPill value={n.priority || 'Action'} />
-                        <section><b>{n.entity_key}</b><span>{n.action || n.remark || 'No action text'}</span></section>
-                        <small>{n.owner || 'Unassigned'}</small>
-                      </div>
+                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div>
+                    <span className="eyebrow">CONTROL POSITION</span>
+                    <h3 className="mt-1 text-base font-semibold text-slate-800">What needs attention</h3>
+                    <p className="mt-1 text-xs text-slate-500">Current operational follow-up items.</p>
+                  </div>
+
+                  <div className="mt-5 space-y-3">
+                    {[
+                      ['Pending Payments', overviewMonth.pendingPaymentPos, 'payments', 'MVR ' + money(overviewMonth.pendingPaymentValue)],
+                      ['Pending / Not Issued MRNs', overviewMonth.pendingMrns, 'mrn', 'Created this month'],
+                      ['Stock Over 1 Year', null, 'stock', mvr(overviewMonth.agedValue)],
+                      ['SR Issue Records', overviewMonth.issueRecords, 'mrn', 'This month'],
+                    ].map(([label, count, target, detail]) => (
+                      <button
+                        key={label}
+                        onClick={() => setView(target)}
+                        className="flex w-full items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-blue-200 hover:bg-blue-50/50"
+                      >
+                        <div>
+                          <b className="block text-xs font-semibold text-slate-700">{label}</b>
+                          <small className="mt-0.5 block text-[10px] text-slate-500">{detail}</small>
+                        </div>
+                        <strong className="text-lg font-semibold text-slate-900">{count === null ? '→' : fmt(count)}</strong>
+                      </button>
                     ))}
-                    {!data.notes.length && <EmptyState title="No open actions" text="Add follow-up notes from any tracker." />}
+                  </div>
+
+                  <div className="mt-5 border-t border-slate-100 pt-4">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Latest source updates</span>
+                    <div className="mt-3 space-y-2">
+                      {['PR', 'PO', 'MRN', 'AGEING'].map((source) => {
+                        const x = lastSource.get(source)
+                        return (
+                          <div key={source} className="flex items-center justify-between gap-3 text-[11px]">
+                            <b className="text-slate-600">{humanSource(source)}</b>
+                            <span className="text-slate-400">{x ? new Date(x.imported_at).toLocaleDateString() : 'Not loaded'}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 </section>
               </div>
