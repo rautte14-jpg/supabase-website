@@ -1286,6 +1286,7 @@ export default function App() {
   const [prPoAgeFilter, setPrPoAgeFilter] = useState('ALL')
   const [prPoUrgentFilter, setPrPoUrgentFilter] = useState(false)
   const [prPoReceiptPendingFilter, setPrPoReceiptPendingFilter] = useState(false)
+  const [prPoPaymentPendingFilter, setPrPoPaymentPendingFilter] = useState(false)
   const [mtrWeekFilter, setMtrWeekFilter] = useState('ALL')
   const [mtrControlFilter, setMtrControlFilter] = useState('ALL')
   const [mtrStatusFilter, setMtrStatusFilter] = useState('ALL')
@@ -1508,6 +1509,7 @@ export default function App() {
     setPrPoAgeFilter('ALL')
     setPrPoUrgentFilter(false)
     setPrPoReceiptPendingFilter(false)
+    setPrPoPaymentPendingFilter(false)
   }
 
   function selectPrPoReceiptWeek(weekStart) {
@@ -1523,18 +1525,28 @@ export default function App() {
     setPrPoWeekFilter('ALL')
     setPrPoUrgentFilter(false)
     setPrPoReceiptPendingFilter(false)
+    setPrPoPaymentPendingFilter(false)
   }
 
   function togglePrPoUrgent() {
     setPrPoUrgentFilter((current) => !current)
     setPrPoAgeFilter('ALL')
     setPrPoReceiptPendingFilter(false)
+    setPrPoPaymentPendingFilter(false)
   }
 
   function togglePrPoReceiptPending() {
     setPrPoReceiptPendingFilter((current) => !current)
     setPrPoAgeFilter('ALL')
     setPrPoUrgentFilter(false)
+    setPrPoPaymentPendingFilter(false)
+  }
+
+  function togglePrPoPaymentPending() {
+    setPrPoPaymentPendingFilter((current) => !current)
+    setPrPoAgeFilter('ALL')
+    setPrPoUrgentFilter(false)
+    setPrPoReceiptPendingFilter(false)
   }
 
   function selectMtrWeek(weekStart) {
@@ -1844,6 +1856,32 @@ export default function App() {
 
     return receivedQty(row) <= 0
   }
+
+  const isPendingPaymentRow = (row) => {
+    const poNo = String(row.po_no || '').trim()
+    if (!poNo || isPlaceholderValue(poNo, true)) return false
+
+    const payment = lower(row.payment_status || rawField(row, ['Payment Status', 'Payment']))
+    if (!payment) return false
+    if (/(paid|completed|complete|settled|released)/.test(payment)) return false
+
+    return (
+      payment.includes('pending') ||
+      payment.includes('payment request sent') ||
+      payment.includes('payment requested') ||
+      payment.includes('request sent')
+    )
+  }
+
+  const pendingPaymentRows = useMemo(
+    () => allPrPoRows.filter(isPendingPaymentRow),
+    [allPrPoRows],
+  )
+
+  const pendingPaymentPoCount = useMemo(
+    () => new Set(pendingPaymentRows.map((row) => String(row.po_no || '').trim()).filter(Boolean)).size,
+    [pendingPaymentRows],
+  )
 
   const prpoRows = useMemo(
     () => allPrPoRows.filter((row) => {
@@ -4092,7 +4130,45 @@ export default function App() {
                     active={prPoReceiptPendingFilter}
                     onClick={togglePrPoReceiptPending}
                   />
+                  <MetricCard
+                    label="Pending Payments"
+                    value={fmt(pendingPaymentPoCount)}
+                    helper="POs with payment pending / payment request sent"
+                    tone="warn"
+                    active={prPoPaymentPendingFilter}
+                    onClick={togglePrPoPaymentPending}
+                  />
                 </div>
+
+                {prPoPaymentPendingFilter && (
+                  <div className="prpo-payment-pending-detail">
+                    <div className="prpo-receipt-detail-head">
+                      <div>
+                        <span className="eyebrow">PENDING PAYMENTS · LIVE POSITION</span>
+                        <h4>POs awaiting payment</h4>
+                      </div>
+                      <div>
+                        <strong>{fmt(pendingPaymentPoCount)} POs</strong>
+                        <span>{fmt(pendingPaymentRows.length)} item lines</span>
+                        <button onClick={() => setPrPoPaymentPendingFilter(false)}>Close</button>
+                      </div>
+                    </div>
+                    <DataTable
+                      rows={pendingPaymentRows}
+                      columns={[
+                        { key: 'po_no', label: 'PO Number', render: (v) => displayValue(v, true) },
+                        { key: 'pr_no', label: 'PR No.', render: (v) => displayValue(v, true) },
+                        { key: 'supplier', label: 'Supplier' },
+                        { key: 'item_code', label: 'Item' },
+                        { key: 'item_description', label: 'Product Name' },
+                        { key: 'payment_status', label: 'Payment Status', render: (v) => <StatusPill value={v || 'Pending'} /> },
+                        { key: 'delivery_status', label: 'Delivery Status', render: (v) => <StatusPill value={v} /> },
+                        { key: 'expected_delivery', label: 'ETA' },
+                      ]}
+                      limit={200}
+                    />
+                  </div>
+                )}
               </section>
 
               <section className="prpo-section-card">
