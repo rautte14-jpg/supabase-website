@@ -1299,6 +1299,7 @@ export default function App() {
   const [srIssueWeekFilter, setSrIssueWeekFilter] = useState(() => weekStartWednesday(new Date().toISOString().slice(0, 10)))
   const [stockAgeFilter, setStockAgeFilter] = useState('ALL')
   const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
+  const [warehouseReceiptDetail, setWarehouseReceiptDetail] = useState('NONE')
 
   const canEdit = access && ['admin', 'editor'].includes(lower(access.role))
   const isAdmin = access && lower(access.role) === 'admin'
@@ -3120,6 +3121,91 @@ export default function App() {
   const warehouseReceiptCurrent = warehouseReceiptSummaryForWeek(warehouseWeekStart)
   const warehouseReceiptPrevious = warehouseReceiptSummaryForWeek(warehousePreviousWeekStart)
 
+  const warehouseReceiptPrState = useMemo(() => {
+    const receivedPrNos = new Set(
+      warehouseReceiptCurrent.rows
+        .map((row) => String(row.pr_no || '').trim())
+        .filter(Boolean),
+    )
+
+    const states = new Map()
+    receivedPrNos.forEach((prNo) => {
+      const rows = allPrLines.filter((row) => String(row.pr_no || '').trim() === prNo)
+      let requested = 0
+      let received = 0
+      let fullLines = 0
+      let partialLines = 0
+
+      rows.forEach((row) => {
+        const req = requestedQty(row)
+        const rec = receivedQty(row)
+        const state = receiptState(row)
+        requested += req
+        received += Math.min(req > 0 ? req : Number.MAX_SAFE_INTEGER, rec)
+        if (state === 'full') fullLines += 1
+        if (state === 'partial') partialLines += 1
+      })
+
+      const full =
+        (requested > 0 && received >= requested) ||
+        (rows.length > 0 && fullLines === rows.length)
+
+      states.set(prNo, {
+        prNo,
+        rows,
+        requested,
+        received,
+        full,
+        partial: !full && (received > 0 || partialLines > 0 || fullLines > 0),
+      })
+    })
+
+    return states
+  }, [warehouseReceiptCurrent.rows, allPrLines])
+
+  const warehouseFullyReceivedPrNos = useMemo(
+    () => new Set([...warehouseReceiptPrState.values()].filter((x) => x.full).map((x) => x.prNo)),
+    [warehouseReceiptPrState],
+  )
+
+  const warehousePartReceivedPrNos = useMemo(
+    () => new Set([...warehouseReceiptPrState.values()].filter((x) => x.partial).map((x) => x.prNo)),
+    [warehouseReceiptPrState],
+  )
+
+  const warehouseReceiptDetailRows = useMemo(() => {
+    if (warehouseReceiptDetail === 'ALL') {
+      return warehouseReceiptCurrent.rows
+    }
+
+    if (warehouseReceiptDetail === 'FULL') {
+      return warehouseReceiptCurrent.rows.filter((row) =>
+        warehouseFullyReceivedPrNos.has(String(row.pr_no || '').trim())
+      )
+    }
+
+    if (warehouseReceiptDetail === 'PARTIAL') {
+      return allPrLines.filter((row) =>
+        warehousePartReceivedPrNos.has(String(row.pr_no || '').trim())
+      )
+    }
+
+    return []
+  }, [
+    warehouseReceiptDetail,
+    warehouseReceiptCurrent.rows,
+    warehouseFullyReceivedPrNos,
+    warehousePartReceivedPrNos,
+    allPrLines,
+  ])
+
+  const warehouseReceiptDetailTitle =
+    warehouseReceiptDetail === 'PARTIAL'
+      ? 'Part Received PR Details'
+      : warehouseReceiptDetail === 'FULL'
+        ? 'Fully Received PR Items'
+        : 'PR Receipt Items'
+
   const warehouseMrnCreated = useMemo(
     () => allMrnRows.filter((row) => weekStartWednesday(mrnCreatedDate(row)) === warehouseWeekStart).length,
     [allMrnRows, warehouseWeekStart],
@@ -3241,23 +3327,110 @@ export default function App() {
             </div>
             <small>Based on Received Date in PR / PO Tracker</small>
           </div>
-          <div className="meeting-change-grid">
-            {[
-              ['PRs received', warehouseReceiptCurrent.prs, warehouseReceiptPrevious.prs, false],
-              ['Received item lines', warehouseReceiptCurrent.lines, warehouseReceiptPrevious.lines, false],
-              ['Received quantity', warehouseReceiptCurrent.qty, warehouseReceiptPrevious.qty, true],
-              ['Received value', warehouseReceiptCurrent.value, warehouseReceiptPrevious.value, 'money'],
-            ].map(([label, current, previous, format]) => (
-              <div className="meeting-change-card" key={label}>
-                <span>{label}</span>
-                <b>{format === 'money' ? mvr(current) : format ? fmt(current, 2) : fmt(current)}</b>
+
+          <div className="meeting-change-grid warehouse-receipt-cards">
+            <button
+              className={warehouseReceiptDetail === 'ALL' ? 'meeting-change-card receipt-card active' : 'meeting-change-card receipt-card'}
+              onClick={() => setWarehouseReceiptDetail((current) => current === 'ALL' ? 'NONE' : 'ALL')}
+            >
+              <span>PRs received</span>
+              <b>{fmt(warehouseReceiptCurrent.prs)}</b>
+              <div>
+                <small>Previous period: {fmt(warehouseReceiptPrevious.prs)}</small>
+                <strong>Click to list received items</strong>
+              </div>
+            </button>
+
+            <button
+              className={warehouseReceiptDetail === 'FULL' ? 'meeting-change-card receipt-card active' : 'meeting-change-card receipt-card'}
+              onClick={() => setWarehouseReceiptDetail((current) => current === 'FULL' ? 'NONE' : 'FULL')}
+            >
+              <span>Fully received PRs</span>
+              <b>{fmt(warehouseFullyReceivedPrNos.size)}</b>
+              <div>
+                <small>Completed receipt status</small>
+                <strong>Click to view items</strong>
+              </div>
+            </button>
+
+            <button
+              className={warehouseReceiptDetail === 'PARTIAL' ? 'meeting-change-card receipt-card active' : 'meeting-change-card receipt-card'}
+              onClick={() => setWarehouseReceiptDetail((current) => current === 'PARTIAL' ? 'NONE' : 'PARTIAL')}
+            >
+              <span>Part received PRs</span>
+              <b>{fmt(warehousePartReceivedPrNos.size)}</b>
+              <div>
+                <small>PRs with remaining quantities</small>
+                <strong>Click to view full PR detail</strong>
+              </div>
+            </button>
+
+            <div className="meeting-change-card">
+              <span>Received quantity</span>
+              <b>{fmt(warehouseReceiptCurrent.qty, 2)}</b>
+              <div>
+                <small>Previous period: {fmt(warehouseReceiptPrevious.qty, 2)}</small>
+                <strong>{deltaText(warehouseReceiptCurrent.qty, warehouseReceiptPrevious.qty)}</strong>
+              </div>
+            </div>
+
+            <div className="meeting-change-card">
+              <span>Received value</span>
+              <b>{mvr(warehouseReceiptCurrent.value)}</b>
+              <div>
+                <small>Previous period: {mvr(warehouseReceiptPrevious.value)}</small>
+                <strong>{deltaText(warehouseReceiptCurrent.value, warehouseReceiptPrevious.value)}</strong>
+              </div>
+            </div>
+          </div>
+
+          {warehouseReceiptDetail !== 'NONE' && (
+            <section className="warehouse-receipt-detail">
+              <div className="warehouse-receipt-detail-head">
                 <div>
-                  <small>Previous period: {format === 'money' ? mvr(previous) : format ? fmt(previous, 2) : fmt(previous)}</small>
-                  <strong>{deltaText(current, previous, format === 'money' ? '' : '')}</strong>
+                  <span className="eyebrow">RECEIPT DETAILS</span>
+                  <h4>{warehouseReceiptDetailTitle}</h4>
+                </div>
+                <div>
+                  <strong>{fmt(warehouseReceiptDetailRows.length)} item lines</strong>
+                  <button onClick={() => setWarehouseReceiptDetail('NONE')}>Close</button>
                 </div>
               </div>
-            ))}
-          </div>
+
+              <div className="warehouse-receipt-table">
+                <div className="warehouse-receipt-row warehouse-receipt-head">
+                  <span>PR</span>
+                  <span>PO</span>
+                  <span>Item</span>
+                  <span>Description</span>
+                  <span>Requested</span>
+                  <span>Received</span>
+                  <span>Balance</span>
+                  <span>Status</span>
+                </div>
+                {warehouseReceiptDetailRows.slice(0, 80).map((row, index) => {
+                  const requested = requestedQty(row)
+                  const received = receivedQty(row)
+                  const balance = Math.max(0, requested - received)
+                  const state = receiptState(row)
+                  const status = state === 'full' ? 'Fully received' : received > 0 ? 'Part received' : 'Not received'
+                  return (
+                    <div className="warehouse-receipt-row" key={(row.pr_no || 'pr') + '-' + (row.item_code || index) + '-' + index}>
+                      <b>{row.pr_no || '—'}</b>
+                      <span>{row.po_no || '—'}</span>
+                      <span>{row.item_code || '—'}</span>
+                      <span title={row.item_description || ''}>{row.item_description || '—'}</span>
+                      <span>{fmt(requested, 2)}</span>
+                      <span>{fmt(received, 2)}</span>
+                      <span>{fmt(balance, 2)}</span>
+                      <em className={status === 'Fully received' ? 'good' : status === 'Part received' ? 'warn' : 'bad'}>{status}</em>
+                    </div>
+                  )
+                })}
+                {!warehouseReceiptDetailRows.length && <div className="meeting-no-exceptions">No receipt details found for this selection.</div>}
+              </div>
+            </section>
+          )}
         </>
       ),
     },
