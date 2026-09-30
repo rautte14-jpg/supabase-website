@@ -13,6 +13,7 @@ const NAV = [
   ['vessel', 'Vessel / SR View', 'V'],
   ['stock', 'Stock & Ageing', 'S'],
   ['updates', 'Update Centre', 'U'],
+  ['warehouse', 'Warehouse Presentation', 'W'],
   ['history', 'History', 'H'],
 ]
 
@@ -21,7 +22,7 @@ const NAV_GROUPS = [
   ['Procurement', ['prf', 'prpo']],
   ['Materials', ['mtr', 'mrn', 'vessel']],
   ['Inventory', ['stock']],
-  ['Reporting', ['history']],
+  ['Reporting', ['warehouse', 'history']],
   ['Administration', ['updates']],
 ]
 
@@ -1351,6 +1352,7 @@ export default function App() {
     vessel: ['procurement', 'material', 'transactions', 'srIssues', 'lld'],
     stock: ['stock', 'snapshots'],
     updates: ['sourceUpdates'],
+    warehouse: ['procurement', 'material', 'srIssues'],
     history: ['sourceUpdates', 'snapshots'],
   }
 
@@ -3086,6 +3088,227 @@ export default function App() {
     },
   ]
 
+
+  const warehouseWeekStart = weekStartWednesday(todayIso)
+  const warehouseWeekEnd = addDaysIso(warehouseWeekStart, 6)
+  const warehousePreviousWeekStart = addDaysIso(warehouseWeekStart, -7)
+
+  const warehouseReceiptSummaryForWeek = (weekStart) => {
+    const rows = allPrLines.filter((row) => {
+      const date = receivedDate(row)
+      return date && receivedQty(row) > 0 && weekStartWednesday(date) === weekStart
+    })
+
+    const prs = new Set(rows.map((row) => String(row.pr_no || '').trim()).filter(Boolean))
+    const qty = rows.reduce((sum, row) => sum + receivedQty(row), 0)
+    const value = rows.reduce((sum, row) => {
+      const amount = numericRowField(row, 'amount', [
+        'Amount', 'PO Amount', 'PO Value', 'Total Amount', 'Value',
+        'Line Amount', 'Net Amount', 'Line Value', 'Total Value', 'Purchase Amount',
+      ]) ?? 0
+      const requested = requestedQty(row)
+      const received = receivedQty(row)
+      if (!(amount > 0) || !(received > 0)) return sum
+      return sum + (requested > 0 ? amount * Math.min(1, received / requested) : amount)
+    }, 0)
+
+    return { rows, prs: prs.size, lines: rows.length, qty, value }
+  }
+
+  const warehouseReceiptCurrent = warehouseReceiptSummaryForWeek(warehouseWeekStart)
+  const warehouseReceiptPrevious = warehouseReceiptSummaryForWeek(warehousePreviousWeekStart)
+
+  const warehouseMrnLive = useMemo(() => {
+    const issued = new Set()
+    const pending = new Set()
+    const pending30 = new Set()
+    const noJournal = new Set()
+
+    allMrnRows.forEach((row) => {
+      const id = mrnSourceId(row)
+      if (!id) return
+      if (mrnIsIssued(row)) issued.add(id)
+      if (mrnIsPending(row)) {
+        pending.add(id)
+        if (mrnAgeDays(row) >= 30) pending30.add(id)
+        if (!mrnHasJournal(row)) noJournal.add(id)
+      }
+    })
+
+    return {
+      total: allMrnRows.length,
+      issued: issued.size,
+      pending: pending.size,
+      pending30: pending30.size,
+      noJournal: noJournal.size,
+    }
+  }, [allMrnRows])
+
+  const warehousePendingWorkshopCounts = useMemo(() => {
+    const counts = new Map()
+    allMrnRows.forEach((row) => {
+      if (!mrnIsPending(row)) return
+      const workshop = String(rawField(row, ['WORKSHOP NAME']) || row.workshop || '').trim() || 'BLANK'
+      counts.set(workshop, (counts.get(workshop) || 0) + 1)
+    })
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
+  }, [allMrnRows])
+
+  const warehouseIssueWeek = useMemo(() => {
+    const rows = srIssuesEnriched.filter((row) => {
+      const date = parseFlexibleDate(row.requested_receipt_date)
+      return date && weekStartWednesday(date) === warehouseWeekStart
+    })
+    return {
+      rows,
+      total: rows.length,
+      completed: rows.filter((row) => row.issue_state === 'Completed issue').length,
+      pendingInvoice: rows.filter((row) => row.issue_state === 'Pending invoice').length,
+      cancelled: rows.filter((row) => row.issue_state === 'Cancelled').length,
+      salesOrders: new Set(rows.map((row) => row.sales_order).filter(Boolean)).size,
+      srs: new Set(rows.map((row) => normalizedSr(row.sr_no)).filter(Boolean)).size,
+    }
+  }, [srIssuesEnriched, warehouseWeekStart])
+
+  const warehouseIssuePreviousWeek = useMemo(() =>
+    srIssuesEnriched.filter((row) => {
+      const date = parseFlexibleDate(row.requested_receipt_date)
+      return date && weekStartWednesday(date) === warehousePreviousWeekStart
+    }).length,
+    [srIssuesEnriched, warehousePreviousWeekStart],
+  )
+
+  const warehousePendingIssues = useMemo(
+    () => warehouseIssueWeek.rows
+      .filter((row) => row.issue_state === 'Pending invoice')
+      .slice(0, 7),
+    [warehouseIssueWeek],
+  )
+
+  const warehouseSlides = [
+    {
+      kicker: 'WAREHOUSE WEEKLY REVIEW',
+      title: 'Warehouse Summary',
+      body: (
+        <>
+          <div className="meeting-period-banner">
+            <div>
+              <span>REPORTING PERIOD</span>
+              <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
+            </div>
+            <small>Current Wednesday–Tuesday warehouse activity</small>
+          </div>
+          <div className="meeting-metrics">
+            <MetricCard label="PRs Received" value={fmt(warehouseReceiptCurrent.prs)} helper="Distinct PRs with receipt this week" />
+            <MetricCard label="Received Item Lines" value={fmt(warehouseReceiptCurrent.lines)} helper="Receipt activity this week" />
+            <MetricCard label="Received Quantity" value={fmt(warehouseReceiptCurrent.qty, 2)} helper="Total quantity received" />
+            <MetricCard label="MRNs Created" value={fmt(mrnWeekCounts[0]?.count || 0)} helper="MRN records created this week" />
+            <MetricCard label="Pending / Not Issued" value={fmt(warehouseMrnLive.pending)} tone="bad" helper="Current live MRN backlog" />
+            <MetricCard label="SR Issues This Week" value={fmt(warehouseIssueWeek.total)} helper="Issue records in current period" />
+          </div>
+        </>
+      ),
+    },
+    {
+      kicker: 'RECEIPT ACTIVITY',
+      title: 'PR / PO Receipts',
+      body: (
+        <>
+          <div className="meeting-period-banner">
+            <div>
+              <span>CURRENT WEEK RECEIPTS</span>
+              <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
+            </div>
+            <small>Based on Received Date in PR / PO Tracker</small>
+          </div>
+          <div className="meeting-change-grid">
+            {[
+              ['PRs received', warehouseReceiptCurrent.prs, warehouseReceiptPrevious.prs, false],
+              ['Received item lines', warehouseReceiptCurrent.lines, warehouseReceiptPrevious.lines, false],
+              ['Received quantity', warehouseReceiptCurrent.qty, warehouseReceiptPrevious.qty, true],
+              ['Received value', warehouseReceiptCurrent.value, warehouseReceiptPrevious.value, 'money'],
+            ].map(([label, current, previous, format]) => (
+              <div className="meeting-change-card" key={label}>
+                <span>{label}</span>
+                <b>{format === 'money' ? mvr(current) : format ? fmt(current, 2) : fmt(current)}</b>
+                <div>
+                  <small>Last week: {format === 'money' ? mvr(previous) : format ? fmt(previous, 2) : fmt(previous)}</small>
+                  <strong>{deltaText(current, previous, format === 'money' ? '' : '')}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ),
+    },
+    {
+      kicker: 'MRN & ISSUE CONTROL',
+      title: 'MRN Operational Position',
+      body: (
+        <>
+          <div className="meeting-exception-metrics">
+            <div><span>Total MRN records</span><b>{fmt(warehouseMrnLive.total)}</b></div>
+            <div><span>Issued</span><b>{fmt(warehouseMrnLive.issued)}</b></div>
+            <div><span>Pending / not issued</span><b>{fmt(warehouseMrnLive.pending)}</b></div>
+            <div><span>Pending 30+ days</span><b>{fmt(warehouseMrnLive.pending30)}</b></div>
+            <div><span>Without SVO / Journal</span><b>{fmt(warehouseMrnLive.noJournal)}</b></div>
+            <div><span>Created this week</span><b>{fmt(mrnWeekCounts[0]?.count || 0)}</b></div>
+          </div>
+          <div className="meeting-control-grid">
+            <section>
+              <div className="meeting-control-head"><span>MRN</span><b>Backlog Control</b></div>
+              <div className="meeting-control-row"><span>Pending / not issued</span><strong>{fmt(warehouseMrnLive.pending)}</strong></div>
+              <div className="meeting-control-row critical"><span>Pending 30+ days</span><strong>{fmt(warehouseMrnLive.pending30)}</strong></div>
+              <div className="meeting-control-row critical"><span>Without SVO / Journal</span><strong>{fmt(warehouseMrnLive.noJournal)}</strong></div>
+            </section>
+            <section>
+              <div className="meeting-control-head"><span>WORKSHOP</span><b>Top Pending MRNs</b></div>
+              {warehousePendingWorkshopCounts.map(([workshop, count]) => (
+                <div className="meeting-control-row" key={workshop}><span>{workshop}</span><strong>{fmt(count)}</strong></div>
+              ))}
+              {!warehousePendingWorkshopCounts.length && <div className="meeting-no-exceptions">No pending MRNs.</div>}
+            </section>
+          </div>
+        </>
+      ),
+    },
+    {
+      kicker: 'SR ISSUE ACTIVITY',
+      title: 'Issues This Week',
+      body: (
+        <>
+          <div className="meeting-exception-metrics">
+            <div><span>Issue records</span><b>{fmt(warehouseIssueWeek.total)}</b></div>
+            <div><span>Completed issue</span><b>{fmt(warehouseIssueWeek.completed)}</b></div>
+            <div><span>Pending invoice</span><b>{fmt(warehouseIssueWeek.pendingInvoice)}</b></div>
+            <div><span>Cancelled</span><b>{fmt(warehouseIssueWeek.cancelled)}</b></div>
+            <div><span>Sales orders</span><b>{fmt(warehouseIssueWeek.salesOrders)}</b></div>
+            <div><span>Service requests</span><b>{fmt(warehouseIssueWeek.srs)}</b></div>
+          </div>
+          <div className="meeting-exception-table">
+            <div className="meeting-exception-head"><span>Sales order</span><span>SR / Workshop</span><span>Status</span><span>Requested date</span></div>
+            {warehousePendingIssues.map((row, index) => (
+              <div className="meeting-exception-row" key={(row.sales_order || 'issue') + index}>
+                <b>{row.sales_order || '—'}</b>
+                <span>{[row.sr_no, row.workshop].filter(Boolean).join(' · ') || '—'}</span>
+                <em>{row.issue_state || 'Pending invoice'}</em>
+                <small>{parseFlexibleDate(row.requested_receipt_date) || '—'}</small>
+              </div>
+            ))}
+            {!warehousePendingIssues.length && <div className="meeting-no-exceptions">No pending invoice issue records in the current week.</div>}
+          </div>
+          <div className="meeting-period-banner" style={{ marginTop: 18 }}>
+            <div>
+              <span>WEEK-ON-WEEK ISSUE ACTIVITY</span>
+              <b>{fmt(warehouseIssuePreviousWeek)} → {fmt(warehouseIssueWeek.total)} records</b>
+            </div>
+            <small>{deltaText(warehouseIssueWeek.total, warehouseIssuePreviousWeek)}</small>
+          </div>
+        </>
+      ),
+    },
+  ]
+
   if (checking) return <div className="splash">Loading SRD Warehouse System…</div>
   if (!session) return <AuthScreen />
   if (recoveringPassword) return <PasswordRecovery />
@@ -3232,7 +3455,7 @@ export default function App() {
                   ['mtr', 'MTR Tracker', 'Monitor requested, transferred and remaining quantities.'],
                   ['mrn', 'MRN & Issues', 'Track MRNs, issue status and pending material release.'],
                   ['stock', 'Stock & Ageing', 'Review current stock position, value and inventory ageing.'],
-                  ['meeting', 'Wednesday Meeting', 'Open the weekly management meeting view.'],
+                  ['warehouse', 'Warehouse Presentation', 'Present weekly receipts, MRN issue control and SR issue activity.'],
                   ['history', 'History', 'Review source uploads and update history.'],
                 ].map(([key, title, text]) => (
                   <button
@@ -4163,6 +4386,73 @@ export default function App() {
                 await loadHomeSummary()
                 await loadForView('updates', true)
               }} email={session.user.email} />
+            </>
+          )}
+
+          {view === 'warehouse' && (
+            <>
+              <PageHeader
+                title="Warehouse Presentation"
+                subtitle="Weekly presentation focused on receipt activity, MRN issue control and SR issue activity."
+                actions={<button className="secondary" onClick={() => window.print()}>Print / PDF</button>}
+              />
+              <section className="meeting-shell">
+                <div className="meeting-workspace">
+                  <aside className="meeting-agenda">
+                    <div className="meeting-agenda-head">
+                      <span>WAREHOUSE REVIEW</span>
+                      <strong>Presentation</strong>
+                    </div>
+                    <div className="meeting-agenda-list">
+                      {warehouseSlides.map((item, i) => (
+                        <button
+                          key={item.title}
+                          className={i === slide ? 'meeting-agenda-item active' : 'meeting-agenda-item'}
+                          onClick={() => setSlide(i)}
+                        >
+                          <span>{String(i + 1).padStart(2, '0')}</span>
+                          <div>
+                            <small>{item.kicker}</small>
+                            <b>{item.title}</b>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="meeting-agenda-foot">
+                      <span>SRD Warehouse System</span>
+                      <small>Warehouse operational presentation</small>
+                    </div>
+                  </aside>
+
+                  <div className="meeting-stage">
+                    <div className="meeting-slide-topline">
+                      <span>Slide {Math.min(slide + 1, warehouseSlides.length)} of {warehouseSlides.length}</span>
+                      <div><i style={{ width: ((Math.min(slide, warehouseSlides.length - 1) + 1) / warehouseSlides.length * 100) + '%' }} /></div>
+                    </div>
+
+                    <div className="meeting-slide">
+                      <div className="meeting-slide-header">
+                        <div>
+                          <span className="meeting-kicker">{warehouseSlides[Math.min(slide, warehouseSlides.length - 1)].kicker}</span>
+                          <h2>{warehouseSlides[Math.min(slide, warehouseSlides.length - 1)].title}</h2>
+                        </div>
+                        <div className="meeting-slide-mark">SRD</div>
+                      </div>
+                      <div className="meeting-body">{warehouseSlides[Math.min(slide, warehouseSlides.length - 1)].body}</div>
+                      <footer>
+                        <span>Shipbuilding & Repair Division · Materials Management</span>
+                        <span>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</span>
+                      </footer>
+                    </div>
+
+                    <div className="meeting-controls">
+                      <button className="secondary" onClick={() => setSlide(Math.max(0, Math.min(slide, warehouseSlides.length - 1) - 1))} disabled={Math.min(slide, warehouseSlides.length - 1) === 0}>Previous</button>
+                      <span>{Math.min(slide, warehouseSlides.length - 1) + 1} / {warehouseSlides.length}</span>
+                      <button className="primary" onClick={() => setSlide(Math.min(warehouseSlides.length - 1, Math.min(slide, warehouseSlides.length - 1) + 1))} disabled={Math.min(slide, warehouseSlides.length - 1) === warehouseSlides.length - 1}>Next</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </>
           )}
 
