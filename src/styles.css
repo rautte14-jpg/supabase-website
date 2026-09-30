@@ -4789,3 +4789,135 @@ tbody tr:hover {
     width: 100%;
   }
 }
+
+
+/* Warehouse receipt drilldown */
+.warehouse-receipt-cards .receipt-card {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e3e8ef;
+  cursor: pointer;
+}
+
+.warehouse-receipt-cards .receipt-card:hover {
+  border-color: #b8c6da;
+  transform: translateY(-1px);
+}
+
+.warehouse-receipt-cards .receipt-card.active {
+  border-color: #4d76b8;
+  box-shadow: 0 0 0 2px rgba(49,95,174,.08);
+  background: #f8fbff;
+}
+
+.warehouse-receipt-detail {
+  margin-top: 18px;
+  border: 1px solid #e1e7ef;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.warehouse-receipt-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e7ecf3;
+  background: #f7f9fc;
+}
+
+.warehouse-receipt-detail-head h4 {
+  margin: 4px 0 0;
+  color: #173675;
+  font-size: 16px;
+}
+
+.warehouse-receipt-detail-head > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.warehouse-receipt-detail-head strong {
+  color: #52647f;
+  font-size: 11px;
+}
+
+.warehouse-receipt-detail-head button {
+  border: 1px solid #dce3ed;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px 10px;
+  color: #42536e;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.warehouse-receipt-table {
+  max-height: 390px;
+  overflow: auto;
+}
+
+.warehouse-receipt-row {
+  display: grid;
+  grid-template-columns: 105px 105px 125px minmax(240px, 1.4fr) 95px 95px 95px 115px;
+  gap: 10px;
+  align-items: center;
+  min-width: 1060px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #edf1f6;
+  font-size: 11px;
+}
+
+.warehouse-receipt-row:last-child {
+  border-bottom: 0;
+}
+
+.warehouse-receipt-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f4f7fb;
+}
+
+.warehouse-receipt-head span {
+  color: #72819a;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.warehouse-receipt-row b {
+  color: #173675;
+}
+
+.warehouse-receipt-row > span {
+  color: #3f506a;
+}
+
+.warehouse-receipt-row em {
+  justify-self: start;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.warehouse-receipt-row em.good {
+  background: #e9f7f1;
+  color: #16785f;
+}
+
+.warehouse-receipt-row em.warn {
+  background: #fff4df;
+  color: #9a6518;
+}
+
+.warehouse-receipt-row em.bad {
+  background: #faecec;
+  color: #a64141;
+}
