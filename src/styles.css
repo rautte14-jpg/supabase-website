@@ -4738,3 +4738,54 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Warehouse presentation MRN week selector */
+.warehouse-mrn-week-selector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid #dfe6ef;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.warehouse-mrn-week-selector > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.warehouse-mrn-week-selector strong {
+  color: #173675;
+  font-size: 16px;
+}
+
+.warehouse-mrn-week-selector small {
+  color: #6f7e95;
+  font-size: 11px;
+}
+
+.warehouse-mrn-week-selector select {
+  min-width: 210px;
+  padding: 9px 12px;
+  border: 1px solid #d8e0ea;
+  border-radius: 9px;
+  background: #fff;
+  color: #263a58;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .warehouse-mrn-week-selector {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .warehouse-mrn-week-selector select {
+    width: 100%;
+  }
+}
