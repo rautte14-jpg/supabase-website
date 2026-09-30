@@ -799,97 +799,105 @@ function AgeingTrend({ snapshots }) {
   const previous = snapshots.at(-2) || null
   if (!current) return null
 
-  const currentDate = new Date(current.snapshot_date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  const currentDate = new Date(current.snapshot_date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
   const previousDate = previous
-    ? new Date(previous.snapshot_date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
-    : 'Previous'
+    ? new Date(previous.snapshot_date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+    : 'Previous week'
 
   const buckets = [
-    { key: 'p2', label: 'P2', detail: '1–3 Years' },
-    { key: 'p3', label: 'P3', detail: '3–4 Years' },
-    { key: 'p4', label: 'P4', detail: '4–5 Years' },
-    { key: 'p5', label: 'P5', detail: 'Over 5 Years' },
+    { key: 'p2', label: 'P2 — 1–3 Years' },
+    { key: 'p3', label: 'P3 — 3–4 Years' },
+    { key: 'p4', label: 'P4 — 4–5 Years' },
+    { key: 'p5', label: 'P5 — Over 5 Years' },
   ]
 
-  const maxBucket = Math.max(
-    ...buckets.flatMap((bucket) => [
-      Number(current.metrics?.[bucket.key] || 0),
-      Number(previous?.metrics?.[bucket.key] || 0),
-    ]),
-    1,
-  )
+  const rows = buckets.map((bucket) => {
+    const currentValue = Number(current.metrics?.[bucket.key] || 0)
+    const previousValue = Number(previous?.metrics?.[bucket.key] || 0)
+    return {
+      ...bucket,
+      currentValue,
+      previousValue,
+      change: previous ? currentValue - previousValue : null,
+    }
+  })
 
-  const pct = (value) => Math.max(2, (Number(value || 0) / maxBucket) * 100)
-  const delta = (key) => {
-    if (!previous) return null
-    return Number(current.metrics?.[key] || 0) - Number(previous.metrics?.[key] || 0)
-  }
+  const biggestMovement = previous
+    ? [...rows].sort((a, b) => Math.abs(b.change) - Math.abs(a.change))[0]
+    : null
+  const improvedBuckets = rows.filter((row) => row.change !== null && row.change < 0)
+
+  const currentOnHand = Number(current.metrics?.onHandValue || 0)
+  const previousOnHand = Number(previous?.metrics?.onHandValue || 0)
+  const onHandChange = previous ? currentOnHand - previousOnHand : null
+
+  const currentOver1 = Number(current.metrics?.over1 || 0)
+  const previousOver1 = Number(previous?.metrics?.over1 || 0)
+  const over1Change = previous ? currentOver1 - previousOver1 : null
 
   return (
-    <section className="panel ageing-trend-panel ageing-comparison-panel">
-      <div className="panel-head">
-        <div>
-          <span className="eyebrow">WEEK-TO-WEEK AGEING</span>
-          <h3>Age Bucket Comparison</h3>
-          <p>Compare each ageing bucket directly between last week and this week.</p>
+    <>
+      <section className="panel ageing-movement-panel">
+        <div className="panel-head">
+          <div>
+            <span className="eyebrow">WEEK-TO-WEEK AGEING</span>
+            <h3>Ageing Movement by Bucket</h3>
+            <p>Last week compared with the current ageing report.</p>
+          </div>
+          <span>{previous ? previousDate + ' → ' + currentDate : currentDate}</span>
         </div>
-        <span>{previous ? previousDate + ' vs ' + currentDate : currentDate}</span>
-      </div>
 
-      <div className="ageing-compare-legend">
-        <span><i className="ageing-swatch previous" />Last week</span>
-        <span><i className="ageing-swatch current" />This week</span>
-      </div>
-
-      <div className="ageing-bucket-chart">
-        {buckets.map((bucket) => {
-          const previousValue = Number(previous?.metrics?.[bucket.key] || 0)
-          const currentValue = Number(current.metrics?.[bucket.key] || 0)
-          const change = delta(bucket.key)
-          return (
-            <div className="ageing-bucket-row" key={bucket.key}>
-              <div className="ageing-bucket-label">
-                <strong>{bucket.label}</strong>
-                <span>{bucket.detail}</span>
-              </div>
-
-              <div className="ageing-bars">
-                <div className="ageing-bar-line">
-                  <span className="ageing-bar-caption">{previousDate}</span>
-                  <div className="ageing-bar-track">
-                    <i className="ageing-bar previous" style={{ width: pct(previousValue) + '%' }} />
-                  </div>
-                  <b>{previous ? mvr(previousValue) : '—'}</b>
-                </div>
-                <div className="ageing-bar-line">
-                  <span className="ageing-bar-caption">{currentDate}</span>
-                  <div className="ageing-bar-track">
-                    <i className="ageing-bar current" style={{ width: pct(currentValue) + '%' }} />
-                  </div>
-                  <b>{mvr(currentValue)}</b>
-                </div>
-              </div>
-
-              <div className={change === null ? 'ageing-bucket-change' : change > 0 ? 'ageing-bucket-change up' : change < 0 ? 'ageing-bucket-change down' : 'ageing-bucket-change'}>
-                <span>CHANGE</span>
-                <strong>{change === null ? '—' : ((change > 0 ? '+' : '') + mvr(change))}</strong>
-              </div>
+        <div className="ageing-movement-table">
+          <div className="ageing-movement-row ageing-movement-head">
+            <span>Ageing bucket</span>
+            <span>Last week</span>
+            <span>This week</span>
+            <span>Change</span>
+          </div>
+          {rows.map((row) => (
+            <div className="ageing-movement-row" key={row.key}>
+              <strong>{row.label}</strong>
+              <span>{previous ? mvr(row.previousValue) : '—'}</span>
+              <span>{mvr(row.currentValue)}</span>
+              <b className={row.change === null ? '' : row.change > 0 ? 'increase' : row.change < 0 ? 'decrease' : ''}>
+                {row.change === null ? '—' : ((row.change > 0 ? '+' : '') + mvr(row.change))}
+              </b>
             </div>
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      </section>
 
-      <div className="ageing-comparison-foot">
-        <div>
-          <span>Total on-hand</span>
-          <b>{previous ? mvr(previous.metrics?.onHandValue || 0) : '—'} <em>→</em> {mvr(current.metrics?.onHandValue || 0)}</b>
-        </div>
-        <div>
-          <span>Stock over 1 year</span>
-          <b>{previous ? mvr(previous.metrics?.over1 || 0) : '—'} <em>→</em> {mvr(current.metrics?.over1 || 0)}</b>
-        </div>
-      </div>
-    </section>
+      {previous && (
+        <section className="ageing-takeaway">
+          <div>
+            <span className="eyebrow">KEY TAKEAWAY</span>
+            <h3>What changed this week?</h3>
+          </div>
+          <div className="ageing-takeaway-points">
+            <p>
+              Total on-hand value <b>{onHandChange >= 0 ? 'increased' : 'decreased'} by {mvr(Math.abs(onHandChange))}</b>,
+              from {mvr(previousOnHand)} to {mvr(currentOnHand)}.
+            </p>
+            <p>
+              Stock aged over 1 year <b>{over1Change >= 0 ? 'increased' : 'decreased'} by {mvr(Math.abs(over1Change))}</b>,
+              from {mvr(previousOver1)} to {mvr(currentOver1)}.
+            </p>
+            {biggestMovement && (
+              <p>
+                The largest ageing-bucket movement was <b>{biggestMovement.label}</b> at
+                <b> {biggestMovement.change >= 0 ? '+' : '−'}{mvr(Math.abs(biggestMovement.change))}</b>.
+              </p>
+            )}
+            {improvedBuckets.length > 0 && (
+              <p>
+                Bucket{improvedBuckets.length > 1 ? 's' : ''} showing a reduction:
+                <b> {improvedBuckets.map((row) => row.label.split(' — ')[0]).join(', ')}</b>.
+              </p>
+            )}
+          </div>
+        </section>
+      )}
+    </>
   )
 }
 
@@ -4070,38 +4078,32 @@ export default function App() {
 
               {ageingComparison.current && (
                 <>
-                  <div className="metric-grid ageing-history-metrics">
-                    <MetricCard
-                      label="Latest On-hand Value"
-                      value={mvr(ageingComparison.currentOnHand)}
-                      helper={ageingComparison.current.snapshot_date}
-                    />
-                    <MetricCard
-                      label="Previous On-hand Value"
-                      value={ageingComparison.previous ? mvr(ageingComparison.previousOnHand) : '—'}
-                      helper={ageingComparison.previous?.snapshot_date || 'Baseline only — comparison starts next upload'}
-                    />
-                    <MetricCard
-                      label="On-hand Change"
-                      value={ageingComparison.onHandChange === null ? '—' : ((ageingComparison.onHandChange >= 0 ? '+' : '') + mvr(ageingComparison.onHandChange))}
-                      helper={ageingComparison.onHandPercent === null ? 'No previous upload yet' : ((ageingComparison.onHandPercent >= 0 ? '+' : '') + ageingComparison.onHandPercent.toFixed(2) + '%')}
-                    />
-                    <MetricCard
-                      label="Latest Stock Value Over 1 Year"
-                      value={mvr(ageingComparison.currentValue)}
-                      helper={ageingComparison.current.snapshot_date}
-                    />
-                    <MetricCard
-                      label="Previous Over 1 Year"
-                      value={ageingComparison.previous ? mvr(ageingComparison.previousValue) : '—'}
-                      helper={ageingComparison.previous?.snapshot_date || 'Baseline only — comparison starts next upload'}
-                    />
-                    <MetricCard
-                      label="Over 1 Year Change"
-                      value={ageingComparison.change === null ? '—' : ((ageingComparison.change >= 0 ? '+' : '') + mvr(ageingComparison.change))}
-                      helper={ageingComparison.percent === null ? 'No previous upload yet' : ((ageingComparison.percent >= 0 ? '+' : '') + ageingComparison.percent.toFixed(2) + '%')}
-                      tone={ageingComparison.change > 0 ? 'warn' : undefined}
-                    />
+                  <div className="ageing-headline-comparison">
+                    <section className="ageing-headline-card">
+                      <div className="ageing-headline-title">
+                        <span className="eyebrow">TOTAL ON-HAND VALUE</span>
+                        <strong>{ageingComparison.onHandChange === null ? '—' : ((ageingComparison.onHandChange >= 0 ? '+' : '−') + mvr(Math.abs(ageingComparison.onHandChange)))}</strong>
+                        <small>{ageingComparison.onHandPercent === null ? 'No previous week yet' : ((ageingComparison.onHandPercent >= 0 ? '+' : '') + ageingComparison.onHandPercent.toFixed(2) + '% vs last week')}</small>
+                      </div>
+                      <div className="ageing-headline-values">
+                        <div><span>LAST WEEK</span><b>{ageingComparison.previous ? mvr(ageingComparison.previousOnHand) : '—'}</b><small>{ageingComparison.previous?.snapshot_date || '—'}</small></div>
+                        <i>→</i>
+                        <div><span>THIS WEEK</span><b>{mvr(ageingComparison.currentOnHand)}</b><small>{ageingComparison.current.snapshot_date}</small></div>
+                      </div>
+                    </section>
+
+                    <section className="ageing-headline-card">
+                      <div className="ageing-headline-title">
+                        <span className="eyebrow">STOCK VALUE OVER 1 YEAR</span>
+                        <strong>{ageingComparison.change === null ? '—' : ((ageingComparison.change >= 0 ? '+' : '−') + mvr(Math.abs(ageingComparison.change)))}</strong>
+                        <small>{ageingComparison.percent === null ? 'No previous week yet' : ((ageingComparison.percent >= 0 ? '+' : '') + ageingComparison.percent.toFixed(2) + '% vs last week')}</small>
+                      </div>
+                      <div className="ageing-headline-values">
+                        <div><span>LAST WEEK</span><b>{ageingComparison.previous ? mvr(ageingComparison.previousValue) : '—'}</b><small>{ageingComparison.previous?.snapshot_date || '—'}</small></div>
+                        <i>→</i>
+                        <div><span>THIS WEEK</span><b>{mvr(ageingComparison.currentValue)}</b><small>{ageingComparison.current.snapshot_date}</small></div>
+                      </div>
+                    </section>
                   </div>
                   <AgeingTrend snapshots={ageingSnapshots} />
                 </>
