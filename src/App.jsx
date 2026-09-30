@@ -1300,6 +1300,7 @@ export default function App() {
   const [stockAgeFilter, setStockAgeFilter] = useState('ALL')
   const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseReceiptDetail, setWarehouseReceiptDetail] = useState('NONE')
+  const [warehouseFullscreen, setWarehouseFullscreen] = useState(false)
 
   const canEdit = access && ['admin', 'editor'].includes(lower(access.role))
   const isAdmin = access && lower(access.role) === 'admin'
@@ -1315,6 +1316,12 @@ export default function App() {
       if (event === 'PASSWORD_RECOVERY') setRecoveringPassword(true)
     })
     return () => listener.subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    const onFullscreenChange = () => setWarehouseFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
   }, [])
 
   async function checkAccess() {
@@ -1451,6 +1458,21 @@ export default function App() {
     }),
     [data.procurement, lldMap],
   )
+
+  async function toggleWarehouseFullscreen() {
+    const target = document.getElementById('warehouse-presentation-shell')
+    if (!target) return
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else if (target.requestFullscreen) {
+        await target.requestFullscreen()
+      }
+    } catch (error) {
+      console.error('Could not toggle presentation fullscreen', error)
+    }
+  }
 
   function openNote(type, row) {
     setNoteState({ type, row, key: entityKey(type, row) })
@@ -4602,9 +4624,16 @@ export default function App() {
               <PageHeader
                 title="Warehouse Presentation"
                 subtitle="Last week reporting period focused on receipt activity, MRN issue control and SR issue activity."
-                actions={<button className="secondary" onClick={() => window.print()}>Print / PDF</button>}
+                actions={
+                  <>
+                    <button className="secondary" onClick={toggleWarehouseFullscreen}>
+                      {warehouseFullscreen ? 'Exit Full Screen' : 'Full Screen'}
+                    </button>
+                    <button className="secondary" onClick={() => window.print()}>Print / PDF</button>
+                  </>
+                }
               />
-              <section className="meeting-shell">
+              <section id="warehouse-presentation-shell" className="meeting-shell warehouse-presentation-shell">
                 <div className="meeting-workspace">
                   <aside className="meeting-agenda">
                     <div className="meeting-agenda-head">
