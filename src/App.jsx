@@ -1295,6 +1295,16 @@ export default function App() {
   const [prPoReceiptPendingFilter, setPrPoReceiptPendingFilter] = useState(false)
   const [prPoPaymentPendingFilter, setPrPoPaymentPendingFilter] = useState(false)
   const [pendingPaymentDetailFilter, setPendingPaymentDetailFilter] = useState('ALL')
+  const [overviewFromDraft, setOverviewFromDraft] = useState(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    return today.slice(0, 7) + '-01'
+  })
+  const [overviewToDraft, setOverviewToDraft] = useState(() => new Date().toISOString().slice(0, 10))
+  const [overviewFrom, setOverviewFrom] = useState(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    return today.slice(0, 7) + '-01'
+  })
+  const [overviewTo, setOverviewTo] = useState(() => new Date().toISOString().slice(0, 10))
   const [mtrWeekFilter, setMtrWeekFilter] = useState('ALL')
   const [mtrControlFilter, setMtrControlFilter] = useState('ALL')
   const [mtrStatusFilter, setMtrStatusFilter] = useState('ALL')
@@ -3736,31 +3746,32 @@ export default function App() {
         ? 'Urgent Pending Payment POs'
         : pendingPaymentDetailFilter
 
-  const overviewMonth = useMemo(() => {
-    const monthStart = todayIso.slice(0, 7) + '-01'
-    const inMonth = (date) => Boolean(date && date >= monthStart && date <= todayIso)
+  const overviewPeriod = useMemo(() => {
+    const rangeStart = overviewFrom <= overviewTo ? overviewFrom : overviewTo
+    const rangeEnd = overviewFrom <= overviewTo ? overviewTo : overviewFrom
+    const inRange = (date) => Boolean(date && date >= rangeStart && date <= rangeEnd)
 
     const submittedPrNos = new Set()
     const receivedPrNos = new Set()
-    let receivedQtyMonth = 0
-    let receivedValueMonth = 0
+    let receivedQty = 0
+    let receivedValue = 0
 
     allPrLines.forEach((row) => {
       const prNo = String(row.pr_no || '').trim()
-      if (prNo && inMonth(prSubmittedDate(row))) submittedPrNos.add(prNo)
+      if (prNo && inRange(prSubmittedDate(row))) submittedPrNos.add(prNo)
 
       const rDate = receivedDate(row)
       const rQty = receivedQty(row)
-      if (rDate && inMonth(rDate) && rQty > 0) {
+      if (rDate && inRange(rDate) && rQty > 0) {
         if (prNo) receivedPrNos.add(prNo)
-        receivedQtyMonth += rQty
+        receivedQty += rQty
 
         const amount = numericRowField(row, 'amount', [
           'Amount', 'PO Amount', 'PO Value', 'Total Amount', 'Value',
           'Line Amount', 'Net Amount', 'Line Value', 'Total Value', 'Purchase Amount',
         ]) ?? 0
         const requested = requestedQty(row)
-        receivedValueMonth += amount > 0
+        receivedValue += amount > 0
           ? (requested > 0 ? amount * Math.min(1, rQty / requested) : amount)
           : 0
       }
@@ -3768,38 +3779,37 @@ export default function App() {
 
     const mtrNos = new Set(
       allMtrRows
-        .filter((row) => inMonth(mtrRequestDate(row)))
+        .filter((row) => inRange(mtrRequestDate(row)))
         .map((row) => String(row.document_no || '').trim())
         .filter(Boolean),
     )
 
-    const mrnRowsMonth = allMrnRows.filter((row) => inMonth(mrnCreatedDate(row)))
-    const mrnNos = new Set(mrnRowsMonth.map((row) => String(row.document_no || '').trim()).filter(Boolean))
+    const mrnRowsPeriod = allMrnRows.filter((row) => inRange(mrnCreatedDate(row)))
+    const mrnNos = new Set(mrnRowsPeriod.map((row) => String(row.document_no || '').trim()).filter(Boolean))
     const pendingMrnNos = new Set(
-      mrnRowsMonth
+      mrnRowsPeriod
         .filter((row) => mrnIsPending(row))
         .map((row) => String(row.document_no || '').trim())
         .filter(Boolean),
     )
 
-    const issueRows = srIssuesEnriched.filter((row) => inMonth(parseFlexibleDate(row.requested_receipt_date)))
+    const issueRows = srIssuesEnriched.filter((row) => inRange(parseFlexibleDate(row.requested_receipt_date)))
     const issueQty = issueRows.reduce((sum, row) => sum + Math.abs(Number(row.quantity || 0)), 0)
-    const issueValue = 0
 
     const pendingPaymentValue = (data.pendingPayments || []).reduce((sum, row) => sum + Number(row.po_value || 0), 0)
 
     return {
-      monthStart,
+      rangeStart,
+      rangeEnd,
       submittedPrs: submittedPrNos.size,
       receivedPrs: receivedPrNos.size,
-      receivedQty: receivedQtyMonth,
-      receivedValue: receivedValueMonth,
+      receivedQty,
+      receivedValue,
       mtrs: mtrNos.size,
       mrns: mrnNos.size,
       pendingMrns: pendingMrnNos.size,
       issueRecords: issueRows.length,
       issueQty,
-      issueValue,
       pendingPaymentPos: (data.pendingPayments || []).length,
       pendingPaymentValue,
       stockQty: ageingSummary.onHandQty,
@@ -3807,7 +3817,8 @@ export default function App() {
       agedValue: ageingSummary.agedOver365,
     }
   }, [
-    todayIso,
+    overviewFrom,
+    overviewTo,
     allPrLines,
     allMtrRows,
     allMrnRows,
@@ -3816,8 +3827,20 @@ export default function App() {
     ageingSummary,
   ])
 
-  const overviewMovementMax = Math.max(overviewMonth.receivedQty, overviewMonth.issueQty, 1)
-  const overviewMonthLabel = new Date(todayIso + 'T12:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  const overviewMovementMax = Math.max(overviewPeriod.receivedQty, overviewPeriod.issueQty, 1)
+  const overviewPeriodLabel =
+    overviewPeriod.rangeStart === overviewPeriod.rangeEnd
+      ? formatShortDate(overviewPeriod.rangeStart)
+      : formatShortDate(overviewPeriod.rangeStart) + ' – ' + formatShortDate(overviewPeriod.rangeEnd)
+
+  async function applyOverviewDateRange() {
+    const from = overviewFromDraft || todayIso
+    const to = overviewToDraft || todayIso
+    setOverviewFrom(from <= to ? from : to)
+    setOverviewTo(from <= to ? to : from)
+    await loadForView('overview', true)
+  }
+
 
   if (checking) return <div className="splash">Loading SRD Warehouse System…</div>
   if (!session) return <AuthScreen />
@@ -3994,37 +4017,56 @@ export default function App() {
             <>
               <PageHeader
                 title="Overview"
-                subtitle="Month-to-date warehouse, procurement and materials control at a glance."
+                subtitle="Warehouse, procurement and materials control for a selected reporting period."
               />
 
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-100 pb-4">
                   <div>
                     <span className="eyebrow">SRD WAREHOUSE OVERVIEW</span>
-                    <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-800">{overviewMonthLabel}</h3>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {formatShortDate(overviewMonth.monthStart)} – {formatShortDate(todayIso)} · live month-to-date position
-                    </p>
+                    <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-800">{overviewPeriodLabel}</h3>
+                    <p className="mt-1 text-xs text-slate-500">Selected reporting period</p>
                   </div>
-                  <button className="secondary" onClick={refreshCurrentView} disabled={loading}>
-                    {loading ? 'Refreshing…' : 'Refresh data'}
-                  </button>
+
+                  <div className="overview-date-loader">
+                    <label>
+                      <span>From</span>
+                      <input
+                        type="date"
+                        value={overviewFromDraft}
+                        max={overviewToDraft || undefined}
+                        onChange={(e) => setOverviewFromDraft(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>To</span>
+                      <input
+                        type="date"
+                        value={overviewToDraft}
+                        min={overviewFromDraft || undefined}
+                        onChange={(e) => setOverviewToDraft(e.target.value)}
+                      />
+                    </label>
+                    <button className="primary" onClick={applyOverviewDateRange} disabled={loading}>
+                      {loading ? 'Loading…' : 'Load Data'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {[
-                    ['PRs Submitted', fmt(overviewMonth.submittedPrs), 'Procurement activity', 'prpo', 'blue'],
-                    ['PRs Received', fmt(overviewMonth.receivedPrs), 'Distinct PRs received this month', 'prpo', 'emerald'],
-                    ['Received Quantity', fmt(overviewMonth.receivedQty, 2), 'Total quantity received', 'prpo', 'emerald'],
-                    ['Received Value', mvr(overviewMonth.receivedValue), 'Month-to-date received value', 'prpo', 'teal'],
-                    ['Pending Payment POs', fmt(overviewMonth.pendingPaymentPos), 'Current pending-payment list', 'payments', 'amber'],
-                    ['Pending Payment Value', mvr(overviewMonth.pendingPaymentValue), 'Combined pending PO value', 'payments', 'amber'],
-                    ['MTRs Created', fmt(overviewMonth.mtrs), 'Created this month', 'mtr', 'violet'],
-                    ['MRNs Created', fmt(overviewMonth.mrns), 'Created this month', 'mrn', 'indigo'],
-                    ['Pending / Not Issued MRNs', fmt(overviewMonth.pendingMrns), 'Created this month and still pending', 'mrn', 'rose'],
-                    ['SR Issue Records', fmt(overviewMonth.issueRecords), 'Issue records this month', 'mrn', 'cyan'],
-                    ['Stock Value', mvr(overviewMonth.stockValue), 'Current SRD on-hand value', 'stock', 'slate'],
-                    ['Stock Over 1 Year', mvr(overviewMonth.agedValue), 'Current ageing exposure', 'stock', 'orange'],
+                    ['PRs Submitted', fmt(overviewPeriod.submittedPrs), 'Procurement activity', 'prpo', 'blue'],
+                    ['PRs Received', fmt(overviewPeriod.receivedPrs), 'Distinct PRs received selected period', 'prpo', 'emerald'],
+                    ['Received Quantity', fmt(overviewPeriod.receivedQty, 2), 'Total quantity received', 'prpo', 'emerald'],
+                    ['Received Value', mvr(overviewPeriod.receivedValue), 'Received value in selected period', 'prpo', 'teal'],
+                    ['Pending Payment POs', fmt(overviewPeriod.pendingPaymentPos), 'Current pending-payment list', 'payments', 'amber'],
+                    ['Pending Payment Value', mvr(overviewPeriod.pendingPaymentValue), 'Combined pending PO value', 'payments', 'amber'],
+                    ['MTRs Created', fmt(overviewPeriod.mtrs), 'Created selected period', 'mtr', 'violet'],
+                    ['MRNs Created', fmt(overviewPeriod.mrns), 'Created selected period', 'mrn', 'indigo'],
+                    ['Pending / Not Issued MRNs', fmt(overviewPeriod.pendingMrns), 'Created selected period and still pending', 'mrn', 'rose'],
+                    ['SR Issue Records', fmt(overviewPeriod.issueRecords), 'Issue records selected period', 'mrn', 'cyan'],
+                    ['Stock Value', mvr(overviewPeriod.stockValue), 'Current SRD on-hand value', 'stock', 'slate'],
+                    ['Stock Over 1 Year', mvr(overviewPeriod.agedValue), 'Current ageing exposure', 'stock', 'orange'],
                   ].map(([label, value, helper, target, accent]) => (
                     <button
                       key={label}
@@ -4059,10 +4101,10 @@ export default function App() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <span className="eyebrow">MATERIAL MOVEMENT</span>
-                      <h3 className="mt-1 text-base font-semibold text-slate-800">Received vs Issued — {overviewMonthLabel}</h3>
-                      <p className="mt-1 text-xs text-slate-500">Quantity movement for the current month.</p>
+                      <h3 className="mt-1 text-base font-semibold text-slate-800">Received vs Issued — {overviewPeriodLabel}</h3>
+                      <p className="mt-1 text-xs text-slate-500">Quantity movement for the selected reporting period.</p>
                     </div>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-semibold text-slate-500">MONTH TO DATE</span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-semibold text-slate-500">SELECTED PERIOD</span>
                   </div>
 
                   <div className="mt-7 space-y-6">
@@ -4070,14 +4112,14 @@ export default function App() {
                       <div className="mb-2 flex items-end justify-between">
                         <div>
                           <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Received Quantity</span>
-                          <b className="mt-1 block text-xl font-semibold text-slate-900">{fmt(overviewMonth.receivedQty, 2)}</b>
+                          <b className="mt-1 block text-xl font-semibold text-slate-900">{fmt(overviewPeriod.receivedQty, 2)}</b>
                         </div>
-                        <small className="text-[11px] text-slate-500">{fmt(overviewMonth.receivedPrs)} PRs received</small>
+                        <small className="text-[11px] text-slate-500">{fmt(overviewPeriod.receivedPrs)} PRs received</small>
                       </div>
                       <div className="h-8 overflow-hidden rounded-lg bg-slate-100">
                         <div
                           className="h-full rounded-lg bg-emerald-500 transition-all"
-                          style={{ width: Math.max(2, (overviewMonth.receivedQty / overviewMovementMax) * 100) + '%' }}
+                          style={{ width: Math.max(2, (overviewPeriod.receivedQty / overviewMovementMax) * 100) + '%' }}
                         />
                       </div>
                     </div>
@@ -4086,14 +4128,14 @@ export default function App() {
                       <div className="mb-2 flex items-end justify-between">
                         <div>
                           <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">Issued Quantity</span>
-                          <b className="mt-1 block text-xl font-semibold text-slate-900">{fmt(overviewMonth.issueQty, 2)}</b>
+                          <b className="mt-1 block text-xl font-semibold text-slate-900">{fmt(overviewPeriod.issueQty, 2)}</b>
                         </div>
-                        <small className="text-[11px] text-slate-500">{fmt(overviewMonth.issueRecords)} issue records</small>
+                        <small className="text-[11px] text-slate-500">{fmt(overviewPeriod.issueRecords)} issue records</small>
                       </div>
                       <div className="h-8 overflow-hidden rounded-lg bg-slate-100">
                         <div
                           className="h-full rounded-lg bg-amber-500 transition-all"
-                          style={{ width: Math.max(2, (overviewMonth.issueQty / overviewMovementMax) * 100) + '%' }}
+                          style={{ width: Math.max(2, (overviewPeriod.issueQty / overviewMovementMax) * 100) + '%' }}
                         />
                       </div>
                     </div>
@@ -4102,15 +4144,15 @@ export default function App() {
                   <div className="mt-7 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-3">
                     <div className="rounded-lg bg-slate-50 p-3">
                       <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Receipt Value</span>
-                      <b className="mt-1 block text-sm text-slate-800">{mvr(overviewMonth.receivedValue)}</b>
+                      <b className="mt-1 block text-sm text-slate-800">{mvr(overviewPeriod.receivedValue)}</b>
                     </div>
                     <div className="rounded-lg bg-slate-50 p-3">
                       <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Current Inventory Value</span>
-                      <b className="mt-1 block text-sm text-slate-800">{mvr(overviewMonth.stockValue)}</b>
+                      <b className="mt-1 block text-sm text-slate-800">{mvr(overviewPeriod.stockValue)}</b>
                     </div>
                     <div className="rounded-lg bg-slate-50 p-3">
                       <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Aged Over 1 Year</span>
-                      <b className="mt-1 block text-sm text-slate-800">{mvr(overviewMonth.agedValue)}</b>
+                      <b className="mt-1 block text-sm text-slate-800">{mvr(overviewPeriod.agedValue)}</b>
                     </div>
                   </div>
                 </section>
@@ -4124,10 +4166,10 @@ export default function App() {
 
                   <div className="mt-5 space-y-3">
                     {[
-                      ['Pending Payments', overviewMonth.pendingPaymentPos, 'payments', 'MVR ' + money(overviewMonth.pendingPaymentValue)],
-                      ['Pending / Not Issued MRNs', overviewMonth.pendingMrns, 'mrn', 'Created this month'],
-                      ['Stock Over 1 Year', null, 'stock', mvr(overviewMonth.agedValue)],
-                      ['SR Issue Records', overviewMonth.issueRecords, 'mrn', 'This month'],
+                      ['Pending Payments', overviewPeriod.pendingPaymentPos, 'payments', 'MVR ' + money(overviewPeriod.pendingPaymentValue)],
+                      ['Pending / Not Issued MRNs', overviewPeriod.pendingMrns, 'mrn', 'Created selected period'],
+                      ['Stock Over 1 Year', null, 'stock', mvr(overviewPeriod.agedValue)],
+                      ['SR Issue Records', overviewPeriod.issueRecords, 'mrn', 'Selected period'],
                     ].map(([label, count, target, detail]) => (
                       <button
                         key={label}
