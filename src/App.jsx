@@ -795,72 +795,99 @@ async function fetchAllRows(table, orderColumn, ascending = false) {
 function AgeingTrend({ snapshots }) {
   if (!snapshots.length) return null
 
-  const agedValues = snapshots.map((s) => Number(s.metrics?.over1 || 0))
-  const onHandValues = snapshots.map((s) => Number(s.metrics?.onHandValue || 0))
-  const max = Math.max(...agedValues, ...onHandValues, 1)
-  const width = 760
-  const height = 240
-  const padX = 42
-  const padY = 28
-  const usableW = width - padX * 2
-  const usableH = height - padY * 2
+  const current = snapshots.at(-1) || null
+  const previous = snapshots.at(-2) || null
+  if (!current) return null
 
-  const makePoints = (key) => snapshots.map((s, index) => {
-    const x = snapshots.length === 1
-      ? width / 2
-      : padX + (index / (snapshots.length - 1)) * usableW
-    const y = height - padY - (Number(s.metrics?.[key] || 0) / max) * usableH
-    return { x, y, snapshot: s }
-  })
+  const currentDate = new Date(current.snapshot_date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  const previousDate = previous
+    ? new Date(previous.snapshot_date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+    : 'Previous'
 
-  const agedPoints = makePoints('over1')
-  const onHandPoints = makePoints('onHandValue')
-  const agedPolyline = agedPoints.map((p) => `${p.x},${p.y}`).join(' ')
-  const onHandPolyline = onHandPoints.map((p) => `${p.x},${p.y}`).join(' ')
+  const buckets = [
+    { key: 'p2', label: 'P2', detail: '1–3 Years' },
+    { key: 'p3', label: 'P3', detail: '3–4 Years' },
+    { key: 'p4', label: 'P4', detail: '4–5 Years' },
+    { key: 'p5', label: 'P5', detail: 'Over 5 Years' },
+  ]
+
+  const maxBucket = Math.max(
+    ...buckets.flatMap((bucket) => [
+      Number(current.metrics?.[bucket.key] || 0),
+      Number(previous?.metrics?.[bucket.key] || 0),
+    ]),
+    1,
+  )
+
+  const pct = (value) => Math.max(2, (Number(value || 0) / maxBucket) * 100)
+  const delta = (key) => {
+    if (!previous) return null
+    return Number(current.metrics?.[key] || 0) - Number(previous.metrics?.[key] || 0)
+  }
 
   return (
-    <section className="panel ageing-trend-panel">
+    <section className="panel ageing-trend-panel ageing-comparison-panel">
       <div className="panel-head">
         <div>
-          <span className="eyebrow">WEEKLY TREND</span>
-          <h3>On-hand Value vs Stock Value Over 1 Year</h3>
+          <span className="eyebrow">WEEK-TO-WEEK AGEING</span>
+          <h3>Age Bucket Comparison</h3>
+          <p>Compare each ageing bucket directly between last week and this week.</p>
         </div>
-        <span>{snapshots.length} saved {snapshots.length === 1 ? 'upload' : 'uploads'}</span>
+        <span>{previous ? previousDate + ' vs ' + currentDate : currentDate}</span>
       </div>
 
-      <div className="ageing-chart-legend">
-        <span><i className="legend-line onhand" />On-hand Value</span>
-        <span><i className="legend-line aged" />Stock Value Over 1 Year</span>
+      <div className="ageing-compare-legend">
+        <span><i className="ageing-swatch previous" />Last week</span>
+        <span><i className="ageing-swatch current" />This week</span>
       </div>
 
-      <div className="ageing-chart-wrap">
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Weekly inventory ageing and on-hand value trend">
-          <line x1={padX} y1={height - padY} x2={width - padX} y2={height - padY} className="ageing-axis" />
-          <line x1={padX} y1={padY} x2={padX} y2={height - padY} className="ageing-axis" />
-          <polyline points={onHandPolyline} className="ageing-line onhand-line" />
-          <polyline points={agedPolyline} className="ageing-line aged-line" />
-          {onHandPoints.map((p, index) => (
-            <circle key={'oh-' + (p.snapshot.id || index)} cx={p.x} cy={p.y} r="5" className="ageing-point onhand-point" />
-          ))}
-          {agedPoints.map((p, index) => (
-            <g key={'aged-' + (p.snapshot.id || index)}>
-              <circle cx={p.x} cy={p.y} r="5" className="ageing-point aged-point" />
-              <text x={p.x} y={height - 7} textAnchor="middle" className="ageing-x-label">
-                {new Date(p.snapshot.snapshot_date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
-              </text>
-            </g>
-          ))}
-        </svg>
+      <div className="ageing-bucket-chart">
+        {buckets.map((bucket) => {
+          const previousValue = Number(previous?.metrics?.[bucket.key] || 0)
+          const currentValue = Number(current.metrics?.[bucket.key] || 0)
+          const change = delta(bucket.key)
+          return (
+            <div className="ageing-bucket-row" key={bucket.key}>
+              <div className="ageing-bucket-label">
+                <strong>{bucket.label}</strong>
+                <span>{bucket.detail}</span>
+              </div>
+
+              <div className="ageing-bars">
+                <div className="ageing-bar-line">
+                  <span className="ageing-bar-caption">{previousDate}</span>
+                  <div className="ageing-bar-track">
+                    <i className="ageing-bar previous" style={{ width: pct(previousValue) + '%' }} />
+                  </div>
+                  <b>{previous ? mvr(previousValue) : '—'}</b>
+                </div>
+                <div className="ageing-bar-line">
+                  <span className="ageing-bar-caption">{currentDate}</span>
+                  <div className="ageing-bar-track">
+                    <i className="ageing-bar current" style={{ width: pct(currentValue) + '%' }} />
+                  </div>
+                  <b>{mvr(currentValue)}</b>
+                </div>
+              </div>
+
+              <div className={change === null ? 'ageing-bucket-change' : change > 0 ? 'ageing-bucket-change up' : change < 0 ? 'ageing-bucket-change down' : 'ageing-bucket-change'}>
+                <span>CHANGE</span>
+                <strong>{change === null ? '—' : ((change > 0 ? '+' : '') + mvr(change))}</strong>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
-      <div className="ageing-history-list">
-        {[...snapshots].reverse().slice(0, 8).map((s) => (
-          <div key={s.id}>
-            <span>{new Date(s.snapshot_date + 'T12:00:00').toLocaleDateString()}</span>
-            <b>On-hand {mvr(s.metrics?.onHandValue || 0)}</b>
-            <b>Over 1 year {mvr(s.metrics?.over1 || 0)}</b>
-          </div>
-        ))}
+      <div className="ageing-comparison-foot">
+        <div>
+          <span>Total on-hand</span>
+          <b>{previous ? mvr(previous.metrics?.onHandValue || 0) : '—'} <em>→</em> {mvr(current.metrics?.onHandValue || 0)}</b>
+        </div>
+        <div>
+          <span>Stock over 1 year</span>
+          <b>{previous ? mvr(previous.metrics?.over1 || 0) : '—'} <em>→</em> {mvr(current.metrics?.over1 || 0)}</b>
+        </div>
       </div>
     </section>
   )
