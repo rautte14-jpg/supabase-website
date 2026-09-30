@@ -3145,6 +3145,52 @@ export default function App() {
   const warehouseReceiptCurrent = warehouseReceiptSummaryForWeek(warehouseWeekStart)
   const warehouseReceiptPrevious = warehouseReceiptSummaryForWeek(warehousePreviousWeekStart)
 
+  const warehouseMonthStart = todayIso.slice(0, 7) + '-01'
+  const warehouseMonthLabel = new Date(todayIso + 'T12:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+
+  const warehouseReceiptMonth = useMemo(() => {
+    const rows = allPrLines.filter((row) => {
+      const date = receivedDate(row)
+      return date && date >= warehouseMonthStart && date <= todayIso && receivedQty(row) > 0
+    })
+
+    const prs = new Set(rows.map((row) => String(row.pr_no || '').trim()).filter(Boolean))
+    const qty = rows.reduce((sum, row) => sum + receivedQty(row), 0)
+    const value = rows.reduce((sum, row) => {
+      const amount = numericRowField(row, 'amount', [
+        'Amount', 'PO Amount', 'PO Value', 'Total Amount', 'Value',
+        'Line Amount', 'Net Amount', 'Line Value', 'Total Value', 'Purchase Amount',
+      ]) ?? 0
+      const requested = requestedQty(row)
+      const received = receivedQty(row)
+      if (!(amount > 0) || !(received > 0)) return sum
+      return sum + (requested > 0 ? amount * Math.min(1, received / requested) : amount)
+    }, 0)
+
+    return { rows, prs: prs.size, qty, value }
+  }, [allPrLines, warehouseMonthStart, todayIso])
+
+  const warehouseMrnMonth = useMemo(() => {
+    const rows = allMrnRows.filter((row) => {
+      const date = mrnCreatedDate(row)
+      return date && date >= warehouseMonthStart && date <= todayIso
+    })
+    const pending = new Set()
+    rows.forEach((row) => {
+      const id = mrnSourceId(row)
+      if (id && mrnIsPending(row)) pending.add(id)
+    })
+    return { created: rows.length, pending: pending.size }
+  }, [allMrnRows, warehouseMonthStart, todayIso])
+
+  const warehouseIssueMonth = useMemo(() => {
+    const rows = srIssuesEnriched.filter((row) => {
+      const date = parseFlexibleDate(row.requested_receipt_date)
+      return date && date >= warehouseMonthStart && date <= todayIso
+    })
+    return { total: rows.length }
+  }, [srIssuesEnriched, warehouseMonthStart, todayIso])
+
   const warehouseReceiptPrState = useMemo(() => {
     const receivedPrNos = new Set(
       warehouseReceiptCurrent.rows
@@ -3325,24 +3371,24 @@ export default function App() {
 
   const warehouseSlides = [
     {
-      kicker: 'WAREHOUSE WEEKLY REVIEW',
+      kicker: 'WAREHOUSE MONTHLY SUMMARY',
       title: 'Warehouse Summary',
       body: (
         <>
           <div className="meeting-period-banner">
             <div>
-              <span>REPORTING PERIOD</span>
-              <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
+              <span>MONTH-TO-DATE</span>
+              <b>{warehouseMonthLabel}</b>
             </div>
-            <small>Last completed Wednesday–Tuesday reporting period</small>
+            <small>{formatShortDate(warehouseMonthStart)} – {formatShortDate(todayIso)}</small>
           </div>
           <div className="meeting-metrics">
-            <MetricCard label="PRs Received" value={fmt(warehouseReceiptCurrent.prs)} helper="Distinct PRs received in the reporting period" />
-            <MetricCard label="Received Item Lines" value={fmt(warehouseReceiptCurrent.lines)} helper="Receipt activity in the reporting period" />
-            <MetricCard label="Received Quantity" value={fmt(warehouseReceiptCurrent.qty, 2)} helper="Total quantity received in the reporting period" />
-            <MetricCard label="MRNs Created" value={fmt(warehouseMrnCreated)} helper="MRN records created in the reporting period" />
-            <MetricCard label="Pending / Not Issued" value={fmt(warehouseMrnLive.pending)} tone="bad" helper="Current live MRN backlog" />
-            <MetricCard label="SR Issues — Reporting Period" value={fmt(warehouseIssueReporting.total)} helper="Issue records in the reporting period" />
+            <MetricCard label="PRs Received This Month" value={fmt(warehouseReceiptMonth.prs)} helper="Distinct PRs with receipt activity this month" />
+            <MetricCard label="Received Quantity This Month" value={fmt(warehouseReceiptMonth.qty, 2)} helper="Total quantity received this month" />
+            <MetricCard label="Received Value This Month" value={mvr(warehouseReceiptMonth.value)} helper="Value of items received this month" />
+            <MetricCard label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
+            <MetricCard label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
+            <MetricCard label="SR Issues This Month" value={fmt(warehouseIssueMonth.total)} helper="SR issue records this month" />
           </div>
         </>
       ),
