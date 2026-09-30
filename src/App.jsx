@@ -967,6 +967,10 @@ function ImportPanel({ onApplied, email }) {
         const { error } = await supabase.from('procurement_records').delete().eq('source_type', source)
         if (error) throw error
         await insertBatches('procurement_records', mapped)
+      } else if (source === 'PENDING_PAYMENTS') {
+        const { error } = await supabase.from('pending_payment_records').delete().neq('po_no', '__never__')
+        if (error) throw error
+        await insertBatches('pending_payment_records', mapped)
       } else if (source === 'MTR' || source === 'MRN') {
         const { error } = await supabase.from('material_records').delete().eq('document_type', source)
         if (error) throw error
@@ -1257,6 +1261,7 @@ export default function App() {
     notes: [],
     sourceUpdates: [],
     snapshots: [],
+    pendingPayments: [],
   })
   const [loaded, setLoaded] = useState({
     procurement: false,
@@ -1268,6 +1273,7 @@ export default function App() {
     notes: false,
     sourceUpdates: false,
     snapshots: false,
+    pendingPayments: false,
   })
   const [homeSummary, setHomeSummary] = useState({
     prf_count: 0,
@@ -1352,6 +1358,7 @@ export default function App() {
     notes: ['case_notes', 'updated_at', false],
     sourceUpdates: ['source_updates', 'imported_at', false],
     snapshots: ['weekly_snapshots', 'snapshot_date', false],
+    pendingPayments: ['pending_payment_records', 'po_date', false],
   }
 
   const VIEW_TABLES = {
@@ -1359,7 +1366,7 @@ export default function App() {
     overview: ['procurement', 'material', 'stock', 'transactions', 'lld', 'notes', 'sourceUpdates', 'snapshots'],
     prf: ['procurement', 'lld', 'notes'],
     prpo: ['procurement', 'lld', 'notes'],
-    payments: ['procurement', 'lld', 'notes'],
+    payments: ['pendingPayments'],
     mtr: ['material', 'notes'],
     mrn: ['material', 'srIssues', 'notes'],
     vessel: ['procurement', 'material', 'transactions', 'srIssues', 'lld'],
@@ -3696,6 +3703,23 @@ export default function App() {
     },
   ]
 
+  const pendingPaymentsSummary = useMemo(() => {
+    const rows = data.pendingPayments || []
+    const totalValue = rows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
+    const urgent = rows.filter((row) => isUrgent(row.priority)).length
+    const statusCounts = new Map()
+    rows.forEach((row) => {
+      const status = String(row.status || '').trim() || 'BLANK'
+      statusCounts.set(status, (statusCounts.get(status) || 0) + 1)
+    })
+    return {
+      total: rows.length,
+      totalValue,
+      urgent,
+      statusCounts: [...statusCounts.entries()].sort((a, b) => b[1] - a[1]),
+    }
+  }, [data.pendingPayments])
+
   if (checking) return <div className="splash">Loading SRD Warehouse System…</div>
   if (!session) return <AuthScreen />
   if (recoveringPassword) return <PasswordRecovery />
@@ -4256,66 +4280,56 @@ export default function App() {
             <>
               <PageHeader
                 title="Pending Payments"
-                subtitle="Procurement POs currently awaiting payment or with a payment request sent."
+                subtitle="Current pending payment list uploaded from Procurement."
               />
 
               <div className="metric-grid prpo-metrics prpo-operational-metrics">
                 <MetricCard
-                  label="Pending Payment POs"
-                  value={fmt(pendingPaymentPoCount)}
-                  helper="Distinct POs awaiting payment"
+                  label="Total POs"
+                  value={fmt(pendingPaymentsSummary.total)}
+                  helper="POs in the current pending payment list"
                   tone="warn"
                 />
                 <MetricCard
-                  label="Pending Payment Item Lines"
-                  value={fmt(pendingPaymentRows.length)}
-                  helper="Item lines under POs awaiting payment"
+                  label="Total PO Value"
+                  value={mvr(pendingPaymentsSummary.totalValue)}
+                  helper="Combined value of listed POs"
                 />
                 <MetricCard
-                  label="Payment Request Sent"
-                  value={fmt(new Set(
-                    pendingPaymentRows
-                      .filter((row) => lower(row.payment_status).includes('request sent'))
-                      .map((row) => String(row.po_no || '').trim())
-                      .filter(Boolean)
-                  ).size)}
-                  helper="Distinct POs where payment request was sent"
+                  label="Urgent"
+                  value={fmt(pendingPaymentsSummary.urgent)}
+                  helper="POs marked urgent"
+                  tone="bad"
                 />
-                <MetricCard
-                  label="Other Payment Pending"
-                  value={fmt(new Set(
-                    pendingPaymentRows
-                      .filter((row) => !lower(row.payment_status).includes('request sent'))
-                      .map((row) => String(row.po_no || '').trim())
-                      .filter(Boolean)
-                  ).size)}
-                  helper="Advance pending / payment pending / requested"
-                  tone="warn"
-                />
+                {pendingPaymentsSummary.statusCounts.slice(0, 3).map(([status, count]) => (
+                  <MetricCard
+                    key={status}
+                    label={status}
+                    value={fmt(count)}
+                    helper="POs with this payment status"
+                  />
+                ))}
               </div>
 
               <section className="prpo-section-card">
                 <div className="prpo-section-title">
                   <div>
-                    <span className="eyebrow">PROCUREMENT · PAYMENT FOLLOW-UP</span>
-                    <h3>POs awaiting payment</h3>
-                    <p>Live list based on the current payment status recorded against each PO.</p>
+                    <span className="eyebrow">PROCUREMENT · PENDING PAYMENT LIST</span>
+                    <h3>Pending payments</h3>
+                    <p>This page follows the uploaded Pending Payment List exactly.</p>
                   </div>
-                  <span className="prpo-date-basis live">LIVE POSITION</span>
+                  <span className="prpo-date-basis live">CURRENT LIST</span>
                 </div>
 
                 <DataTable
-                  rows={pendingPaymentRows}
+                  rows={data.pendingPayments}
                   columns={[
-                    { key: 'po_no', label: 'PO Number', render: (v) => displayValue(v, true) },
-                    { key: 'pr_no', label: 'PR No.', render: (v) => displayValue(v, true) },
+                    { key: 'po_no', label: 'PO Number', render: (v) => <span className="font-mono text-[11px] font-semibold text-slate-800">{v || '—'}</span> },
+                    { key: 'po_date', label: 'PO Date' },
                     { key: 'supplier', label: 'Supplier' },
-                    { key: 'item_code', label: 'Item ID' },
-                    { key: 'item_description', label: 'Product Name' },
-                    { key: 'payment_status', label: 'Payment Status', render: (v) => <StatusPill value={v || 'Pending'} /> },
-                    { key: 'delivery_status', label: 'Delivery Status', render: (v) => <StatusPill value={v} /> },
-                    { key: 'expected_delivery', label: 'ETA' },
-                    { key: 'lld_update', label: 'Latest Update' },
+                    { key: 'status', label: 'Status', render: (v) => <StatusPill value={v} /> },
+                    { key: 'priority', label: 'Priority', render: (v) => <StatusPill value={v} /> },
+                    { key: 'po_value', label: 'PO Value', render: (v) => mvr(v) },
                   ]}
                   limit={300}
                 />
@@ -4878,6 +4892,7 @@ export default function App() {
                   notes: false,
                   sourceUpdates: false,
                   snapshots: false,
+                  pendingPayments: false,
                 })
                 await loadHomeSummary()
                 await loadForView('updates', true)
@@ -9803,6 +9818,7 @@ export default function App() {
                   notes: false,
                   sourceUpdates: false,
                   snapshots: false,
+                  pendingPayments: false,
                 })
                 await loadHomeSummary()
                 await loadForView('updates', true)
