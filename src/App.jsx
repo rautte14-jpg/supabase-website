@@ -1294,6 +1294,7 @@ export default function App() {
   const [prPoUrgentFilter, setPrPoUrgentFilter] = useState(false)
   const [prPoReceiptPendingFilter, setPrPoReceiptPendingFilter] = useState(false)
   const [prPoPaymentPendingFilter, setPrPoPaymentPendingFilter] = useState(false)
+  const [pendingPaymentDetailFilter, setPendingPaymentDetailFilter] = useState('ALL')
   const [mtrWeekFilter, setMtrWeekFilter] = useState('ALL')
   const [mtrControlFilter, setMtrControlFilter] = useState('ALL')
   const [mtrStatusFilter, setMtrStatusFilter] = useState('ALL')
@@ -3721,6 +3722,20 @@ export default function App() {
     }
   }, [data.pendingPayments])
 
+  const pendingPaymentDetailRows = useMemo(() => {
+    const rows = data.pendingPayments || []
+    if (pendingPaymentDetailFilter === 'ALL') return rows
+    if (pendingPaymentDetailFilter === 'URGENT') return rows.filter((row) => isUrgent(row.priority))
+    return rows.filter((row) => String(row.status || '').trim() === pendingPaymentDetailFilter)
+  }, [data.pendingPayments, pendingPaymentDetailFilter])
+
+  const pendingPaymentDetailTitle =
+    pendingPaymentDetailFilter === 'ALL'
+      ? 'All Pending Payment POs'
+      : pendingPaymentDetailFilter === 'URGENT'
+        ? 'Urgent Pending Payment POs'
+        : pendingPaymentDetailFilter
+
   if (checking) return <div className="splash">Loading SRD Warehouse System…</div>
   if (!session) return <AuthScreen />
   if (recoveringPassword) return <PasswordRecovery />
@@ -4285,11 +4300,38 @@ export default function App() {
               />
 
               <div className="metric-grid prpo-metrics prpo-operational-metrics">
-                <MetricCard label="Total POs" value={fmt(pendingPaymentsSummary.total)} helper="POs in the current pending payment list" tone="warn" />
-                <MetricCard label="Total PO Value" value={mvr(pendingPaymentsSummary.totalValue)} helper="Combined value of listed POs" />
-                <MetricCard label="Urgent" value={fmt(pendingPaymentsSummary.urgent)} helper="POs marked urgent" tone="bad" />
+                <MetricCard
+                  label="Total POs"
+                  value={fmt(pendingPaymentsSummary.total)}
+                  helper="Click to show all POs"
+                  tone="warn"
+                  active={pendingPaymentDetailFilter === 'ALL'}
+                  onClick={() => setPendingPaymentDetailFilter('ALL')}
+                />
+                <MetricCard
+                  label="Total PO Value"
+                  value={mvr(pendingPaymentsSummary.totalValue)}
+                  helper="Click to show all POs"
+                  active={pendingPaymentDetailFilter === 'ALL'}
+                  onClick={() => setPendingPaymentDetailFilter('ALL')}
+                />
+                <MetricCard
+                  label="Urgent"
+                  value={fmt(pendingPaymentsSummary.urgent)}
+                  helper="Click to show urgent POs"
+                  tone="bad"
+                  active={pendingPaymentDetailFilter === 'URGENT'}
+                  onClick={() => setPendingPaymentDetailFilter('URGENT')}
+                />
                 {pendingPaymentsSummary.statusCounts.slice(0, 3).map(([status, count]) => (
-                  <MetricCard key={status} label={status} value={fmt(count)} helper="POs with this payment status" />
+                  <MetricCard
+                    key={status}
+                    label={status}
+                    value={fmt(count)}
+                    helper="Click to show details"
+                    active={pendingPaymentDetailFilter === status}
+                    onClick={() => setPendingPaymentDetailFilter(status)}
+                  />
                 ))}
               </div>
 
@@ -4297,14 +4339,14 @@ export default function App() {
                 <div className="prpo-section-title">
                   <div>
                     <span className="eyebrow">PROCUREMENT · PENDING PAYMENT LIST</span>
-                    <h3>Pending payments</h3>
-                    <p>This page follows the uploaded Pending Payment List exactly.</p>
+                    <h3>{pendingPaymentDetailTitle}</h3>
+                    <p>{fmt(pendingPaymentDetailRows.length)} PO{pendingPaymentDetailRows.length === 1 ? '' : 's'} shown from the uploaded Pending Payment List.</p>
                   </div>
                   <span className="prpo-date-basis live">CURRENT LIST</span>
                 </div>
 
                 <DataTable
-                  rows={data.pendingPayments}
+                  rows={pendingPaymentDetailRows}
                   columns={[
                     { key: 'po_no', label: 'PO Number', render: (v) => <span className="font-mono text-[11px] font-semibold text-slate-800">{v || '—'}</span> },
                     { key: 'po_date', label: 'PO Date' },
