@@ -1301,6 +1301,8 @@ export default function App() {
   const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseReceiptDetail, setWarehouseReceiptDetail] = useState('NONE')
   const [warehouseFullscreen, setWarehouseFullscreen] = useState(false)
+  const [warehouseIssueWeekFilter, setWarehouseIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
+  const [warehouseIssueDetailOpen, setWarehouseIssueDetailOpen] = useState(false)
 
   const canEdit = access && ['admin', 'editor'].includes(lower(access.role))
   const isAdmin = access && lower(access.role) === 'admin'
@@ -3282,10 +3284,18 @@ export default function App() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
   }, [warehouseMrnSelectedRows])
 
-  const warehouseIssueWeek = useMemo(() => {
+  const warehouseIssueWeekOptions = useMemo(() => {
+    const latestCompletedWeek = addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7)
+    return Array.from({ length: 8 }, (_, index) => {
+      const weekStart = addDaysIso(latestCompletedWeek, index * -7)
+      return { weekStart, weekEnd: addDaysIso(weekStart, 6) }
+    })
+  }, [])
+
+  const summarizeWarehouseIssues = (weekStart) => {
     const rows = srIssuesEnriched.filter((row) => {
       const date = parseFlexibleDate(row.requested_receipt_date)
-      return date && weekStartWednesday(date) === warehouseWeekStart
+      return date && weekStartWednesday(date) === weekStart
     })
     return {
       rows,
@@ -3296,21 +3306,21 @@ export default function App() {
       salesOrders: new Set(rows.map((row) => row.sales_order).filter(Boolean)).size,
       srs: new Set(rows.map((row) => normalizedSr(row.sr_no)).filter(Boolean)).size,
     }
-  }, [srIssuesEnriched, warehouseWeekStart])
+  }
 
-  const warehouseIssuePreviousWeek = useMemo(() =>
-    srIssuesEnriched.filter((row) => {
-      const date = parseFlexibleDate(row.requested_receipt_date)
-      return date && weekStartWednesday(date) === warehousePreviousWeekStart
-    }).length,
-    [srIssuesEnriched, warehousePreviousWeekStart],
+  const warehouseIssueReporting = useMemo(
+    () => summarizeWarehouseIssues(warehouseWeekStart),
+    [srIssuesEnriched, warehouseWeekStart],
   )
 
-  const warehousePendingIssues = useMemo(
-    () => warehouseIssueWeek.rows
-      .filter((row) => row.issue_state === 'Pending invoice')
-      .slice(0, 7),
-    [warehouseIssueWeek],
+  const warehouseIssueWeek = useMemo(
+    () => summarizeWarehouseIssues(warehouseIssueWeekFilter),
+    [srIssuesEnriched, warehouseIssueWeekFilter],
+  )
+
+  const warehouseIssuePreviousWeek = useMemo(
+    () => summarizeWarehouseIssues(addDaysIso(warehouseIssueWeekFilter, -7)).total,
+    [srIssuesEnriched, warehouseIssueWeekFilter],
   )
 
   const warehouseSlides = [
@@ -3332,7 +3342,7 @@ export default function App() {
             <MetricCard label="Received Quantity" value={fmt(warehouseReceiptCurrent.qty, 2)} helper="Total quantity received in the reporting period" />
             <MetricCard label="MRNs Created" value={fmt(warehouseMrnCreated)} helper="MRN records created in the reporting period" />
             <MetricCard label="Pending / Not Issued" value={fmt(warehouseMrnLive.pending)} tone="bad" helper="Current live MRN backlog" />
-            <MetricCard label="SR Issues — Reporting Period" value={fmt(warehouseIssueWeek.total)} helper="Issue records in the reporting period" />
+            <MetricCard label="SR Issues — Reporting Period" value={fmt(warehouseIssueReporting.total)} helper="Issue records in the reporting period" />
           </div>
         </>
       ),
@@ -3507,26 +3517,88 @@ export default function App() {
       title: 'Issues — Reporting Period',
       body: (
         <>
-          <div className="meeting-exception-metrics">
-            <div><span>Issue records</span><b>{fmt(warehouseIssueWeek.total)}</b></div>
+          <div className="warehouse-mrn-week-selector">
+            <div>
+              <span className="eyebrow">ISSUE REPORTING WEEK</span>
+              <strong>{formatShortDate(warehouseIssueWeekFilter)} – {formatShortDate(addDaysIso(warehouseIssueWeekFilter, 6))}</strong>
+              <small>Issue activity and item details below follow the selected week.</small>
+            </div>
+            <select
+              value={warehouseIssueWeekFilter}
+              onChange={(e) => {
+                setWarehouseIssueWeekFilter(e.target.value)
+                setWarehouseIssueDetailOpen(false)
+              }}
+            >
+              {warehouseIssueWeekOptions.map((week) => (
+                <option key={week.weekStart} value={week.weekStart}>
+                  {formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="meeting-exception-metrics warehouse-issue-metrics">
+            <button
+              className={warehouseIssueDetailOpen ? 'warehouse-issue-metric active' : 'warehouse-issue-metric'}
+              onClick={() => setWarehouseIssueDetailOpen((current) => !current)}
+            >
+              <span>Issue records</span>
+              <b>{fmt(warehouseIssueWeek.total)}</b>
+              <small>Click to list issued items</small>
+            </button>
             <div><span>Completed issue</span><b>{fmt(warehouseIssueWeek.completed)}</b></div>
             <div><span>Pending invoice</span><b>{fmt(warehouseIssueWeek.pendingInvoice)}</b></div>
             <div><span>Cancelled</span><b>{fmt(warehouseIssueWeek.cancelled)}</b></div>
             <div><span>Sales orders</span><b>{fmt(warehouseIssueWeek.salesOrders)}</b></div>
             <div><span>Service requests</span><b>{fmt(warehouseIssueWeek.srs)}</b></div>
           </div>
-          <div className="meeting-exception-table">
-            <div className="meeting-exception-head"><span>Sales order</span><span>SR / Workshop</span><span>Status</span><span>Requested date</span></div>
-            {warehousePendingIssues.map((row, index) => (
-              <div className="meeting-exception-row" key={(row.sales_order || 'issue') + index}>
-                <b>{row.sales_order || '—'}</b>
-                <span>{[row.sr_no, row.workshop].filter(Boolean).join(' · ') || '—'}</span>
-                <em>{row.issue_state || 'Pending invoice'}</em>
-                <small>{parseFlexibleDate(row.requested_receipt_date) || '—'}</small>
+
+          {warehouseIssueDetailOpen && (
+            <section className="warehouse-receipt-detail warehouse-issue-detail">
+              <div className="warehouse-receipt-detail-head">
+                <div>
+                  <span className="eyebrow">ISSUE ITEM DETAILS</span>
+                  <h4>{formatShortDate(warehouseIssueWeekFilter)} – {formatShortDate(addDaysIso(warehouseIssueWeekFilter, 6))}</h4>
+                </div>
+                <div>
+                  <strong>{fmt(warehouseIssueWeek.rows.length)} item lines</strong>
+                  <button onClick={() => setWarehouseIssueDetailOpen(false)}>Close</button>
+                </div>
               </div>
-            ))}
-            {!warehousePendingIssues.length && <div className="meeting-no-exceptions">No pending invoice issue records in the reporting period.</div>}
-          </div>
+
+              <div className="warehouse-issue-table">
+                <div className="warehouse-issue-row warehouse-receipt-head">
+                  <span>Date</span>
+                  <span>Sales Order</span>
+                  <span>Item</span>
+                  <span>Product Name</span>
+                  <span>Qty</span>
+                  <span>Workshop</span>
+                  <span>SR</span>
+                  <span>MRN</span>
+                  <span>Status</span>
+                </div>
+                {warehouseIssueWeek.rows.slice(0, 120).map((row, index) => (
+                  <div className="warehouse-issue-row" key={(row.sales_order || 'issue') + '-' + (row.item_code || index) + '-' + index}>
+                    <span>{parseFlexibleDate(row.requested_receipt_date) || '—'}</span>
+                    <b>{row.sales_order || '—'}</b>
+                    <span>{row.item_code || '—'}</span>
+                    <span title={row.item_description || ''}>{row.item_description || '—'}</span>
+                    <span>{fmt(row.quantity, 2)}</span>
+                    <span>{row.workshop || '—'}</span>
+                    <span>{row.sr_no || '—'}</span>
+                    <span>{row.mrn_no || row.matched_mrn_no || '—'}</span>
+                    <em>{row.issue_state || '—'}</em>
+                  </div>
+                ))}
+                {!warehouseIssueWeek.rows.length && (
+                  <div className="meeting-no-exceptions">No issue item records found for the selected week.</div>
+                )}
+              </div>
+            </section>
+          )}
+
           <div className="meeting-period-banner" style={{ marginTop: 18 }}>
             <div>
               <span>PERIOD-ON-PERIOD ISSUE ACTIVITY</span>
