@@ -2892,7 +2892,7 @@ export default function App() {
   const deltaText = (current, previous, suffix = '') => {
     const diff = Number(current || 0) - Number(previous || 0)
     if (diff === 0) return 'No change'
-    return (diff > 0 ? '+' : '') + fmt(diff, 0) + suffix + ' vs last week'
+    return (diff > 0 ? '+' : '') + fmt(diff, 0) + suffix + ' vs previous period'
   }
 
   const meetingSlides = [
@@ -3089,7 +3089,8 @@ export default function App() {
   ]
 
 
-  const warehouseWeekStart = weekStartWednesday(todayIso)
+  const warehouseCurrentWeekStart = weekStartWednesday(todayIso)
+  const warehouseWeekStart = addDaysIso(warehouseCurrentWeekStart, -7)
   const warehouseWeekEnd = addDaysIso(warehouseWeekStart, 6)
   const warehousePreviousWeekStart = addDaysIso(warehouseWeekStart, -7)
 
@@ -3117,6 +3118,11 @@ export default function App() {
 
   const warehouseReceiptCurrent = warehouseReceiptSummaryForWeek(warehouseWeekStart)
   const warehouseReceiptPrevious = warehouseReceiptSummaryForWeek(warehousePreviousWeekStart)
+
+  const warehouseMrnCreated = useMemo(
+    () => allMrnRows.filter((row) => weekStartWednesday(mrnCreatedDate(row)) === warehouseWeekStart).length,
+    [allMrnRows, warehouseWeekStart],
+  )
 
   const warehouseMrnLive = useMemo(() => {
     const issued = new Set()
@@ -3196,15 +3202,15 @@ export default function App() {
               <span>REPORTING PERIOD</span>
               <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
             </div>
-            <small>Current Wednesday–Tuesday warehouse activity</small>
+            <small>Last completed Wednesday–Tuesday reporting period</small>
           </div>
           <div className="meeting-metrics">
-            <MetricCard label="PRs Received" value={fmt(warehouseReceiptCurrent.prs)} helper="Distinct PRs with receipt this week" />
-            <MetricCard label="Received Item Lines" value={fmt(warehouseReceiptCurrent.lines)} helper="Receipt activity this week" />
-            <MetricCard label="Received Quantity" value={fmt(warehouseReceiptCurrent.qty, 2)} helper="Total quantity received" />
-            <MetricCard label="MRNs Created" value={fmt(mrnWeekCounts[0]?.count || 0)} helper="MRN records created this week" />
+            <MetricCard label="PRs Received" value={fmt(warehouseReceiptCurrent.prs)} helper="Distinct PRs received in the reporting period" />
+            <MetricCard label="Received Item Lines" value={fmt(warehouseReceiptCurrent.lines)} helper="Receipt activity in the reporting period" />
+            <MetricCard label="Received Quantity" value={fmt(warehouseReceiptCurrent.qty, 2)} helper="Total quantity received in the reporting period" />
+            <MetricCard label="MRNs Created" value={fmt(warehouseMrnCreated)} helper="MRN records created in the reporting period" />
             <MetricCard label="Pending / Not Issued" value={fmt(warehouseMrnLive.pending)} tone="bad" helper="Current live MRN backlog" />
-            <MetricCard label="SR Issues This Week" value={fmt(warehouseIssueWeek.total)} helper="Issue records in current period" />
+            <MetricCard label="SR Issues — Reporting Period" value={fmt(warehouseIssueWeek.total)} helper="Issue records in the reporting period" />
           </div>
         </>
       ),
@@ -3216,7 +3222,7 @@ export default function App() {
         <>
           <div className="meeting-period-banner">
             <div>
-              <span>CURRENT WEEK RECEIPTS</span>
+              <span>REPORTING PERIOD RECEIPTS</span>
               <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
             </div>
             <small>Based on Received Date in PR / PO Tracker</small>
@@ -3232,7 +3238,7 @@ export default function App() {
                 <span>{label}</span>
                 <b>{format === 'money' ? mvr(current) : format ? fmt(current, 2) : fmt(current)}</b>
                 <div>
-                  <small>Last week: {format === 'money' ? mvr(previous) : format ? fmt(previous, 2) : fmt(previous)}</small>
+                  <small>Previous period: {format === 'money' ? mvr(previous) : format ? fmt(previous, 2) : fmt(previous)}</small>
                   <strong>{deltaText(current, previous, format === 'money' ? '' : '')}</strong>
                 </div>
               </div>
@@ -3252,7 +3258,7 @@ export default function App() {
             <div><span>Pending / not issued</span><b>{fmt(warehouseMrnLive.pending)}</b></div>
             <div><span>Pending 30+ days</span><b>{fmt(warehouseMrnLive.pending30)}</b></div>
             <div><span>Without SVO / Journal</span><b>{fmt(warehouseMrnLive.noJournal)}</b></div>
-            <div><span>Created this week</span><b>{fmt(mrnWeekCounts[0]?.count || 0)}</b></div>
+            <div><span>Created this week</span><b>{fmt(warehouseMrnCreated)}</b></div>
           </div>
           <div className="meeting-control-grid">
             <section>
@@ -3274,7 +3280,7 @@ export default function App() {
     },
     {
       kicker: 'SR ISSUE ACTIVITY',
-      title: 'Issues This Week',
+      title: 'Issues — Reporting Period',
       body: (
         <>
           <div className="meeting-exception-metrics">
@@ -3295,11 +3301,11 @@ export default function App() {
                 <small>{parseFlexibleDate(row.requested_receipt_date) || '—'}</small>
               </div>
             ))}
-            {!warehousePendingIssues.length && <div className="meeting-no-exceptions">No pending invoice issue records in the current week.</div>}
+            {!warehousePendingIssues.length && <div className="meeting-no-exceptions">No pending invoice issue records in the reporting period.</div>}
           </div>
           <div className="meeting-period-banner" style={{ marginTop: 18 }}>
             <div>
-              <span>WEEK-ON-WEEK ISSUE ACTIVITY</span>
+              <span>PERIOD-ON-PERIOD ISSUE ACTIVITY</span>
               <b>{fmt(warehouseIssuePreviousWeek)} → {fmt(warehouseIssueWeek.total)} records</b>
             </div>
             <small>{deltaText(warehouseIssueWeek.total, warehouseIssuePreviousWeek)}</small>
@@ -4304,7 +4310,7 @@ export default function App() {
                       <div className="ageing-headline-title">
                         <span className="eyebrow">TOTAL ON-HAND VALUE</span>
                         <strong>{ageingComparison.onHandChange === null ? '—' : ((ageingComparison.onHandChange >= 0 ? '+' : '−') + mvr(Math.abs(ageingComparison.onHandChange)))}</strong>
-                        <small>{ageingComparison.onHandPercent === null ? 'No previous week yet' : ((ageingComparison.onHandPercent >= 0 ? '+' : '') + ageingComparison.onHandPercent.toFixed(2) + '% vs last week')}</small>
+                        <small>{ageingComparison.onHandPercent === null ? 'No previous week yet' : ((ageingComparison.onHandPercent >= 0 ? '+' : '') + ageingComparison.onHandPercent.toFixed(2) + '% vs previous period')}</small>
                       </div>
                       <div className="ageing-headline-values">
                         <div><span>LAST WEEK</span><b>{ageingComparison.previous ? mvr(ageingComparison.previousOnHand) : '—'}</b><small>{ageingComparison.previous?.snapshot_date || '—'}</small></div>
@@ -4317,7 +4323,7 @@ export default function App() {
                       <div className="ageing-headline-title">
                         <span className="eyebrow">STOCK VALUE OVER 1 YEAR</span>
                         <strong>{ageingComparison.change === null ? '—' : ((ageingComparison.change >= 0 ? '+' : '−') + mvr(Math.abs(ageingComparison.change)))}</strong>
-                        <small>{ageingComparison.percent === null ? 'No previous week yet' : ((ageingComparison.percent >= 0 ? '+' : '') + ageingComparison.percent.toFixed(2) + '% vs last week')}</small>
+                        <small>{ageingComparison.percent === null ? 'No previous week yet' : ((ageingComparison.percent >= 0 ? '+' : '') + ageingComparison.percent.toFixed(2) + '% vs previous period')}</small>
                       </div>
                       <div className="ageing-headline-values">
                         <div><span>LAST WEEK</span><b>{ageingComparison.previous ? mvr(ageingComparison.previousValue) : '—'}</b><small>{ageingComparison.previous?.snapshot_date || '—'}</small></div>
@@ -4393,7 +4399,7 @@ export default function App() {
             <>
               <PageHeader
                 title="Warehouse Presentation"
-                subtitle="Weekly presentation focused on receipt activity, MRN issue control and SR issue activity."
+                subtitle="Last week reporting period focused on receipt activity, MRN issue control and SR issue activity."
                 actions={<button className="secondary" onClick={() => window.print()}>Print / PDF</button>}
               />
               <section className="meeting-shell">
