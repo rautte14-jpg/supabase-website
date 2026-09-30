@@ -1298,6 +1298,7 @@ export default function App() {
   const [srIssueFilter, setSrIssueFilter] = useState('ALL')
   const [srIssueWeekFilter, setSrIssueWeekFilter] = useState(() => weekStartWednesday(new Date().toISOString().slice(0, 10)))
   const [stockAgeFilter, setStockAgeFilter] = useState('ALL')
+  const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
 
   const canEdit = access && ['admin', 'editor'].includes(lower(access.role))
   const isAdmin = access && lower(access.role) === 'admin'
@@ -3124,13 +3125,26 @@ export default function App() {
     [allMrnRows, warehouseWeekStart],
   )
 
+  const warehouseMrnWeekOptions = useMemo(() => {
+    const latestCompletedWeek = addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7)
+    return Array.from({ length: 8 }, (_, index) => {
+      const weekStart = addDaysIso(latestCompletedWeek, index * -7)
+      return { weekStart, weekEnd: addDaysIso(weekStart, 6) }
+    })
+  }, [])
+
+  const warehouseMrnSelectedRows = useMemo(
+    () => allMrnRows.filter((row) => weekStartWednesday(mrnCreatedDate(row)) === warehouseMrnWeekFilter),
+    [allMrnRows, warehouseMrnWeekFilter],
+  )
+
   const warehouseMrnLive = useMemo(() => {
     const issued = new Set()
     const pending = new Set()
     const pending30 = new Set()
     const noJournal = new Set()
 
-    allMrnRows.forEach((row) => {
+    warehouseMrnSelectedRows.forEach((row) => {
       const id = mrnSourceId(row)
       if (!id) return
       if (mrnIsIssued(row)) issued.add(id)
@@ -3142,23 +3156,23 @@ export default function App() {
     })
 
     return {
-      total: allMrnRows.length,
+      total: warehouseMrnSelectedRows.length,
       issued: issued.size,
       pending: pending.size,
       pending30: pending30.size,
       noJournal: noJournal.size,
     }
-  }, [allMrnRows])
+  }, [warehouseMrnSelectedRows])
 
   const warehousePendingWorkshopCounts = useMemo(() => {
     const counts = new Map()
-    allMrnRows.forEach((row) => {
+    warehouseMrnSelectedRows.forEach((row) => {
       if (!mrnIsPending(row)) return
       const workshop = String(rawField(row, ['WORKSHOP NAME']) || row.workshop || '').trim() || 'BLANK'
       counts.set(workshop, (counts.get(workshop) || 0) + 1)
     })
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
-  }, [allMrnRows])
+  }, [warehouseMrnSelectedRows])
 
   const warehouseIssueWeek = useMemo(() => {
     const rows = srIssuesEnriched.filter((row) => {
@@ -3252,17 +3266,32 @@ export default function App() {
       title: 'MRN Operational Position',
       body: (
         <>
+          <div className="warehouse-mrn-week-selector">
+            <div>
+              <span className="eyebrow">MRN REPORTING WEEK</span>
+              <strong>{formatShortDate(warehouseMrnWeekFilter)} – {formatShortDate(addDaysIso(warehouseMrnWeekFilter, 6))}</strong>
+              <small>All figures below are based only on MRNs created in the selected week.</small>
+            </div>
+            <select value={warehouseMrnWeekFilter} onChange={(e) => setWarehouseMrnWeekFilter(e.target.value)}>
+              {warehouseMrnWeekOptions.map((week) => (
+                <option key={week.weekStart} value={week.weekStart}>
+                  {formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="meeting-exception-metrics">
             <div><span>Total MRN records</span><b>{fmt(warehouseMrnLive.total)}</b></div>
             <div><span>Issued</span><b>{fmt(warehouseMrnLive.issued)}</b></div>
             <div><span>Pending / not issued</span><b>{fmt(warehouseMrnLive.pending)}</b></div>
             <div><span>Pending 30+ days</span><b>{fmt(warehouseMrnLive.pending30)}</b></div>
             <div><span>Without SVO / Journal</span><b>{fmt(warehouseMrnLive.noJournal)}</b></div>
-            <div><span>Created this week</span><b>{fmt(warehouseMrnCreated)}</b></div>
+            <div><span>Created in selected week</span><b>{fmt(warehouseMrnLive.total)}</b></div>
           </div>
           <div className="meeting-control-grid">
             <section>
-              <div className="meeting-control-head"><span>MRN</span><b>Backlog Control</b></div>
+              <div className="meeting-control-head"><span>MRN</span><b>Selected Week Control</b></div>
               <div className="meeting-control-row"><span>Pending / not issued</span><strong>{fmt(warehouseMrnLive.pending)}</strong></div>
               <div className="meeting-control-row critical"><span>Pending 30+ days</span><strong>{fmt(warehouseMrnLive.pending30)}</strong></div>
               <div className="meeting-control-row critical"><span>Without SVO / Journal</span><strong>{fmt(warehouseMrnLive.noJournal)}</strong></div>
@@ -3272,7 +3301,7 @@ export default function App() {
               {warehousePendingWorkshopCounts.map(([workshop, count]) => (
                 <div className="meeting-control-row" key={workshop}><span>{workshop}</span><strong>{fmt(count)}</strong></div>
               ))}
-              {!warehousePendingWorkshopCounts.length && <div className="meeting-no-exceptions">No pending MRNs.</div>}
+              {!warehousePendingWorkshopCounts.length && <div className="meeting-no-exceptions">No pending MRNs in the selected week.</div>}
             </section>
           </div>
         </>
