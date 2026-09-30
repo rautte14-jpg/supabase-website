@@ -4524,3 +4524,217 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Simplified weekly stock ageing comparison */
+.ageing-headline-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.ageing-headline-card {
+  display: grid;
+  grid-template-columns: minmax(220px, .8fr) minmax(360px, 1.2fr);
+  gap: 18px;
+  align-items: center;
+  padding: 18px 20px;
+  border: 1px solid #e1e7ef;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(19, 38, 72, .04), 0 6px 18px rgba(19, 38, 72, .04);
+}
+
+.ageing-headline-title {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ageing-headline-title strong {
+  color: #173675;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.ageing-headline-title small {
+  color: #6f7e95;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ageing-headline-values {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.ageing-headline-values > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: #f6f8fb;
+}
+
+.ageing-headline-values span {
+  color: #8290a7;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .08em;
+}
+
+.ageing-headline-values b {
+  color: #17243c;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.ageing-headline-values small {
+  color: #8a98ad;
+  font-size: 10px;
+}
+
+.ageing-headline-values i {
+  color: #8a98ad;
+  font-size: 18px;
+  font-style: normal;
+}
+
+.ageing-movement-panel {
+  margin-bottom: 14px;
+}
+
+.ageing-movement-panel .panel-head p {
+  margin: 5px 0 0;
+  color: #77859a;
+  font-size: 12px;
+}
+
+.ageing-movement-table {
+  overflow: hidden;
+  border: 1px solid #e3e9f1;
+  border-radius: 11px;
+}
+
+.ageing-movement-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.15fr) repeat(3, minmax(170px, .85fr));
+  gap: 18px;
+  align-items: center;
+  min-height: 52px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e9edf3;
+  background: #fff;
+}
+
+.ageing-movement-row:last-child {
+  border-bottom: 0;
+}
+
+.ageing-movement-head {
+  min-height: 40px;
+  background: #f4f7fb;
+}
+
+.ageing-movement-head span {
+  color: #71819a;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.ageing-movement-row strong {
+  color: #173675;
+  font-size: 13px;
+}
+
+.ageing-movement-row > span,
+.ageing-movement-row > b {
+  text-align: right;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ageing-movement-row > span {
+  color: #344762;
+}
+
+.ageing-movement-row > b {
+  color: #52647f;
+}
+
+.ageing-movement-row > b.increase {
+  color: #a66b10;
+}
+
+.ageing-movement-row > b.decrease {
+  color: #18866f;
+}
+
+.ageing-takeaway {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 24px;
+  align-items: start;
+  margin-bottom: 18px;
+  padding: 18px 20px;
+  border: 1px solid #dfe6ef;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.ageing-takeaway h3 {
+  margin: 5px 0 0;
+  color: #173675;
+  font-size: 17px;
+}
+
+.ageing-takeaway-points {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px 20px;
+}
+
+.ageing-takeaway-points p {
+  margin: 0;
+  color: #53647e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ageing-takeaway-points b {
+  color: #213654;
+}
+
+@media (max-width: 1200px) {
+  .ageing-headline-comparison {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .ageing-headline-card {
+    grid-template-columns: 1fr;
+  }
+
+  .ageing-movement-table {
+    overflow-x: auto;
+  }
+
+  .ageing-movement-row {
+    min-width: 760px;
+  }
+
+  .ageing-takeaway {
+    grid-template-columns: 1fr;
+  }
+
+  .ageing-takeaway-points {
+    grid-template-columns: 1fr;
+  }
+}
