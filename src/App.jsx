@@ -3753,8 +3753,8 @@ export default function App() {
 
     const submittedPrNos = new Set()
     const receivedPrNos = new Set()
-    let receivedQty = 0
-    let receivedValue = 0
+    let receivedQtyTotal = 0
+    let receivedValueTotal = 0
 
     allPrLines.forEach((row) => {
       const prNo = String(row.pr_no || '').trim()
@@ -3764,14 +3764,14 @@ export default function App() {
       const rQty = receivedQty(row)
       if (rDate && inRange(rDate) && rQty > 0) {
         if (prNo) receivedPrNos.add(prNo)
-        receivedQty += rQty
+        receivedQtyTotal += rQty
 
         const amount = numericRowField(row, 'amount', [
           'Amount', 'PO Amount', 'PO Value', 'Total Amount', 'Value',
           'Line Amount', 'Net Amount', 'Line Value', 'Total Value', 'Purchase Amount',
         ]) ?? 0
         const requested = requestedQty(row)
-        receivedValue += amount > 0
+        receivedValueTotal += amount > 0
           ? (requested > 0 ? amount * Math.min(1, rQty / requested) : amount)
           : 0
       }
@@ -3803,8 +3803,8 @@ export default function App() {
       rangeEnd,
       submittedPrs: submittedPrNos.size,
       receivedPrs: receivedPrNos.size,
-      receivedQty,
-      receivedValue,
+      receivedQty: receivedQtyTotal,
+      receivedValue: receivedValueTotal,
       mtrs: mtrNos.size,
       mrns: mrnNos.size,
       pendingMrns: pendingMrnNos.size,
