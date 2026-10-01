@@ -114,31 +114,63 @@ async function fetchPrPage({ url, bearerToken, after, first, site, search }) {
     }),
   })
 
-  if (!response.ok) {
-    const body = await response.text()
-    throw new Error('Simplix API returned HTTP ' + response.status + ': ' + body.slice(0, 500))
+  const bodyText = await response.text()
+  let payload = null
+  try {
+    payload = JSON.parse(bodyText)
+  } catch {
+    payload = null
   }
 
-  const payload = await response.json()
-  if (payload.errors?.length) throw new Error('GraphQL error: ' + JSON.stringify(payload.errors))
-  return payload?.data?.getPRs
+  const authFailed =
+    response.status === 401 ||
+    payload?.errors?.some((item) =>
+      String(item?.extensions?.code || '').toUpperCase() === 'UNAUTHENTICATED' ||
+      String(item?.message || '').toLowerCase().includes('unauthorized')
+    )
+
+  if (authFailed) return { authFailed: true, data: null }
+
+  if (!response.ok) {
+    throw new Error('Simplix API returned HTTP ' + response.status + ': ' + bodyText.slice(0, 500))
+  }
+
+  if (payload?.errors?.length) throw new Error('GraphQL error: ' + JSON.stringify(payload.errors))
+  return { authFailed: false, data: payload?.data?.getPRs }
 }
 
-async function fetchAllPrs({ url, bearerToken, first, site, search, maxPages }) {
+async function fetchAllPrs({ url, bearerToken, first, site, search, maxPages, onPage }) {
   const rows = []
   let after = null
   let page = 0
   let total = null
+  let token = bearerToken
 
   while (true) {
     page += 1
-    const data = await fetchPrPage({ url, bearerToken, after, first, site, search })
+    let result = await fetchPrPage({ url, bearerToken: token, after, first, site, search })
+
+    if (result.authFailed) {
+      console.log('\nSimplix authorization expired while syncing.')
+      console.log('Open Simplix, refresh the PR page, copy a fresh bearer token, then paste it below.')
+      token = await promptHidden('Fresh Simplix bearer token: ')
+      if (!token) throw new Error('A fresh Simplix bearer token is required to continue.')
+
+      result = await fetchPrPage({ url, bearerToken: token, after, first, site, search })
+      if (result.authFailed) throw new Error('The replacement Simplix token was also rejected.')
+    }
+
+    const data = result.data
     if (!data) throw new Error('GraphQL response did not contain data.getPRs')
 
     total ??= data.pageInfo?.count ?? null
     const edges = data.edges || []
-    rows.push(...edges.map((edge) => edge.node).filter(Boolean))
+    const pageRows = edges.map((edge) => edge.node).filter(Boolean)
+
+    rows.push(...pageRows)
     process.stdout.write('Fetched page ' + page + ': ' + rows.length + (total ? ' / ' + total : '') + ' PRs\n')
+
+    if (onPage) await onPage(pageRows, rows.length, total)
 
     const pageInfo = data.pageInfo || {}
     if (!pageInfo.hasNextPage || !pageInfo.endCursor) break
@@ -204,7 +236,21 @@ async function main() {
   console.log('Signed in as ' + (authData.user?.email || email))
   console.log('Fetching Simplix PRs' + (site ? ' for site ' + site : '') + '...\n')
 
-  const nodes = await fetchAllPrs({ url: graphqlUrl, bearerToken, first, site, search, maxPages })
+  const nodes = await fetchAllPrs({
+    url: graphqlUrl,
+    bearerToken,
+    first,
+    site,
+    search,
+    maxPages,
+    onPage: dryRun
+      ? null
+      : async (pageNodes) => {
+          const pageRows = pageNodes.map(toDbRow).filter((row) => row.purch_req_id)
+          if (pageRows.length) await upsertInBatches(supabase, pageRows)
+        },
+  })
+
   const rows = nodes.map(toDbRow).filter((row) => row.purch_req_id)
   console.log('\nPrepared ' + rows.length + ' PR records.')
 
@@ -213,7 +259,6 @@ async function main() {
     return
   }
 
-  await upsertInBatches(supabase, rows)
   const uniqueStatuses = [...new Set(rows.map((row) => row.status).filter(Boolean))]
   console.log('\nSync complete.')
   console.log('Records synced: ' + rows.length)
