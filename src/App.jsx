@@ -1294,6 +1294,9 @@ export default function App() {
     ageing: null,
     prsSubmitted: 0,
     prsReceived: 0,
+    totalItems: 0,
+    lowStockItems: 0,
+    outOfStockItems: 0,
   })
   const [noteState, setNoteState] = useState(null)
   const [vesselSearch, setVesselSearch] = useState('')
@@ -1414,6 +1417,9 @@ export default function App() {
       issuesResult,
       ageingResult,
       homePrResult,
+      totalItemsResult,
+      lowStockCountResult,
+      outOfStockCountResult,
     ] = await Promise.all([
       supabase.from('portal_home_summary').select('*').limit(1),
       supabase
@@ -1459,6 +1465,18 @@ export default function App() {
         .in('source_type', ['PR', 'PO'])
         .gte('pr_date', monthStart)
         .lte('pr_date', today),
+      supabase
+        .from('stock_items')
+        .select('item_code', { count: 'exact', head: true }),
+      supabase
+        .from('stock_items')
+        .select('item_code', { count: 'exact', head: true })
+        .gt('on_hand', 0)
+        .lte('on_hand', 5),
+      supabase
+        .from('stock_items')
+        .select('item_code', { count: 'exact', head: true })
+        .eq('on_hand', 0),
     ])
 
     if (summaryResult.error) throw summaryResult.error
@@ -1487,6 +1505,9 @@ export default function App() {
       ageing: (ageingResult.data || []).find((row) => row.metrics?.kind === 'AGEING') || null,
       prsSubmitted: submittedPrs.size,
       prsReceived: receivedPrs.size,
+      totalItems: totalItemsResult.count || 0,
+      lowStockItems: lowStockCountResult.count || 0,
+      outOfStockItems: outOfStockCountResult.count || 0,
     })
   }
 
@@ -4134,35 +4155,35 @@ export default function App() {
               <div className="home-kpi-grid">
                 {[
                   {
-                    label: 'PRs Submitted',
-                    value: fmt(homeDashboard.prsSubmitted),
-                    helper: 'Submitted this month',
+                    label: 'Total Items',
+                    value: fmt(homeDashboard.totalItems),
+                    helper: 'Items in current inventory list',
+                    icon: 'stock',
+                    tone: 'green',
+                    target: 'stock',
+                  },
+                  {
+                    label: 'Low Stock Items',
+                    value: fmt(homeDashboard.lowStockItems),
+                    helper: 'Positive on-hand at 5 units or less',
+                    icon: 'stock',
+                    tone: 'blue',
+                    target: 'stock',
+                  },
+                  {
+                    label: 'Out of Stock Items',
+                    value: fmt(homeDashboard.outOfStockItems),
+                    helper: 'Items with zero on-hand',
                     icon: 'prpo',
                     tone: 'orange',
-                    target: 'prpo',
+                    target: 'stock',
                   },
                   {
-                    label: 'PRs Received',
-                    value: fmt(homeDashboard.prsReceived),
-                    helper: 'PRs with receipts this month',
-                    icon: 'mrn',
-                    tone: 'blue',
-                    target: 'prpo',
-                  },
-                  {
-                    label: 'Pending Payments',
-                    value: fmt(homeDashboard.pendingPayments.length),
-                    helper: mvr(homePaymentTotal) + ' pending value',
-                    icon: 'payments',
-                    tone: 'violet',
-                    target: 'payments',
-                  },
-                  {
-                    label: 'Current Inventory Value',
+                    label: 'Inventory Value',
                     value: mvr(homeSummary.stock_value),
                     helper: 'Current SRD on-hand value',
                     icon: 'stock',
-                    tone: 'green',
+                    tone: 'violet',
                     target: 'stock',
                   },
                 ].map((card) => (
