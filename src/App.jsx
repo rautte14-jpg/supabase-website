@@ -1286,7 +1286,10 @@ export default function App() {
   const [homeDashboard, setHomeDashboard] = useState({
     pendingPayments: [],
     topStock: [],
+    topQuantity: [],
+    lowStock: [],
     recentUpdates: [],
+    activityUpdates: [],
     issueCountMonth: 0,
   })
   const [noteState, setNoteState] = useState(null)
@@ -1398,7 +1401,15 @@ export default function App() {
     const today = new Date().toISOString().slice(0, 10)
     const monthStart = today.slice(0, 7) + '-01'
 
-    const [summaryResult, paymentsResult, stockResult, updatesResult, issuesResult] = await Promise.all([
+    const [
+      summaryResult,
+      paymentsResult,
+      stockValueResult,
+      stockQtyResult,
+      lowStockResult,
+      updatesResult,
+      issuesResult,
+    ] = await Promise.all([
       supabase.from('portal_home_summary').select('*').limit(1),
       supabase
         .from('pending_payment_records')
@@ -1410,10 +1421,23 @@ export default function App() {
         .order('stock_value', { ascending: false })
         .limit(6),
       supabase
+        .from('stock_items')
+        .select('item_code,item_description,on_hand,stock_value')
+        .gt('on_hand', 0)
+        .order('on_hand', { ascending: false })
+        .limit(6),
+      supabase
+        .from('stock_items')
+        .select('item_code,item_description,on_hand,available,stock_value')
+        .gt('on_hand', 0)
+        .lte('on_hand', 5)
+        .order('on_hand', { ascending: true })
+        .limit(7),
+      supabase
         .from('source_updates')
         .select('source_type,file_name,row_count,imported_at')
         .order('imported_at', { ascending: false })
-        .limit(6),
+        .limit(60),
       supabase
         .from('sr_issue_records')
         .select('id', { count: 'exact', head: true })
@@ -1424,10 +1448,14 @@ export default function App() {
     if (summaryResult.error) throw summaryResult.error
     if (summaryResult.data?.[0]) setHomeSummary(summaryResult.data[0])
 
+    const activityUpdates = updatesResult.data || []
     setHomeDashboard({
       pendingPayments: paymentsResult.data || [],
-      topStock: stockResult.data || [],
-      recentUpdates: updatesResult.data || [],
+      topStock: stockValueResult.data || [],
+      topQuantity: stockQtyResult.data || [],
+      lowStock: lowStockResult.data || [],
+      recentUpdates: activityUpdates.slice(0, 6),
+      activityUpdates,
       issueCountMonth: issuesResult.count || 0,
     })
   }
@@ -3895,6 +3923,26 @@ export default function App() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4)
   }, [homeDashboard.pendingPayments])
 
+  const homeActivityDays = useMemo(() => {
+    const counts = new Map()
+    homeDashboard.activityUpdates.forEach((row) => {
+      const date = String(row.imported_at || '').slice(0, 10)
+      if (date) counts.set(date, (counts.get(date) || 0) + 1)
+    })
+
+    const today = new Date()
+    return Array.from({ length: 35 }, (_, index) => {
+      const date = new Date(today)
+      date.setDate(today.getDate() - (34 - index))
+      const iso = date.toISOString().slice(0, 10)
+      return {
+        iso,
+        label: date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
+        count: counts.get(iso) || 0,
+      }
+    })
+  }, [homeDashboard.activityUpdates])
+
   if (checking) return <div className="splash">Loading SRD Warehouse System…</div>
   if (!session) return <AuthScreen />
   if (recoveringPassword) return <PasswordRecovery />
@@ -4294,6 +4342,99 @@ export default function App() {
                   <div className="home-issue-month">
                     <span>SR issue records this month</span>
                     <strong>{fmt(homeDashboard.issueCountMonth)}</strong>
+                  </div>
+                </section>
+              </div>
+
+              <div className="home-dashboard-secondary">
+                <section className="home-analytics-card">
+                  <div className="home-card-head">
+                    <div>
+                      <span className="eyebrow">TOP QUANTITY</span>
+                      <h3>Largest On-Hand Quantities</h3>
+                    </div>
+                    <button onClick={() => setView('stock')}>Inventory →</button>
+                  </div>
+
+                  <div className="home-quantity-list">
+                    {homeDashboard.topQuantity.map((row, index) => {
+                      const max = Math.max(...homeDashboard.topQuantity.map((item) => Number(item.on_hand || 0)), 1)
+                      const width = Math.max(3, (Number(row.on_hand || 0) / max) * 100)
+                      return (
+                        <button key={row.item_code || index} onClick={() => setView('stock')}>
+                          <div className="home-quantity-meta">
+                            <span>{row.item_code || '—'}</span>
+                            <small>{row.item_description || 'No description'}</small>
+                            <strong>{fmt(row.on_hand, 2)}</strong>
+                          </div>
+                          <div className="home-quantity-track">
+                            <span style={{ width: width + '%' }} />
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+
+                <section className="home-analytics-card">
+                  <div className="home-card-head">
+                    <div>
+                      <span className="eyebrow">LOW STOCK ALERT</span>
+                      <h3>Items at 5 Units or Less</h3>
+                    </div>
+                    <button onClick={() => setView('stock')}>Review stock →</button>
+                  </div>
+
+                  <div className="home-low-stock-table">
+                    <div className="home-low-stock-head">
+                      <span>Item</span>
+                      <span>On Hand</span>
+                      <span>Status</span>
+                    </div>
+                    {homeDashboard.lowStock.map((row, index) => (
+                      <button key={row.item_code || index} onClick={() => setView('stock')}>
+                        <section>
+                          <b>{row.item_code || '—'}</b>
+                          <small>{row.item_description || 'No description'}</small>
+                        </section>
+                        <strong>{fmt(row.on_hand, 2)}</strong>
+                        <em>{Number(row.on_hand || 0) <= 2 ? 'Critical' : 'Low'}</em>
+                      </button>
+                    ))}
+                    {!homeDashboard.lowStock.length && <EmptyState title="No low-stock items" text="No positive on-hand items are at 5 units or less." />}
+                  </div>
+                </section>
+
+                <section className="home-analytics-card">
+                  <div className="home-card-head">
+                    <div>
+                      <span className="eyebrow">ACTIVITY MAP</span>
+                      <h3>Source Update Activity</h3>
+                    </div>
+                    <button onClick={() => setView('history')}>History →</button>
+                  </div>
+
+                  <div className="home-activity-map">
+                    {homeActivityDays.map((day) => (
+                      <span
+                        key={day.iso}
+                        className={
+                          'home-activity-cell ' +
+                          (day.count >= 3 ? 'level-3' : day.count === 2 ? 'level-2' : day.count === 1 ? 'level-1' : 'level-0')
+                        }
+                        title={day.label + ': ' + day.count + ' update' + (day.count === 1 ? '' : 's')}
+                      />
+                    ))}
+                  </div>
+                  <div className="home-activity-legend">
+                    <span>35 days ago</span>
+                    <div>
+                      <i className="level-0" />
+                      <i className="level-1" />
+                      <i className="level-2" />
+                      <i className="level-3" />
+                    </div>
+                    <span>Today</span>
                   </div>
                 </section>
               </div>
