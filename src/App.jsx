@@ -3942,72 +3942,274 @@ export default function App() {
 
         <section className="content !bg-[#F8FAFC]">
           {view === 'home' && (
-            <section className="warehouse-home mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 lg:px-8">
-              <div className="home-hero enterprise-home-header !rounded-2xl !border !border-slate-200 !bg-white !px-7 !py-5 !shadow-sm">
-                <div className="home-hero-copy">
-                  <span className="home-kicker !text-[10px] !font-semibold !tracking-[0.14em] !text-blue-600">SHIPBUILDING & REPAIR DIVISION · MATERIALS MANAGEMENT</span>
-                  <h1 className="!mt-2 !text-3xl !font-semibold !tracking-tight !text-slate-900">Warehouse Operations</h1>
-                  <p className="!mt-1 !text-sm !text-slate-500">Procurement, material movement and inventory control workspace.</p>
+            <section className="home-dashboard-shell">
+              <div className="home-dashboard-head">
+                <div>
+                  <span className="eyebrow">SHIPBUILDING & REPAIR DIVISION · MATERIALS MANAGEMENT</span>
+                  <h1>Dashboard</h1>
+                  <p>Warehouse, procurement and inventory control overview.</p>
                 </div>
-                <div className="home-actions !gap-2">
-                  <button className="home-primary !rounded-lg !bg-blue-600 !px-4 !py-2.5 !text-sm !font-semibold !text-white hover:!bg-blue-700" onClick={() => setView('overview')}>Open Overview</button>
-                  <button className="home-secondary !rounded-lg !border !border-slate-200 !bg-white !px-4 !py-2.5 !text-sm !font-semibold !text-slate-700 hover:!bg-slate-50" onClick={() => setView('stock')}>Stock & Ageing</button>
+
+                <div className="home-dashboard-actions">
+                  <button className="secondary" onClick={refreshCurrentView}>
+                    <LineIcon name="refresh" className="h-4 w-4" />
+                    {loading ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                  <button className="secondary" onClick={() => setView('overview')}>
+                    <LineIcon name="overview" className="h-4 w-4" />
+                    Analytics
+                  </button>
+                  <button className="secondary" onClick={() => setView('stock')}>
+                    <LineIcon name="stock" className="h-4 w-4" />
+                    Inventory
+                  </button>
+                  {canEdit && (
+                    <button className="primary" onClick={() => setView('updates')}>
+                      <LineIcon name="upload" className="h-4 w-4" />
+                      Update Data
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <div className="home-hero-stats !grid !grid-cols-1 !gap-6 !border-0 !bg-transparent sm:!grid-cols-2 lg:!grid-cols-4">
+              <div className="home-dashboard-tabs">
                 {[
-                  ['PRFs tracked', fmt(homeSummary.prf_count), 'prf'],
-                  ['MRNs tracked', fmt(homeSummary.mrn_count), 'mrn'],
-                  ['Pending PR / PO', fmt(homeSummary.pending_count), 'prpo'],
-                  ['On-hand stock value', mvr(homeSummary.stock_value), 'stock'],
-                ].map(([label, value, icon]) => (
-                  <div key={label} className="!min-h-[132px] !rounded-xl !border !border-slate-200 !bg-white !p-5 !shadow-sm">
-                    <div className="mb-5 flex items-start justify-between">
-                      <span className="!text-[11px] !font-medium !uppercase !tracking-[0.08em] !text-slate-500">{label}</span>
-                      <span className="grid h-9 w-9 place-items-center rounded-lg bg-blue-50 text-blue-600">
-                        <LineIcon name={icon} className="h-[18px] w-[18px]" />
-                      </span>
-                    </div>
-                    <strong className="!block !text-[28px] !font-semibold !leading-none !tracking-tight !text-slate-900">{value}</strong>
-                  </div>
-                ))}
-              </div>
-
-              <div className="home-section-head !mb-0">
-                <span className="eyebrow !text-[10px] !font-semibold !tracking-[0.14em] !text-blue-600">WAREHOUSE MODULES</span>
-                <h2 className="!mt-1 !text-xl !font-semibold !tracking-tight !text-slate-900">Quick access</h2>
-                <p className="!mt-1 !block !text-sm !text-slate-500">Open the area you need directly from the home page.</p>
-              </div>
-
-              <div className="home-module-grid !grid !grid-cols-1 !gap-6 sm:!grid-cols-2 lg:!grid-cols-4">
-                {[
-                  ['prf', 'PRF Tracker', 'Track PRF / IPF requests and movement into procurement.'],
-                  ['prpo', 'PR & PO Tracker', 'Follow PRs, POs, delivery, receipts and ageing.'],
-                  ['mtr', 'MTR Tracker', 'Monitor requested, transferred and remaining quantities.'],
-                  ['mrn', 'MRN & Issues', 'Track MRNs, issue status and pending material release.'],
-                  ['stock', 'Stock & Ageing', 'Review current stock position, value and inventory ageing.'],
-                  ['warehouse', 'Warehouse Presentation', 'Present weekly receipts, MRN issue control and SR issue activity.'],
-                  ['history', 'History', 'Review source uploads and update history.'],
-                ].map(([key, title, text]) => (
-                  <button
-                    key={key}
-                    className="home-module-card group !min-h-[168px] !rounded-xl !border !border-slate-200 !bg-white !p-5 !text-left !shadow-sm transition-all duration-200 hover:!-translate-y-0.5 hover:!border-slate-300 hover:!shadow-md"
-                    onClick={() => setView(key)}
-                  >
-                    <div className="mb-5 flex items-start justify-between">
-                      <span className="grid h-10 w-10 place-items-center rounded-xl bg-slate-100 text-slate-700 transition group-hover:bg-blue-50 group-hover:text-blue-600">
-                        <LineIcon name={key} className="h-5 w-5" />
-                      </span>
-                      <span className="grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-slate-400 transition group-hover:border-blue-200 group-hover:bg-blue-50 group-hover:text-blue-600">
-                        <LineIcon name="arrow" className="h-4 w-4" />
-                      </span>
-                    </div>
-                    <span className="!block !text-lg !font-semibold !tracking-tight !text-slate-800">{title}</span>
-                    <p className="!mt-1.5 !text-[13px] !leading-5 !text-slate-600">{text}</p>
-                    <div className="!mt-auto !pt-4 !text-[11px] !font-medium !text-slate-500 transition-colors group-hover:!text-blue-600 group-hover:underline underline-offset-4">Show me details</div>
+                  ['overview', 'Overview', 'overview'],
+                  ['prpo', 'Procurement', 'prpo'],
+                  ['mtr', 'Materials', 'mtr'],
+                  ['stock', 'Inventory Management', 'stock'],
+                  ['mrn', 'MRN & Issues', 'mrn'],
+                  ['warehouse', 'Reporting', 'history'],
+                ].map(([target, label, icon]) => (
+                  <button key={target} onClick={() => setView(target)}>
+                    <LineIcon name={icon} className="h-4 w-4" />
+                    <span>{label}</span>
                   </button>
                 ))}
+              </div>
+
+              <div className="home-kpi-grid">
+                {[
+                  {
+                    label: 'PRFs Tracked',
+                    value: fmt(homeSummary.prf_count),
+                    helper: 'Current request register',
+                    icon: 'prf',
+                    tone: 'blue',
+                    target: 'prf',
+                  },
+                  {
+                    label: 'MRNs Tracked',
+                    value: fmt(homeSummary.mrn_count),
+                    helper: 'Material requests in system',
+                    icon: 'mrn',
+                    tone: 'violet',
+                    target: 'mrn',
+                  },
+                  {
+                    label: 'Pending PR / PO',
+                    value: fmt(homeSummary.pending_count),
+                    helper: 'Open procurement follow-up',
+                    icon: 'prpo',
+                    tone: 'orange',
+                    target: 'prpo',
+                  },
+                  {
+                    label: 'Current Inventory Value',
+                    value: mvr(homeSummary.stock_value),
+                    helper: 'Current SRD on-hand value',
+                    icon: 'stock',
+                    tone: 'green',
+                    target: 'stock',
+                  },
+                ].map((card) => (
+                  <button
+                    key={card.label}
+                    className={'home-kpi-card tone-' + card.tone}
+                    onClick={() => setView(card.target)}
+                  >
+                    <span className="home-kpi-icon">
+                      <LineIcon name={card.icon} className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <span className="home-kpi-label">{card.label}</span>
+                      <strong>{card.value}</strong>
+                      <small>{card.helper}</small>
+                    </div>
+                    <span className="home-kpi-arrow">↗</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="home-dashboard-main">
+                <section className="home-analytics-card home-performance-panel">
+                  <div className="home-card-head">
+                    <div>
+                      <span className="eyebrow">WAREHOUSE PERFORMANCE</span>
+                      <h3>Operational Snapshot</h3>
+                    </div>
+                    <button onClick={() => setView('overview')}>Open analytics →</button>
+                  </div>
+
+                  <div className="home-snapshot-chart">
+                    {[
+                      ['PRF Register', Number(homeSummary.prf_count || 0), 'prf'],
+                      ['MRN Register', Number(homeSummary.mrn_count || 0), 'mrn'],
+                      ['Pending PR / PO', Number(homeSummary.pending_count || 0), 'prpo'],
+                    ].map(([label, value, target]) => {
+                      const maxValue = Math.max(
+                        Number(homeSummary.prf_count || 0),
+                        Number(homeSummary.mrn_count || 0),
+                        Number(homeSummary.pending_count || 0),
+                        1,
+                      )
+                      const width = Math.max(4, Math.min(100, (Number(value) / maxValue) * 100))
+                      return (
+                        <button key={label} className="home-snapshot-row" onClick={() => setView(target)}>
+                          <span className="home-snapshot-label">{label}</span>
+                          <span className="home-snapshot-track">
+                            <span className="home-snapshot-fill" style={{ width: width + '%' }} />
+                          </span>
+                          <strong>{fmt(value)}</strong>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <div className="home-value-strip">
+                    <div>
+                      <span>Inventory Value</span>
+                      <strong>{mvr(homeSummary.stock_value)}</strong>
+                    </div>
+                    <div>
+                      <span>Aged Stock Value</span>
+                      <strong>{mvr(homeSummary.aged_value)}</strong>
+                    </div>
+                    <div>
+                      <span>Aged Share</span>
+                      <strong>
+                        {Number(homeSummary.stock_value || 0) > 0
+                          ? fmt((Number(homeSummary.aged_value || 0) / Number(homeSummary.stock_value || 0)) * 100, 1) + '%'
+                          : '0.0%'}
+                      </strong>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="home-analytics-card home-inventory-health">
+                  <div className="home-card-head">
+                    <div>
+                      <span className="eyebrow">INVENTORY HEALTH</span>
+                      <h3>Current Value Position</h3>
+                    </div>
+                    <button onClick={() => setView('stock')}>Stock details →</button>
+                  </div>
+
+                  <div className="home-donut-wrap">
+                    <div
+                      className="home-donut"
+                      style={{
+                        '--aged': Math.max(
+                          0,
+                          Math.min(
+                            100,
+                            Number(homeSummary.stock_value || 0) > 0
+                              ? (Number(homeSummary.aged_value || 0) / Number(homeSummary.stock_value || 0)) * 100
+                              : 0,
+                          ),
+                        ) + '%',
+                      }}
+                    >
+                      <div>
+                        <strong>{mvr(homeSummary.stock_value)}</strong>
+                        <span>Total</span>
+                      </div>
+                    </div>
+
+                    <div className="home-donut-legend">
+                      <div>
+                        <span className="dot current" />
+                        <section>
+                          <b>Current / Other Stock</b>
+                          <small>{mvr(Math.max(0, Number(homeSummary.stock_value || 0) - Number(homeSummary.aged_value || 0)))}</small>
+                        </section>
+                      </div>
+                      <div>
+                        <span className="dot aged" />
+                        <section>
+                          <b>Aged Stock</b>
+                          <small>{mvr(homeSummary.aged_value)}</small>
+                        </section>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div className="home-dashboard-lower">
+                <section className="home-analytics-card">
+                  <div className="home-card-head">
+                    <div>
+                      <span className="eyebrow">QUICK ACCESS</span>
+                      <h3>Operations Modules</h3>
+                    </div>
+                  </div>
+
+                  <div className="home-quick-grid">
+                    {[
+                      ['prf', 'PRF Tracker', 'Request register and procurement movement.'],
+                      ['prpo', 'PR & PO Tracker', 'Delivery, receipts, ageing and follow-up.'],
+                      ['payments', 'Pending Payments', 'Current payment list and priority.'],
+                      ['mtr', 'MTR Tracker', 'Requested and transferred quantities.'],
+                      ['mrn', 'MRN & Issues', 'Issue status and pending material release.'],
+                      ['stock', 'Stock & Ageing', 'Inventory value and ageing position.'],
+                    ].map(([target, label, text]) => (
+                      <button key={target} onClick={() => setView(target)}>
+                        <span className="quick-icon">
+                          <LineIcon name={target} className="h-4 w-4" />
+                        </span>
+                        <section>
+                          <b>{label}</b>
+                          <small>{text}</small>
+                        </section>
+                        <span>→</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="home-analytics-card home-attention-card">
+                  <div className="home-card-head">
+                    <div>
+                      <span className="eyebrow">ATTENTION</span>
+                      <h3>Current Follow-up</h3>
+                    </div>
+                  </div>
+
+                  <button className="home-attention-row" onClick={() => setView('prpo')}>
+                    <div>
+                      <span>Pending PR / PO</span>
+                      <small>Open procurement position</small>
+                    </div>
+                    <strong>{fmt(homeSummary.pending_count)}</strong>
+                  </button>
+
+                  <button className="home-attention-row" onClick={() => setView('stock')}>
+                    <div>
+                      <span>Aged Inventory Value</span>
+                      <small>Review ageing exposure</small>
+                    </div>
+                    <strong>{mvr(homeSummary.aged_value)}</strong>
+                  </button>
+
+                  <button className="home-attention-row" onClick={() => setView('warehouse')}>
+                    <div>
+                      <span>Warehouse Reporting</span>
+                      <small>Weekly operational presentation</small>
+                    </div>
+                    <strong>→</strong>
+                  </button>
+                </section>
               </div>
             </section>
           )}
