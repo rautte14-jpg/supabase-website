@@ -5,42 +5,15 @@ const SUPABASE_URL = 'https://cqimpmvaobrnpejokuvx.supabase.co'
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_tAoik_yGhIhp3VCE2qnf4g_GAviUG_B'
 const DEFAULT_GRAPHQL_URL = 'https://apisimplix-maldivetransportcontracting.msappproxy.net/graphql'
 
-const GET_PRS_QUERY = \`
-query GetPRs($after: String, $before: String, $first: Int, $last: Int, $search: String, $site: String) {
-  getPRs(
-    after: $after
-    before: $before
-    first: $first
-    last: $last
-    search: $search
-    site: $site
-  ) {
-    edges {
-      cursor
-      node {
-        createdAt
-        createdBy
-        description
-        id
-        purchReqId
-        recId
-        status
-        site
-        __typename
-      }
-      __typename
-    }
-    pageInfo {
-      count
-      endCursor
-      hasNextPage
-      hasPreviousPage
-      startCursor
-      __typename
-    }
-    __typename
-  }
-}\`
+const GET_PRS_QUERY = [
+  'query GetPRs($after: String, $before: String, $first: Int, $last: Int, $search: String, $site: String) {',
+  '  getPRs(after: $after, before: $before, first: $first, last: $last, search: $search, site: $site) {',
+  '    edges { cursor node { createdAt createdBy description id purchReqId recId status site __typename } __typename }',
+  '    pageInfo { count endCursor hasNextPage hasPreviousPage startCursor __typename }',
+  '    __typename',
+  '  }',
+  '}',
+].join('\n')
 
 function argValue(name, fallback = null) {
   const prefix = '--' + name + '='
@@ -136,28 +109,18 @@ async function fetchPrPage({ url, bearerToken, after, first, site, search }) {
     },
     body: JSON.stringify({
       operationName: 'GetPRs',
-      variables: {
-        first,
-        last: null,
-        before: null,
-        after,
-        site: site || null,
-        search: search || '',
-      },
+      variables: { first, last: null, before: null, after, site: site || null, search: search || '' },
       query: GET_PRS_QUERY,
     }),
   })
 
   if (!response.ok) {
     const body = await response.text()
-    throw new Error(\`Simplix API returned HTTP \${response.status}: \${body.slice(0, 500)}\`)
+    throw new Error('Simplix API returned HTTP ' + response.status + ': ' + body.slice(0, 500))
   }
 
   const payload = await response.json()
-  if (payload.errors?.length) {
-    throw new Error('GraphQL error: ' + JSON.stringify(payload.errors))
-  }
-
+  if (payload.errors?.length) throw new Error('GraphQL error: ' + JSON.stringify(payload.errors))
   return payload?.data?.getPRs
 }
 
@@ -174,16 +137,12 @@ async function fetchAllPrs({ url, bearerToken, first, site, search, maxPages }) 
 
     total ??= data.pageInfo?.count ?? null
     const edges = data.edges || []
-
     rows.push(...edges.map((edge) => edge.node).filter(Boolean))
-    process.stdout.write(
-      \`Fetched page \${page}: \${rows.length}\${total ? ' / ' + total : ''} PRs\n\`,
-    )
+    process.stdout.write('Fetched page ' + page + ': ' + rows.length + (total ? ' / ' + total : '') + ' PRs\n')
 
     const pageInfo = data.pageInfo || {}
     if (!pageInfo.hasNextPage || !pageInfo.endCursor) break
     if (maxPages && page >= maxPages) break
-
     after = pageInfo.endCursor
   }
 
@@ -208,17 +167,12 @@ function toDbRow(node) {
 
 async function upsertInBatches(supabase, rows, batchSize = 500) {
   let written = 0
-
   for (let i = 0; i < rows.length; i += batchSize) {
     const batch = rows.slice(i, i + batchSize)
-    const { error } = await supabase
-      .from('erp_pr_headers')
-      .upsert(batch, { onConflict: 'purch_req_id' })
-
+    const { error } = await supabase.from('erp_pr_headers').upsert(batch, { onConflict: 'purch_req_id' })
     if (error) throw error
-
     written += batch.length
-    process.stdout.write(\`Synced \${written} / \${rows.length} PRs to Supabase\n\`)
+    process.stdout.write('Synced ' + written + ' / ' + rows.length + ' PRs to Supabase\n')
   }
 }
 
@@ -238,7 +192,6 @@ async function main() {
 
   const email = process.env.SRD_PORTAL_EMAIL || await prompt('SRD portal email: ')
   const password = process.env.SRD_PORTAL_PASSWORD || await promptHidden('SRD portal password: ')
-
   if (!email || !password) throw new Error('SRD portal email and password are required')
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -248,23 +201,12 @@ async function main() {
   const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password })
   if (authError) throw authError
 
-  console.log(\`Signed in as \${authData.user?.email || email}\`)
-  console.log(\`Fetching Simplix PRs\${site ? ' for site ' + site : ''}...\n\`)
+  console.log('Signed in as ' + (authData.user?.email || email))
+  console.log('Fetching Simplix PRs' + (site ? ' for site ' + site : '') + '...\n')
 
-  const nodes = await fetchAllPrs({
-    url: graphqlUrl,
-    bearerToken,
-    first,
-    site,
-    search,
-    maxPages,
-  })
-
-  const rows = nodes
-    .map(toDbRow)
-    .filter((row) => row.purch_req_id)
-
-  console.log(\`\nPrepared \${rows.length} PR records.\`)
+  const nodes = await fetchAllPrs({ url: graphqlUrl, bearerToken, first, site, search, maxPages })
+  const rows = nodes.map(toDbRow).filter((row) => row.purch_req_id)
+  console.log('\nPrepared ' + rows.length + ' PR records.')
 
   if (dryRun) {
     console.log('Dry run complete. Nothing was written to Supabase.')
@@ -272,11 +214,10 @@ async function main() {
   }
 
   await upsertInBatches(supabase, rows)
-
   const uniqueStatuses = [...new Set(rows.map((row) => row.status).filter(Boolean))]
   console.log('\nSync complete.')
-  console.log(\`Records synced: \${rows.length}\`)
-  console.log(\`Statuses seen: \${uniqueStatuses.join(', ') || 'None'}\`)
+  console.log('Records synced: ' + rows.length)
+  console.log('Statuses seen: ' + (uniqueStatuses.join(', ') || 'None'))
 }
 
 main().catch((error) => {
