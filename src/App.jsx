@@ -1454,22 +1454,14 @@ export default function App() {
   }
 
   async function refreshCurrentView() {
-    if (view === 'home') {
-      await loadEverything(true)
-      return
-    }
-    await loadForView(view, true)
+    await loadEverything(true)
   }
 
   useEffect(() => {
     if (!access) return
+    setInitialLoadComplete(false)
     loadEverything(false)
   }, [access?.email])
-
-  useEffect(() => {
-    if (!access || !initialLoadComplete) return
-    loadForView(view)
-  }, [view])
 
 
   const noteMap = useMemo(
@@ -3861,6 +3853,7 @@ export default function App() {
   if (recoveringPassword) return <PasswordRecovery />
   if (access === null) return <div className="splash">Checking portal access…</div>
   if (access === false) return <AccessDenied email={session.user.email} />
+  if (!initialLoadComplete) return <div className="splash">Loading SRD Warehouse System data…</div>
 
   return (
     <div className="app-shell bg-slate-50">
