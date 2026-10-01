@@ -1263,6 +1263,7 @@ export default function App() {
     sourceUpdates: [],
     snapshots: [],
     pendingPayments: [],
+    erpPrHeaders: [],
   })
   const [loaded, setLoaded] = useState({
     procurement: false,
@@ -1275,6 +1276,7 @@ export default function App() {
     sourceUpdates: false,
     snapshots: false,
     pendingPayments: false,
+    erpPrHeaders: false,
   })
   const [homeSummary, setHomeSummary] = useState({
     prf_count: 0,
@@ -1386,13 +1388,14 @@ export default function App() {
     sourceUpdates: ['source_updates', 'imported_at', false],
     snapshots: ['weekly_snapshots', 'snapshot_date', false],
     pendingPayments: ['pending_payment_records', 'po_date', false],
+    erpPrHeaders: ['erp_pr_headers', 'created_at', false],
   }
 
   const VIEW_TABLES = {
     home: [],
     overview: ['procurement', 'material', 'srIssues', 'sourceUpdates', 'snapshots', 'pendingPayments'],
     prf: ['procurement', 'lld', 'notes'],
-    prpo: ['procurement', 'lld', 'notes'],
+    prpo: ['procurement', 'lld', 'notes', 'erpPrHeaders'],
     payments: ['pendingPayments'],
     mtr: ['material', 'notes'],
     mrn: ['material', 'srIssues', 'notes'],
@@ -1819,11 +1822,18 @@ export default function App() {
     [procurementData],
   )
 
+  const erpPrHeaders = data.erpPrHeaders || []
+
   const prPoWeekCounts = useMemo(() => {
     const weekSets = new Map()
-    allPrLines.forEach((row) => {
-      const weekStart = weekStartWednesday(prSubmittedDate(row))
-      const prNo = String(row.pr_no || '').trim()
+    const sourceRows = erpPrHeaders.length ? erpPrHeaders : allPrLines
+
+    sourceRows.forEach((row) => {
+      const date = erpPrHeaders.length
+        ? parseFlexibleDate(row.created_at || row.created_at_raw)
+        : prSubmittedDate(row)
+      const weekStart = weekStartWednesday(date)
+      const prNo = String(erpPrHeaders.length ? row.purch_req_id : row.pr_no || '').trim()
       if (!weekStart || !prNo) return
       if (!weekSets.has(weekStart)) weekSets.set(weekStart, new Set())
       weekSets.get(weekStart).add(prNo)
@@ -1838,7 +1848,7 @@ export default function App() {
         count: weekSets.get(weekStart)?.size || 0,
       }
     })
-  }, [allPrLines])
+  }, [erpPrHeaders, allPrLines])
 
   const prPoReceiptWeekCounts = useMemo(() => {
     const weekMap = new Map()
@@ -1875,13 +1885,22 @@ export default function App() {
     [allPrLines, prPoWeekFilter],
   )
 
+  const erpPrSubmissionRows = useMemo(
+    () => erpPrHeaders.filter((row) => {
+      if (!matches(row)) return false
+      if (prPoWeekFilter === 'ALL') return true
+      const submitted = parseFlexibleDate(row.created_at || row.created_at_raw)
+      return weekStartWednesday(submitted) === prPoWeekFilter
+    }),
+    [erpPrHeaders, query, prPoWeekFilter],
+  )
 
   const prSubmissionLineRows = useMemo(
     () => weekFilteredPrLines.filter((row) => matches(row)),
     [weekFilteredPrLines, query],
   )
 
-  const prSubmissionRows = useMemo(() => {
+  const legacyPrSubmissionRows = useMemo(() => {
     const uniquePrs = new Map()
     prSubmissionLineRows.forEach((row) => {
       const prNo = String(row.pr_no || '').trim()
@@ -1891,10 +1910,12 @@ export default function App() {
     return Array.from(uniquePrs.values())
   }, [prSubmissionLineRows])
 
+  const prSubmissionRows = erpPrHeaders.length ? erpPrSubmissionRows : legacyPrSubmissionRows
+
   const prSubmissionCounts = useMemo(() => ({
     prs: prSubmissionRows.length,
-    lines: prSubmissionLineRows.length,
-  }), [prSubmissionRows, prSubmissionLineRows])
+    lines: erpPrHeaders.length ? null : prSubmissionLineRows.length,
+  }), [prSubmissionRows, erpPrHeaders.length, prSubmissionLineRows])
 
   const prPoAgeing = useMemo(() => {
     const prMap = new Map()
@@ -2789,11 +2810,20 @@ export default function App() {
     { key: 'raw_received_date', label: 'Received Date', render: (_v, r) => displayValue(rawField(r, ['Received Date'])) },
   ]
 
-  const prSubmissionColumns = [
-    { key: 'pr_no', label: 'PR Number', render: (v) => displayValue(v, true) },
-    { key: 'raw_pr_name', label: 'PR Description', render: (_v, r) => displayValue(rawField(r, ['PR Name', 'PR Description']), true) },
-    { key: 'pr_date', label: 'Submitted Date', render: (v, r) => v || rawField(r, ['Submitted Date']) || '—' },
-  ]
+  const prSubmissionColumns = erpPrHeaders.length
+    ? [
+        { key: 'purch_req_id', label: 'PR Number', render: (v) => <span className="font-mono text-[11px] font-semibold text-slate-900">{displayValue(v, true)}</span> },
+        { key: 'description', label: 'PR Description', render: (v) => displayValue(v, true) },
+        { key: 'created_at_raw', label: 'Submitted Date', render: (v, r) => displayValue(v || r.created_at) },
+        { key: 'created_by', label: 'Requested By', render: (v) => displayValue(v) },
+        { key: 'site', label: 'Site', render: (v) => displayValue(v) },
+        { key: 'status', label: 'ERP Status', render: (v) => <StatusPill value={v} /> },
+      ]
+    : [
+        { key: 'pr_no', label: 'PR Number', render: (v) => displayValue(v, true) },
+        { key: 'raw_pr_name', label: 'PR Description', render: (_v, r) => displayValue(rawField(r, ['PR Name', 'PR Description']), true) },
+        { key: 'pr_date', label: 'Submitted Date', render: (v, r) => v || rawField(r, ['Submitted Date']) || '—' },
+      ]
 
   const receiptItemColumns = [
     { key: 'raw_pr_name', label: 'PR Name', render: (_v, r) => displayValue(rawField(r, ['PR Name']), true) },
@@ -4947,7 +4977,7 @@ export default function App() {
             <>
               <PageHeader
                 title="PR & PO Tracker"
-                subtitle="Separate views for PR submissions, current open procurement position, and goods received."
+                subtitle="Live Simplix PR submissions combined with the current PR/PO procurement and receipt position."
               />
 
               <section className="prpo-section-card">
@@ -4955,9 +4985,12 @@ export default function App() {
                   <div>
                     <span className="eyebrow">01 · PR SUBMISSION ACTIVITY</span>
                     <h3>When were PRs raised?</h3>
-                    <p>This section uses <b>Submitted Date</b>. Selecting a week filters the detailed table below.</p>
+                    <p>This section uses the latest <b>Simplix PR sync</b>. Selecting a week filters the live PR header records below.</p>
                   </div>
-                  <span className="prpo-date-basis">DATE BASIS · SUBMITTED DATE</span>
+                  <div className="flex items-center gap-2">
+                    {erpPrHeaders.length > 0 && <span className="prpo-date-basis live">SIMPLIX SYNC · {fmt(erpPrHeaders.length)} PRs</span>}
+                    <span className="prpo-date-basis">DATE BASIS · SUBMITTED DATE</span>
+                  </div>
                 </div>
 
                 <div className="prf-week-grid">
@@ -4966,7 +4999,7 @@ export default function App() {
                     onClick={() => selectPrPoWeek('ALL')}
                   >
                     <span>ALL SUBMITTED PRs</span>
-                    <strong>{fmt(new Set(allPrLines.map((r) => r.pr_no).filter(Boolean)).size)} PRs</strong>
+                    <strong>{fmt(erpPrHeaders.length || new Set(allPrLines.map((r) => r.pr_no).filter(Boolean)).size)} PRs</strong>
                   </button>
 
                   {prPoWeekCounts.map((week) => (
@@ -5002,7 +5035,7 @@ export default function App() {
                   </div>
                   <div>
                     <strong>{fmt(prSubmissionCounts.prs)} PR{prSubmissionCounts.prs === 1 ? '' : 's'}</strong>
-                    <span>{fmt(prSubmissionCounts.lines)} item line{prSubmissionCounts.lines === 1 ? '' : 's'}</span>
+                    <span>{erpPrHeaders.length ? 'Live Simplix headers' : fmt(prSubmissionCounts.lines) + ' item line' + (prSubmissionCounts.lines === 1 ? '' : 's')}</span>
                   </div>
                 </div>
                 <DataTable rows={prSubmissionRows} columns={prSubmissionColumns} limit={250} />
