@@ -406,6 +406,7 @@ function AuthScreen() {
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false)
   const [mode, setMode] = useState('signin')
 
   async function submit(event) {
@@ -1419,6 +1420,23 @@ export default function App() {
     })
   }
 
+  async function loadEverything(force = false) {
+    if (!session || !access) return
+    setLoading(true)
+    try {
+      const allKeys = Object.keys(TABLE_CONFIG)
+      await Promise.all([
+        loadHomeSummary(),
+        loadTables(allKeys, force),
+      ])
+      setInitialLoadComplete(true)
+    } catch (error) {
+      console.error('Failed to load portal data', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function loadForView(targetView = view, force = false) {
     if (!session || !access) return
     setLoading(true)
@@ -1437,14 +1455,7 @@ export default function App() {
 
   async function refreshCurrentView() {
     if (view === 'home') {
-      setLoading(true)
-      try {
-        await loadHomeSummary()
-      } catch (error) {
-        console.error('Failed to refresh home summary', error)
-      } finally {
-        setLoading(false)
-      }
+      await loadEverything(true)
       return
     }
     await loadForView(view, true)
@@ -1452,8 +1463,13 @@ export default function App() {
 
   useEffect(() => {
     if (!access) return
+    loadEverything(false)
+  }, [access?.email])
+
+  useEffect(() => {
+    if (!access || !initialLoadComplete) return
     loadForView(view)
-  }, [access?.email, view])
+  }, [view])
 
 
   const noteMap = useMemo(
@@ -3957,10 +3973,10 @@ export default function App() {
 
               <div className="home-hero-stats !grid !grid-cols-1 !gap-6 !border-0 !bg-transparent sm:!grid-cols-2 lg:!grid-cols-4">
                 {[
-                  ['PRFs tracked', fmt(homeSummary.prf_count), 'prf'],
-                  ['MRNs tracked', fmt(homeSummary.mrn_count), 'mrn'],
-                  ['Pending PR / PO', fmt(homeSummary.pending_count), 'prpo'],
-                  ['On-hand stock value', mvr(homeSummary.stock_value), 'stock'],
+                  ['PRFs tracked', fmt(metrics.prf), 'prf'],
+                  ['MRNs tracked', fmt(metrics.mrn), 'mrn'],
+                  ['Pending PR / PO', fmt(metrics.pending), 'prpo'],
+                  ['On-hand stock value', mvr(metrics.stockValue), 'stock'],
                 ].map(([label, value, icon]) => (
                   <div key={label} className="!min-h-[132px] !rounded-xl !border !border-slate-200 !bg-white !p-5 !shadow-sm">
                     <div className="mb-5 flex items-start justify-between">
