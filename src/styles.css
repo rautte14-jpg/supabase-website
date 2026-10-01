@@ -6201,3 +6201,181 @@ tbody tr:hover {
     grid-template-columns: 90px minmax(0, 1fr) auto;
   }
 }
+
+
+/* Home ageing and supplier exposure */
+.home-dashboard-ageing {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, .8fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.home-ageing-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.home-ageing-profile > button {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) 120px;
+  gap: 12px;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-ageing-profile > button > span {
+  color: #586a82;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.home-ageing-track {
+  height: 22px;
+  overflow: hidden;
+  border-radius: 7px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      #f2f5f8 0,
+      #f2f5f8 calc(25% - 1px),
+      #e7ecf2 calc(25% - 1px),
+      #e7ecf2 25%
+    );
+}
+
+.home-ageing-track > span {
+  display: block;
+  height: 100%;
+  min-width: 4%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f59a4a, #f4bd7b);
+}
+
+.home-ageing-profile > button:nth-child(2) .home-ageing-track > span {
+  background: linear-gradient(90deg, #7a6ae0, #9b8cf1);
+}
+
+.home-ageing-profile > button:nth-child(3) .home-ageing-track > span {
+  background: linear-gradient(90deg, #3b8dd5, #76b9ee);
+}
+
+.home-ageing-profile > button:nth-child(4) .home-ageing-track > span {
+  background: linear-gradient(90deg, #2da472, #62c092);
+}
+
+.home-ageing-profile > button strong {
+  color: #263952;
+  font-size: 10px;
+  text-align: right;
+}
+
+.home-ageing-total {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  align-items: center;
+  margin-top: 3px;
+  padding: 13px 14px;
+  border: 1px solid #f4d4b7;
+  border-radius: 10px;
+  background: #fff8f2;
+}
+
+.home-ageing-total span {
+  color: #815b3c;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.home-ageing-total strong {
+  color: #d76f1d;
+  font-size: 14px;
+}
+
+.home-ageing-total small {
+  grid-column: 1 / -1;
+  color: #a18d7d;
+  font-size: 8px;
+}
+
+.home-supplier-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.home-supplier-list > button {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 11px;
+  align-items: center;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid #edf1f5;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-supplier-list > button:last-child {
+  border-bottom: 0;
+}
+
+.home-supplier-list section {
+  min-width: 0;
+}
+
+.home-supplier-list b {
+  display: block;
+  overflow: hidden;
+  color: #34475f;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-supplier-track {
+  height: 5px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf1f5;
+}
+
+.home-supplier-track > span {
+  display: block;
+  height: 100%;
+  min-width: 4%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ea7a24, #f3ae72);
+}
+
+.home-supplier-list strong {
+  color: #263952;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .home-dashboard-ageing {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .home-ageing-profile > button {
+    grid-template-columns: 80px minmax(0, 1fr);
+  }
+
+  .home-ageing-profile > button strong {
+    grid-column: 2;
+    text-align: left;
+  }
+}
