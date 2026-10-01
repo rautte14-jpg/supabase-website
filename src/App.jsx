@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from './lib/supabase'
 import { SOURCE_OPTIONS, detectSource, entityKey, humanSource, mapRows, normalizeSheetRows } from './importers'
@@ -407,6 +407,7 @@ function AuthScreen() {
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [initialLoadComplete, setInitialLoadComplete] = useState(false)
+  const preloadCache = useRef({})
   const [mode, setMode] = useState('signin')
 
   async function submit(event) {
@@ -1420,16 +1421,61 @@ export default function App() {
     })
   }
 
+  function emptyDataState() {
+    return {
+      procurement: [],
+      material: [],
+      stock: [],
+      transactions: [],
+      srIssues: [],
+      lld: [],
+      notes: [],
+      sourceUpdates: [],
+      snapshots: [],
+      pendingPayments: [],
+    }
+  }
+
+  function hydrateViewFromCache(targetView) {
+    if (targetView === 'home') {
+      setData(emptyDataState())
+      return
+    }
+
+    const keys = VIEW_TABLES[targetView] || []
+    const next = emptyDataState()
+    keys.forEach((key) => {
+      next[key] = preloadCache.current[key] || []
+    })
+    setData(next)
+  }
+
   async function loadEverything(force = false) {
     if (!session || !access) return
     setLoading(true)
     try {
-      const allKeys = Object.keys(TABLE_CONFIG)
-      await Promise.all([
-        loadHomeSummary(),
-        loadTables(allKeys, force),
-      ])
+      const entries = await Promise.all(
+        Object.entries(TABLE_CONFIG).map(async ([key, [table, orderColumn, ascending]]) => {
+          const rows = await fetchAllRows(table, orderColumn, ascending)
+          return [key, rows]
+        }),
+      )
+
+      const cache = {}
+      entries.forEach(([key, rows]) => {
+        cache[key] = rows
+      })
+      preloadCache.current = cache
+
+      const loadedState = { ...loaded }
+      Object.keys(TABLE_CONFIG).forEach((key) => {
+        loadedState[key] = true
+      })
+      setLoaded(loadedState)
+
+      await loadHomeSummary()
       setInitialLoadComplete(true)
+      hydrateViewFromCache(view)
     } catch (error) {
       console.error('Failed to load portal data', error)
     } finally {
@@ -1462,6 +1508,11 @@ export default function App() {
     setInitialLoadComplete(false)
     loadEverything(false)
   }, [access?.email])
+
+  useEffect(() => {
+    if (!initialLoadComplete) return
+    hydrateViewFromCache(view)
+  }, [view, initialLoadComplete])
 
 
   const noteMap = useMemo(
@@ -3965,10 +4016,10 @@ export default function App() {
 
               <div className="home-hero-stats !grid !grid-cols-1 !gap-6 !border-0 !bg-transparent sm:!grid-cols-2 lg:!grid-cols-4">
                 {[
-                  ['PRFs tracked', fmt(metrics.prf), 'prf'],
-                  ['MRNs tracked', fmt(metrics.mrn), 'mrn'],
-                  ['Pending PR / PO', fmt(metrics.pending), 'prpo'],
-                  ['On-hand stock value', mvr(metrics.stockValue), 'stock'],
+                  ['PRFs tracked', fmt(homeSummary.prf_count), 'prf'],
+                  ['MRNs tracked', fmt(homeSummary.mrn_count), 'mrn'],
+                  ['Pending PR / PO', fmt(homeSummary.pending_count), 'prpo'],
+                  ['On-hand stock value', mvr(homeSummary.stock_value), 'stock'],
                 ].map(([label, value, icon]) => (
                   <div key={label} className="!min-h-[132px] !rounded-xl !border !border-slate-200 !bg-white !p-5 !shadow-sm">
                     <div className="mb-5 flex items-start justify-between">
