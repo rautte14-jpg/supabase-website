@@ -1291,6 +1291,7 @@ export default function App() {
     recentUpdates: [],
     activityUpdates: [],
     issueCountMonth: 0,
+    ageing: null,
   })
   const [noteState, setNoteState] = useState(null)
   const [vesselSearch, setVesselSearch] = useState('')
@@ -1409,6 +1410,7 @@ export default function App() {
       lowStockResult,
       updatesResult,
       issuesResult,
+      ageingResult,
     ] = await Promise.all([
       supabase.from('portal_home_summary').select('*').limit(1),
       supabase
@@ -1443,6 +1445,11 @@ export default function App() {
         .select('id', { count: 'exact', head: true })
         .gte('requested_receipt_date', monthStart)
         .lte('requested_receipt_date', today),
+      supabase
+        .from('weekly_snapshots')
+        .select('snapshot_date,label,metrics')
+        .order('snapshot_date', { ascending: false })
+        .limit(10),
     ])
 
     if (summaryResult.error) throw summaryResult.error
@@ -1457,6 +1464,7 @@ export default function App() {
       recentUpdates: activityUpdates.slice(0, 6),
       activityUpdates,
       issueCountMonth: issuesResult.count || 0,
+      ageing: (ageingResult.data || []).find((row) => row.metrics?.kind === 'AGEING') || null,
     })
   }
 
@@ -3923,6 +3931,17 @@ export default function App() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4)
   }, [homeDashboard.pendingPayments])
 
+  const homeTopPaymentSuppliers = useMemo(() => {
+    const totals = new Map()
+    homeDashboard.pendingPayments.forEach((row) => {
+      const supplier = String(row.supplier || 'Unknown supplier').trim() || 'Unknown supplier'
+      totals.set(supplier, (totals.get(supplier) || 0) + Number(row.po_value || 0))
+    })
+    return [...totals.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+  }, [homeDashboard.pendingPayments])
+
   const homeActivityDays = useMemo(() => {
     const counts = new Map()
     homeDashboard.activityUpdates.forEach((row) => {
@@ -4342,6 +4361,75 @@ export default function App() {
                   <div className="home-issue-month">
                     <span>SR issue records this month</span>
                     <strong>{fmt(homeDashboard.issueCountMonth)}</strong>
+                  </div>
+                </section>
+              </div>
+
+              <div className="home-dashboard-ageing">
+                <section className="home-analytics-card">
+                  <div className="home-card-head">
+                    <div>
+                      <span className="eyebrow">INVENTORY AGEING</span>
+                      <h3>Ageing Value Profile</h3>
+                    </div>
+                    <button onClick={() => setView('stock')}>Ageing details →</button>
+                  </div>
+
+                  {homeDashboard.ageing?.metrics ? (
+                    <div className="home-ageing-profile">
+                      {[
+                        ['1–2 Years', Number(homeDashboard.ageing.metrics.p2 || 0)],
+                        ['2–3 Years', Number(homeDashboard.ageing.metrics.p3 || 0)],
+                        ['3–4 Years', Number(homeDashboard.ageing.metrics.p4 || 0)],
+                        ['4+ Years', Number(homeDashboard.ageing.metrics.p5 || 0)],
+                      ].map(([label, value], index, rows) => {
+                        const max = Math.max(...rows.map((item) => Number(item[1] || 0)), 1)
+                        return (
+                          <button key={label} onClick={() => setView('stock')}>
+                            <span>{label}</span>
+                            <div className="home-ageing-track">
+                              <span style={{ width: Math.max(4, (value / max) * 100) + '%' }} />
+                            </div>
+                            <strong>{mvr(value)}</strong>
+                          </button>
+                        )
+                      })}
+                      <div className="home-ageing-total">
+                        <span>Stock over 1 year</span>
+                        <strong>{mvr(homeDashboard.ageing.metrics.over1)}</strong>
+                        <small>Snapshot {homeDashboard.ageing.snapshot_date || '—'}</small>
+                      </div>
+                    </div>
+                  ) : (
+                    <EmptyState title="No ageing snapshot" text="Upload the latest inventory ageing file." />
+                  )}
+                </section>
+
+                <section className="home-analytics-card">
+                  <div className="home-card-head">
+                    <div>
+                      <span className="eyebrow">SUPPLIER EXPOSURE</span>
+                      <h3>Top Pending Payment Suppliers</h3>
+                    </div>
+                    <button onClick={() => setView('payments')}>Payments →</button>
+                  </div>
+
+                  <div className="home-supplier-list">
+                    {homeTopPaymentSuppliers.map(([supplier, value], index) => {
+                      const max = Math.max(...homeTopPaymentSuppliers.map((item) => Number(item[1] || 0)), 1)
+                      return (
+                        <button key={supplier} onClick={() => setView('payments')}>
+                          <span className="home-rank">{index + 1}</span>
+                          <section>
+                            <b>{supplier}</b>
+                            <div className="home-supplier-track">
+                              <span style={{ width: Math.max(4, (Number(value) / max) * 100) + '%' }} />
+                            </div>
+                          </section>
+                          <strong>{mvr(value)}</strong>
+                        </button>
+                      )
+                    })}
                   </div>
                 </section>
               </div>
