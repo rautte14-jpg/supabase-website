@@ -3843,7 +3843,6 @@ export default function App() {
     ageingSnapshots,
   ])
 
-  const overviewMovementMax = Math.max(overviewPeriod.receivedQty, overviewPeriod.issueQty, 1)
   const overviewPeriodLabel =
     overviewPeriod.rangeStart === overviewPeriod.rangeEnd
       ? formatShortDate(overviewPeriod.rangeStart)
@@ -4032,15 +4031,14 @@ export default function App() {
             <>
               <PageHeader
                 title="Overview"
-                subtitle="Warehouse, procurement and materials control for a selected reporting period."
+                subtitle="Warehouse, procurement and materials control for the selected reporting period."
               />
 
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-100 pb-4">
+                <div className="flex flex-wrap items-end justify-between gap-4">
                   <div>
-                    <span className="eyebrow">SRD WAREHOUSE OVERVIEW</span>
-                    <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-800">{overviewPeriodLabel}</h3>
-                    <p className="mt-1 text-xs text-slate-500">Selected reporting period</p>
+                    <span className="eyebrow">REPORTING PERIOD</span>
+                    <h3 className="mt-1 text-lg font-semibold text-slate-800">{overviewPeriodLabel}</h3>
                   </div>
 
                   <div className="overview-date-loader">
@@ -4049,7 +4047,6 @@ export default function App() {
                       <input
                         type="date"
                         value={overviewFromDraft}
-                        max={overviewToDraft || undefined}
                         onChange={(e) => setOverviewFromDraft(e.target.value)}
                       />
                     </label>
@@ -4058,161 +4055,75 @@ export default function App() {
                       <input
                         type="date"
                         value={overviewToDraft}
-                        min={overviewFromDraft || undefined}
                         onChange={(e) => setOverviewToDraft(e.target.value)}
                       />
                     </label>
-                    <button className="primary" onClick={applyOverviewDateRange}>
-                      Load Data
-                    </button>
+                    <button className="primary" onClick={applyOverviewDateRange}>Load Data</button>
                   </div>
-                </div>
-
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  {[
-                    ['PRs Submitted', fmt(overviewPeriod.submittedPrs), 'Procurement activity', 'prpo', 'blue'],
-                    ['PRs Received', fmt(overviewPeriod.receivedPrs), 'Distinct PRs received selected period', 'prpo', 'emerald'],
-                    ['Received Quantity', fmt(overviewPeriod.receivedQty, 2), 'Total quantity received', 'prpo', 'emerald'],
-                    ['Received Value', mvr(overviewPeriod.receivedValue), 'Received value in selected period', 'prpo', 'teal'],
-                    ['Pending Payment POs', fmt(overviewPeriod.pendingPaymentPos), 'Current pending-payment list', 'payments', 'amber'],
-                    ['Pending Payment Value', mvr(overviewPeriod.pendingPaymentValue), 'Combined pending PO value', 'payments', 'amber'],
-                    ['MTRs Created', fmt(overviewPeriod.mtrs), 'Created selected period', 'mtr', 'violet'],
-                    ['MRNs Created', fmt(overviewPeriod.mrns), 'Created selected period', 'mrn', 'indigo'],
-                    ['Pending / Not Issued MRNs', fmt(overviewPeriod.pendingMrns), 'Created selected period and still pending', 'mrn', 'rose'],
-                    ['SR Issue Records', fmt(overviewPeriod.issueRecords), 'Issue records selected period', 'mrn', 'cyan'],
-                    ['Stock Value', mvr(overviewPeriod.stockValue), 'Current SRD on-hand value', 'stock', 'slate'],
-                    ['Stock Over 1 Year', mvr(overviewPeriod.agedValue), 'Current ageing exposure', 'stock', 'orange'],
-                  ].map(([label, value, helper, target, accent]) => (
-                    <button
-                      key={label}
-                      onClick={() => setView(target)}
-                      className={
-                        'group rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md ' +
-                        (accent === 'emerald' ? 'hover:bg-emerald-50/30' :
-                         accent === 'amber' ? 'hover:bg-amber-50/30' :
-                         accent === 'rose' ? 'hover:bg-rose-50/30' :
-                         accent === 'violet' ? 'hover:bg-violet-50/30' :
-                         accent === 'indigo' ? 'hover:bg-indigo-50/30' :
-                         accent === 'cyan' ? 'hover:bg-cyan-50/30' :
-                         accent === 'orange' ? 'hover:bg-orange-50/30' :
-                         accent === 'teal' ? 'hover:bg-teal-50/30' :
-                         accent === 'blue' ? 'hover:bg-blue-50/30' :
-                         'hover:bg-slate-50')
-                      }
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</span>
-                        <span className="text-slate-300 transition group-hover:text-blue-500">↗</span>
-                      </div>
-                      <strong className="mt-3 block text-2xl font-semibold tracking-tight text-slate-900">{value}</strong>
-                      <small className="mt-1 block text-[11px] leading-4 text-slate-500">{helper}</small>
-                    </button>
-                  ))}
                 </div>
               </section>
 
-              <div className="mt-4 grid gap-4 xl:grid-cols-[1.45fr_.85fr]">
-                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="flex items-start justify-between gap-4">
+              <div className="metric-grid mt-4">
+                <MetricCard label="PRs Submitted" value={fmt(overviewPeriod.submittedPrs)} helper="Selected period" onClick={() => setView('prpo')} />
+                <MetricCard label="PRs Received" value={fmt(overviewPeriod.receivedPrs)} helper="Selected period" onClick={() => setView('prpo')} />
+                <MetricCard label="Received Quantity" value={fmt(overviewPeriod.receivedQty, 2)} helper="Selected period" onClick={() => setView('prpo')} />
+                <MetricCard label="Received Value" value={mvr(overviewPeriod.receivedValue)} helper="Selected period" onClick={() => setView('prpo')} />
+                <MetricCard label="Pending Payment POs" value={fmt(overviewPeriod.pendingPaymentPos)} helper="Current list" tone="warn" onClick={() => setView('payments')} />
+                <MetricCard label="Pending Payment Value" value={mvr(overviewPeriod.pendingPaymentValue)} helper="Current list" tone="warn" onClick={() => setView('payments')} />
+                <MetricCard label="MTRs Created" value={fmt(overviewPeriod.mtrs)} helper="Selected period" onClick={() => setView('mtr')} />
+                <MetricCard label="MRNs Created" value={fmt(overviewPeriod.mrns)} helper="Selected period" onClick={() => setView('mrn')} />
+                <MetricCard label="Pending / Not Issued MRNs" value={fmt(overviewPeriod.pendingMrns)} helper="Selected period" tone="bad" onClick={() => setView('mrn')} />
+                <MetricCard label="SR Issue Records" value={fmt(overviewPeriod.issueRecords)} helper="Selected period" onClick={() => setView('mrn')} />
+                <MetricCard label="Stock Value" value={mvr(overviewPeriod.stockValue)} helper="Latest ageing snapshot" onClick={() => setView('stock')} />
+                <MetricCard label="Stock Over 1 Year" value={mvr(overviewPeriod.agedValue)} helper="Latest ageing snapshot" tone="warn" onClick={() => setView('stock')} />
+              </div>
+
+              <div className="dashboard-grid mt-4">
+                <section className="panel">
+                  <div className="panel-head">
                     <div>
                       <span className="eyebrow">MATERIAL MOVEMENT</span>
-                      <h3 className="mt-1 text-base font-semibold text-slate-800">Received vs Issued — {overviewPeriodLabel}</h3>
-                      <p className="mt-1 text-xs text-slate-500">Quantity movement for the selected reporting period.</p>
+                      <h3>Received vs Issued</h3>
                     </div>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-semibold text-slate-500">SELECTED PERIOD</span>
+                    <span>{overviewPeriodLabel}</span>
                   </div>
-
-                  <div className="mt-7 space-y-6">
-                    <div>
-                      <div className="mb-2 flex items-end justify-between">
-                        <div>
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Received Quantity</span>
-                          <b className="mt-1 block text-xl font-semibold text-slate-900">{fmt(overviewPeriod.receivedQty, 2)}</b>
-                        </div>
-                        <small className="text-[11px] text-slate-500">{fmt(overviewPeriod.receivedPrs)} PRs received</small>
-                      </div>
-                      <div className="h-8 overflow-hidden rounded-lg bg-slate-100">
-                        <div
-                          className="h-full rounded-lg bg-emerald-500 transition-all"
-                          style={{ width: Math.max(2, (overviewPeriod.receivedQty / overviewMovementMax) * 100) + '%' }}
-                        />
-                      </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Received Quantity</span>
+                      <strong className="mt-2 block text-2xl text-slate-900">{fmt(overviewPeriod.receivedQty, 2)}</strong>
+                      <small className="mt-1 block text-slate-500">{fmt(overviewPeriod.receivedPrs)} PRs received</small>
                     </div>
-
-                    <div>
-                      <div className="mb-2 flex items-end justify-between">
-                        <div>
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">Issued Quantity</span>
-                          <b className="mt-1 block text-xl font-semibold text-slate-900">{fmt(overviewPeriod.issueQty, 2)}</b>
-                        </div>
-                        <small className="text-[11px] text-slate-500">{fmt(overviewPeriod.issueRecords)} issue records</small>
-                      </div>
-                      <div className="h-8 overflow-hidden rounded-lg bg-slate-100">
-                        <div
-                          className="h-full rounded-lg bg-amber-500 transition-all"
-                          style={{ width: Math.max(2, (overviewPeriod.issueQty / overviewMovementMax) * 100) + '%' }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-7 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-3">
-                    <div className="rounded-lg bg-slate-50 p-3">
-                      <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Receipt Value</span>
-                      <b className="mt-1 block text-sm text-slate-800">{mvr(overviewPeriod.receivedValue)}</b>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 p-3">
-                      <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Current Inventory Value</span>
-                      <b className="mt-1 block text-sm text-slate-800">{mvr(overviewPeriod.stockValue)}</b>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 p-3">
-                      <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Aged Over 1 Year</span>
-                      <b className="mt-1 block text-sm text-slate-800">{mvr(overviewPeriod.agedValue)}</b>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Issued Quantity</span>
+                      <strong className="mt-2 block text-2xl text-slate-900">{fmt(overviewPeriod.issueQty, 2)}</strong>
+                      <small className="mt-1 block text-slate-500">{fmt(overviewPeriod.issueRecords)} issue records</small>
                     </div>
                   </div>
                 </section>
 
-                <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div>
-                    <span className="eyebrow">CONTROL POSITION</span>
-                    <h3 className="mt-1 text-base font-semibold text-slate-800">What needs attention</h3>
-                    <p className="mt-1 text-xs text-slate-500">Current operational follow-up items.</p>
-                  </div>
-
-                  <div className="mt-5 space-y-3">
-                    {[
-                      ['Pending Payments', overviewPeriod.pendingPaymentPos, 'payments', 'MVR ' + money(overviewPeriod.pendingPaymentValue)],
-                      ['Pending / Not Issued MRNs', overviewPeriod.pendingMrns, 'mrn', 'Created selected period'],
-                      ['Stock Over 1 Year', null, 'stock', mvr(overviewPeriod.agedValue)],
-                      ['SR Issue Records', overviewPeriod.issueRecords, 'mrn', 'Selected period'],
-                    ].map(([label, count, target, detail]) => (
-                      <button
-                        key={label}
-                        onClick={() => setView(target)}
-                        className="flex w-full items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-blue-200 hover:bg-blue-50/50"
-                      >
-                        <div>
-                          <b className="block text-xs font-semibold text-slate-700">{label}</b>
-                          <small className="mt-0.5 block text-[10px] text-slate-500">{detail}</small>
-                        </div>
-                        <strong className="text-lg font-semibold text-slate-900">{count === null ? '→' : fmt(count)}</strong>
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-5 border-t border-slate-100 pt-4">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Latest source updates</span>
-                    <div className="mt-3 space-y-2">
-                      {['PR', 'PO', 'MRN', 'AGEING'].map((source) => {
-                        const x = lastSource.get(source)
-                        return (
-                          <div key={source} className="flex items-center justify-between gap-3 text-[11px]">
-                            <b className="text-slate-600">{humanSource(source)}</b>
-                            <span className="text-slate-400">{x ? new Date(x.imported_at).toLocaleDateString() : 'Not loaded'}</span>
-                          </div>
-                        )
-                      })}
+                <section className="panel">
+                  <div className="panel-head">
+                    <div>
+                      <span className="eyebrow">CURRENT POSITION</span>
+                      <h3>Control summary</h3>
                     </div>
+                  </div>
+                  <div className="source-list">
+                    <button onClick={() => setView('payments')}>
+                      <b>Pending Payments</b>
+                      <span>{fmt(overviewPeriod.pendingPaymentPos)} POs</span>
+                      <small>{mvr(overviewPeriod.pendingPaymentValue)}</small>
+                    </button>
+                    <button onClick={() => setView('mrn')}>
+                      <b>Pending / Not Issued MRNs</b>
+                      <span>Selected period</span>
+                      <small>{fmt(overviewPeriod.pendingMrns)}</small>
+                    </button>
+                    <button onClick={() => setView('stock')}>
+                      <b>Stock Over 1 Year</b>
+                      <span>Latest ageing snapshot</span>
+                      <small>{mvr(overviewPeriod.agedValue)}</small>
+                    </button>
                   </div>
                 </section>
               </div>
