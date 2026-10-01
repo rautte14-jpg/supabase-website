@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "sync:simplix-prs": "node scripts/sync-simplix-prs.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.116.0",
