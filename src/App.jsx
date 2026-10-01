@@ -1292,6 +1292,8 @@ export default function App() {
     activityUpdates: [],
     issueCountMonth: 0,
     ageing: null,
+    prsSubmitted: 0,
+    prsReceived: 0,
   })
   const [noteState, setNoteState] = useState(null)
   const [vesselSearch, setVesselSearch] = useState('')
@@ -1411,6 +1413,7 @@ export default function App() {
       updatesResult,
       issuesResult,
       ageingResult,
+      homePrResult,
     ] = await Promise.all([
       supabase.from('portal_home_summary').select('*').limit(1),
       supabase
@@ -1450,12 +1453,29 @@ export default function App() {
         .select('snapshot_date,label,metrics')
         .order('snapshot_date', { ascending: false })
         .limit(10),
+      supabase
+        .from('procurement_records')
+        .select('pr_no,pr_date,qty_received,raw_source,source_type')
+        .in('source_type', ['PR', 'PO'])
+        .gte('pr_date', monthStart)
+        .lte('pr_date', today),
     ])
 
     if (summaryResult.error) throw summaryResult.error
     if (summaryResult.data?.[0]) setHomeSummary(summaryResult.data[0])
 
     const activityUpdates = updatesResult.data || []
+    const homePrRows = homePrResult.data || []
+    const submittedPrs = new Set(
+      homePrRows.map((row) => String(row.pr_no || '').trim()).filter(Boolean),
+    )
+    const receivedPrs = new Set(
+      homePrRows
+        .filter((row) => receivedQty(row) > 0)
+        .map((row) => String(row.pr_no || '').trim())
+        .filter(Boolean),
+    )
+
     setHomeDashboard({
       pendingPayments: paymentsResult.data || [],
       topStock: stockValueResult.data || [],
@@ -1465,6 +1485,8 @@ export default function App() {
       activityUpdates,
       issueCountMonth: issuesResult.count || 0,
       ageing: (ageingResult.data || []).find((row) => row.metrics?.kind === 'AGEING') || null,
+      prsSubmitted: submittedPrs.size,
+      prsReceived: receivedPrs.size,
     })
   }
 
@@ -4112,28 +4134,28 @@ export default function App() {
               <div className="home-kpi-grid">
                 {[
                   {
-                    label: 'PRFs Tracked',
-                    value: fmt(homeSummary.prf_count),
-                    helper: 'Current request register',
-                    icon: 'prf',
-                    tone: 'blue',
-                    target: 'prf',
-                  },
-                  {
-                    label: 'MRNs Tracked',
-                    value: fmt(homeSummary.mrn_count),
-                    helper: 'Material requests in system',
-                    icon: 'mrn',
-                    tone: 'violet',
-                    target: 'mrn',
-                  },
-                  {
-                    label: 'Pending PR / PO',
-                    value: fmt(homeSummary.pending_count),
-                    helper: 'Open procurement follow-up',
+                    label: 'PRs Submitted',
+                    value: fmt(homeDashboard.prsSubmitted),
+                    helper: 'Submitted this month',
                     icon: 'prpo',
                     tone: 'orange',
                     target: 'prpo',
+                  },
+                  {
+                    label: 'PRs Received',
+                    value: fmt(homeDashboard.prsReceived),
+                    helper: 'PRs with receipts this month',
+                    icon: 'mrn',
+                    tone: 'blue',
+                    target: 'prpo',
+                  },
+                  {
+                    label: 'Pending Payments',
+                    value: fmt(homeDashboard.pendingPayments.length),
+                    helper: mvr(homePaymentTotal) + ' pending value',
+                    icon: 'payments',
+                    tone: 'violet',
+                    target: 'payments',
                   },
                   {
                     label: 'Current Inventory Value',
