@@ -1375,7 +1375,7 @@ export default function App() {
 
   const VIEW_TABLES = {
     home: [],
-    overview: ['procurement', 'material', 'stock', 'transactions', 'srIssues', 'lld', 'notes', 'sourceUpdates', 'snapshots', 'pendingPayments'],
+    overview: ['procurement', 'material', 'srIssues', 'sourceUpdates', 'snapshots', 'pendingPayments'],
     prf: ['procurement', 'lld', 'notes'],
     prpo: ['procurement', 'lld', 'notes'],
     payments: ['pendingPayments'],
@@ -3812,9 +3812,9 @@ export default function App() {
       issueQty,
       pendingPaymentPos: (data.pendingPayments || []).length,
       pendingPaymentValue,
-      stockQty: ageingSummary.onHandQty,
-      stockValue: ageingSummary.onHandValue,
-      agedValue: ageingSummary.agedOver365,
+      stockQty: Number(ageingSnapshots.at(-1)?.metrics?.onHandQty || 0),
+      stockValue: Number(ageingSnapshots.at(-1)?.metrics?.onHandValue || 0),
+      agedValue: Number(ageingSnapshots.at(-1)?.metrics?.over1 || 0),
     }
   }, [
     overviewFrom,
@@ -3824,7 +3824,7 @@ export default function App() {
     allMrnRows,
     srIssuesEnriched,
     data.pendingPayments,
-    ageingSummary,
+    ageingSnapshots,
   ])
 
   const overviewMovementMax = Math.max(overviewPeriod.receivedQty, overviewPeriod.issueQty, 1)
@@ -3833,12 +3833,11 @@ export default function App() {
       ? formatShortDate(overviewPeriod.rangeStart)
       : formatShortDate(overviewPeriod.rangeStart) + ' – ' + formatShortDate(overviewPeriod.rangeEnd)
 
-  async function applyOverviewDateRange() {
+  function applyOverviewDateRange() {
     const from = overviewFromDraft || todayIso
     const to = overviewToDraft || todayIso
     setOverviewFrom(from <= to ? from : to)
     setOverviewTo(from <= to ? to : from)
-    await loadForView('overview', true)
   }
 
 
@@ -4047,8 +4046,8 @@ export default function App() {
                         onChange={(e) => setOverviewToDraft(e.target.value)}
                       />
                     </label>
-                    <button className="primary" onClick={applyOverviewDateRange} disabled={loading}>
-                      {loading ? 'Loading…' : 'Load Data'}
+                    <button className="primary" onClick={applyOverviewDateRange}>
+                      Load Data
                     </button>
                   </div>
                 </div>
