@@ -1283,6 +1283,12 @@ export default function App() {
     stock_value: 0,
     aged_value: 0,
   })
+  const [homeDashboard, setHomeDashboard] = useState({
+    pendingPayments: [],
+    topStock: [],
+    recentUpdates: [],
+    issueCountMonth: 0,
+  })
   const [noteState, setNoteState] = useState(null)
   const [vesselSearch, setVesselSearch] = useState('')
   const [slide, setSlide] = useState(0)
@@ -1389,12 +1395,41 @@ export default function App() {
   }
 
   async function loadHomeSummary() {
-    const { data: rows, error } = await supabase
-      .from('portal_home_summary')
-      .select('*')
-      .limit(1)
-    if (error) throw error
-    if (rows?.[0]) setHomeSummary(rows[0])
+    const today = new Date().toISOString().slice(0, 10)
+    const monthStart = today.slice(0, 7) + '-01'
+
+    const [summaryResult, paymentsResult, stockResult, updatesResult, issuesResult] = await Promise.all([
+      supabase.from('portal_home_summary').select('*').limit(1),
+      supabase
+        .from('pending_payment_records')
+        .select('po_no,po_date,supplier,status,priority,po_value')
+        .order('po_value', { ascending: false }),
+      supabase
+        .from('stock_items')
+        .select('item_code,item_description,on_hand,stock_value')
+        .order('stock_value', { ascending: false })
+        .limit(6),
+      supabase
+        .from('source_updates')
+        .select('source_type,file_name,row_count,imported_at')
+        .order('imported_at', { ascending: false })
+        .limit(6),
+      supabase
+        .from('sr_issue_records')
+        .select('id', { count: 'exact', head: true })
+        .gte('requested_receipt_date', monthStart)
+        .lte('requested_receipt_date', today),
+    ])
+
+    if (summaryResult.error) throw summaryResult.error
+    if (summaryResult.data?.[0]) setHomeSummary(summaryResult.data[0])
+
+    setHomeDashboard({
+      pendingPayments: paymentsResult.data || [],
+      topStock: stockResult.data || [],
+      recentUpdates: updatesResult.data || [],
+      issueCountMonth: issuesResult.count || 0,
+    })
   }
 
   async function loadTables(keys, force = false) {
@@ -3841,6 +3876,25 @@ export default function App() {
   }
 
 
+  const homePaymentTotal = useMemo(
+    () => homeDashboard.pendingPayments.reduce((sum, row) => sum + Number(row.po_value || 0), 0),
+    [homeDashboard.pendingPayments],
+  )
+
+  const homePaymentUrgent = useMemo(
+    () => homeDashboard.pendingPayments.filter((row) => isUrgent(row.priority)).length,
+    [homeDashboard.pendingPayments],
+  )
+
+  const homePaymentStatusCounts = useMemo(() => {
+    const counts = new Map()
+    homeDashboard.pendingPayments.forEach((row) => {
+      const status = String(row.status || '').trim() || 'BLANK'
+      counts.set(status, (counts.get(status) || 0) + 1)
+    })
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4)
+  }, [homeDashboard.pendingPayments])
+
   if (checking) return <div className="splash">Loading SRD Warehouse System…</div>
   if (!session) return <AuthScreen />
   if (recoveringPassword) return <PasswordRecovery />
@@ -4142,6 +4196,104 @@ export default function App() {
                         </section>
                       </div>
                     </div>
+                  </div>
+                </section>
+              </div>
+
+              <div className="home-dashboard-insights">
+                <section className="home-analytics-card">
+                  <div className="home-card-head">
+                    <div>
+                      <span className="eyebrow">TOP INVENTORY</span>
+                      <h3>Highest Stock Value Items</h3>
+                    </div>
+                    <button onClick={() => setView('stock')}>View inventory →</button>
+                  </div>
+
+                  <div className="home-top-stock-list">
+                    {homeDashboard.topStock.map((row, index) => {
+                      const max = Math.max(...homeDashboard.topStock.map((item) => Number(item.stock_value || 0)), 1)
+                      const width = Math.max(3, (Number(row.stock_value || 0) / max) * 100)
+                      return (
+                        <button key={row.item_code || index} onClick={() => setView('stock')}>
+                          <span className="home-rank">{index + 1}</span>
+                          <section>
+                            <div>
+                              <b>{row.item_code || '—'}</b>
+                              <small>{row.item_description || 'No description'}</small>
+                            </div>
+                            <div className="home-stock-bar">
+                              <span style={{ width: width + '%' }} />
+                            </div>
+                          </section>
+                          <strong>{mvr(row.stock_value)}</strong>
+                        </button>
+                      )
+                    })}
+                    {!homeDashboard.topStock.length && <EmptyState title="No stock data" text="Upload the latest stock or ageing source." />}
+                  </div>
+                </section>
+
+                <section className="home-analytics-card">
+                  <div className="home-card-head">
+                    <div>
+                      <span className="eyebrow">PAYMENTS</span>
+                      <h3>Pending Payment Position</h3>
+                    </div>
+                    <button onClick={() => setView('payments')}>View payments →</button>
+                  </div>
+
+                  <div className="home-payment-hero">
+                    <div>
+                      <span>Total Pending Value</span>
+                      <strong>{mvr(homePaymentTotal)}</strong>
+                      <small>{fmt(homeDashboard.pendingPayments.length)} purchase orders</small>
+                    </div>
+                    <div>
+                      <span>Urgent</span>
+                      <strong>{fmt(homePaymentUrgent)}</strong>
+                      <small>priority POs</small>
+                    </div>
+                  </div>
+
+                  <div className="home-payment-status-list">
+                    {homePaymentStatusCounts.map(([status, count]) => (
+                      <button key={status} onClick={() => setView('payments')}>
+                        <span>{status}</span>
+                        <strong>{fmt(count)}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="home-analytics-card">
+                  <div className="home-card-head">
+                    <div>
+                      <span className="eyebrow">ACTIVITY</span>
+                      <h3>Latest Data Updates</h3>
+                    </div>
+                    <button onClick={() => setView('history')}>History →</button>
+                  </div>
+
+                  <div className="home-update-list">
+                    {homeDashboard.recentUpdates.map((row, index) => (
+                      <button key={(row.source_type || '') + index} onClick={() => setView('history')}>
+                        <span className="home-update-dot" />
+                        <section>
+                          <b>{humanSource(row.source_type)}</b>
+                          <small>{row.file_name || 'Source update'}</small>
+                        </section>
+                        <div>
+                          <strong>{fmt(row.row_count)}</strong>
+                          <small>{row.imported_at ? new Date(row.imported_at).toLocaleDateString() : '—'}</small>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="home-issue-month">
+                    <span>SR issue records this month</span>
+                    <strong>{fmt(homeDashboard.issueCountMonth)}</strong>
                   </div>
                 </section>
               </div>
