@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "srd-warehouse-system",
+  "name": "supabase-website",
   "compatibility_date": "2026-09-20",
   "assets": {
     "directory": "./dist",
