@@ -58,6 +58,14 @@ function ensureCell(row, kind) {
   return cell
 }
 
+function ensureHead(headerRow, kind, text) {
+  if (headerRow.querySelector(`th[data-pr-enhancer="${kind}"]`)) return
+  const th = document.createElement('th')
+  th.dataset.prEnhancer = kind
+  th.textContent = text
+  headerRow.appendChild(th)
+}
+
 function setCellBadge(cell, text, className) {
   const existing = cell.firstElementChild
   if (existing && existing.tagName === 'SPAN') {
@@ -72,9 +80,19 @@ function setCellBadge(cell, text, className) {
   cell.appendChild(span)
 }
 
+function detailMatches(detail, filter) {
+  if (filter === 'ALL') return true
+  if (filter === 'NO_PO') return !detail || Number(detail.po_count || 0) === 0
+  if (filter === 'HAS_PO') return Number(detail?.po_count || 0) > 0
+  if (filter === 'NO_RECEIPT') return !detail || Number(detail.receipt_count || 0) === 0
+  if (filter === 'HAS_RECEIPT') return Number(detail?.receipt_count || 0) > 0
+  return true
+}
+
 export default function PrTrackerEnhancer() {
   const [detailMap, setDetailMap] = useState(new Map())
   const [statusFilter, setStatusFilter] = useState('ALL')
+  const [flowFilter, setFlowFilter] = useState('ALL')
   const [detailCount, setDetailCount] = useState(0)
   const detailTimerRef = useRef(null)
 
@@ -89,7 +107,7 @@ export default function PrTrackerEnhancer() {
       while (active) {
         const { data, error } = await supabase
           .from('erp_pr_details')
-          .select('purch_req_id,current_approver,current_workflow_status,detail_synced_at')
+          .select('purch_req_id,current_approver,current_workflow_status,detail_synced_at,rfq_count,po_count,receipt_count')
           .range(from, from + pageSize - 1)
 
         if (error) {
@@ -136,59 +154,84 @@ export default function PrTrackerEnhancer() {
         toolbar = document.createElement('div')
         toolbar.className = 'pr-enhancer-toolbar'
 
-        const left = document.createElement('div')
-        left.className = 'pr-enhancer-left'
-        const label = document.createElement('span')
-        label.className = 'pr-enhancer-label'
-        label.textContent = 'PR STATUS'
-        left.appendChild(label)
+        const filtersWrap = document.createElement('div')
+        filtersWrap.className = 'pr-enhancer-filter-wrap'
 
-        const filters = [
+        const statusRow = document.createElement('div')
+        statusRow.className = 'pr-enhancer-left'
+        const statusLabel = document.createElement('span')
+        statusLabel.className = 'pr-enhancer-label'
+        statusLabel.textContent = 'PR STATUS'
+        statusRow.appendChild(statusLabel)
+
+        ;[
           ['ALL', 'All'],
           ['IN_REVIEW', 'In Review'],
           ['APPROVED', 'Approved'],
           ['REJECTED', 'Rejected'],
           ['CANCELLED', 'Cancelled'],
-        ]
-        filters.forEach(([value, text]) => {
+        ].forEach(([value, text]) => {
           const button = document.createElement('button')
           button.type = 'button'
-          button.dataset.filter = value
+          button.dataset.statusFilter = value
           button.textContent = text
           button.addEventListener('click', () => setStatusFilter(value))
-          left.appendChild(button)
+          statusRow.appendChild(button)
         })
 
+        const flowRow = document.createElement('div')
+        flowRow.className = 'pr-enhancer-left'
+        const flowLabel = document.createElement('span')
+        flowLabel.className = 'pr-enhancer-label'
+        flowLabel.textContent = 'PR FLOW'
+        flowRow.appendChild(flowLabel)
+
+        ;[
+          ['ALL', 'All'],
+          ['NO_PO', 'No PO Yet'],
+          ['HAS_PO', 'PO Created'],
+          ['NO_RECEIPT', 'No Receipt'],
+          ['HAS_RECEIPT', 'Receipt Recorded'],
+        ].forEach(([value, text]) => {
+          const button = document.createElement('button')
+          button.type = 'button'
+          button.dataset.flowFilter = value
+          button.textContent = text
+          button.addEventListener('click', () => setFlowFilter(value))
+          flowRow.appendChild(button)
+        })
+
+        filtersWrap.append(statusRow, flowRow)
         const sync = document.createElement('div')
         sync.className = 'pr-enhancer-sync'
-        toolbar.append(left, sync)
+        toolbar.append(filtersWrap, sync)
         wrapper.parentElement.insertBefore(toolbar, wrapper)
       }
 
-      toolbar.querySelectorAll('button[data-filter]').forEach((button) => {
-        button.classList.toggle('active', button.dataset.filter === statusFilter)
+      toolbar.querySelectorAll('button[data-status-filter]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.statusFilter === statusFilter)
       })
+      toolbar.querySelectorAll('button[data-flow-filter]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.flowFilter === flowFilter)
+      })
+
       const sync = toolbar.querySelector('.pr-enhancer-sync')
       if (sync) {
-        const next = `${detailCount.toLocaleString()} PR details synced`
+        const details = [...detailMap.values()]
+        const poCreated = details.filter((x) => Number(x.po_count || 0) > 0).length
+        const receipts = details.filter((x) => Number(x.receipt_count || 0) > 0).length
+        const next = `${detailCount.toLocaleString()} details synced · ${poCreated.toLocaleString()} with PO · ${receipts.toLocaleString()} with receipt`
         if (sync.textContent !== next) sync.textContent = next
       }
 
       const headerRow = table.querySelector('thead tr')
       if (!headerRow) return
 
-      if (!headerRow.querySelector('th[data-pr-enhancer="approver"]')) {
-        const th = document.createElement('th')
-        th.dataset.prEnhancer = 'approver'
-        th.textContent = 'Current Approver'
-        headerRow.appendChild(th)
-      }
-      if (!headerRow.querySelector('th[data-pr-enhancer="days"]')) {
-        const th = document.createElement('th')
-        th.dataset.prEnhancer = 'days'
-        th.textContent = 'Days Pending'
-        headerRow.appendChild(th)
-      }
+      ensureHead(headerRow, 'approver', 'Current Approver')
+      ensureHead(headerRow, 'days', 'Days Pending')
+      ensureHead(headerRow, 'rfq', 'RFQ')
+      ensureHead(headerRow, 'po', 'PO Status')
+      ensureHead(headerRow, 'receipt', 'Receipt Status')
 
       const baseHeads = [...headerRow.querySelectorAll('th:not([data-pr-enhancer])')].map((x) => lower(x.textContent))
       const prIndex = baseHeads.findIndex((x) => x === 'pr number')
@@ -201,13 +244,14 @@ export default function PrTrackerEnhancer() {
         const prNo = clean(baseCells[prIndex]?.textContent).replace(/\s+/g, '').toUpperCase()
         if (!/^PR\d+$/.test(prNo)) return
 
+        const detail = detailMap.get(prNo)
         const erpStatus = clean(baseCells[statusIndex]?.textContent)
         const group = statusGroup(erpStatus)
-        const visible = statusFilter === 'ALL' || group === statusFilter
-        const desiredDisplay = visible ? '' : 'none'
+        const visibleByStatus = statusFilter === 'ALL' || group === statusFilter
+        const visibleByFlow = detailMatches(detail, flowFilter)
+        const desiredDisplay = visibleByStatus && visibleByFlow ? '' : 'none'
         if (row.style.display !== desiredDisplay) row.style.display = desiredDisplay
 
-        const detail = detailMap.get(prNo)
         const approverCell = ensureCell(row, 'approver')
         setCellBadge(
           approverCell,
@@ -218,9 +262,30 @@ export default function PrTrackerEnhancer() {
         const daysCell = ensureCell(row, 'days')
         const days = dateIndex >= 0 ? daysSince(clean(baseCells[dateIndex]?.textContent)) : null
         const isFinal = ['APPROVED', 'REJECTED', 'CANCELLED'].includes(group)
-        const labelText = days == null ? '—' : isFinal ? `${days}d age` : `${days}d`
+        const labelText = days == null ? '—' : days === 0 ? 'Today' : isFinal ? `${days}d age` : `${days}d`
         const tone = days == null || isFinal ? 'neutral' : ageTone(days)
         setCellBadge(daysCell, labelText, `pr-days ${tone}`)
+
+        const rfqCount = Number(detail?.rfq_count || 0)
+        const poCount = Number(detail?.po_count || 0)
+        const receiptCount = Number(detail?.receipt_count || 0)
+
+        const rfqCell = ensureCell(row, 'rfq')
+        setCellBadge(rfqCell, detail ? String(rfqCount) : '—', rfqCount > 0 ? 'pr-flow-count active' : 'pr-flow-count')
+
+        const poCell = ensureCell(row, 'po')
+        setCellBadge(
+          poCell,
+          detail ? (poCount > 0 ? `PO Created (${poCount})` : 'No PO Yet') : 'Sync pending',
+          detail ? (poCount > 0 ? 'pr-flow-badge good' : 'pr-flow-badge waiting') : 'pr-detail-pending',
+        )
+
+        const receiptCell = ensureCell(row, 'receipt')
+        setCellBadge(
+          receiptCell,
+          detail ? (receiptCount > 0 ? `Receipt Recorded (${receiptCount})` : 'No Receipt') : 'Sync pending',
+          detail ? (receiptCount > 0 ? 'pr-flow-badge good' : 'pr-flow-badge neutral') : 'pr-detail-pending',
+        )
       })
     }
 
@@ -230,15 +295,17 @@ export default function PrTrackerEnhancer() {
       disposed = true
       window.clearInterval(uiTimer)
     }
-  }, [detailMap, detailCount, statusFilter])
+  }, [detailMap, detailCount, statusFilter, flowFilter])
 
   return <style>{`
-    .pr-enhancer-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:12px 0;padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)}
-    .pr-enhancer-left{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.pr-enhancer-label{font-size:10px;font-weight:800;letter-spacing:.08em;color:#64748b;margin-right:3px}
+    .pr-enhancer-toolbar{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin:12px 0;padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .pr-enhancer-filter-wrap{display:flex;flex-direction:column;gap:8px;min-width:0}.pr-enhancer-left{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.pr-enhancer-label{font-size:10px;font-weight:800;letter-spacing:.08em;color:#64748b;margin-right:3px;min-width:58px}
     .pr-enhancer-toolbar button{border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer}.pr-enhancer-toolbar button:hover{border-color:#94a3b8}.pr-enhancer-toolbar button.active{background:#0f172a;border-color:#0f172a;color:#fff}
-    .pr-enhancer-sync{font-size:11px;font-weight:700;color:#64748b;white-space:nowrap}
+    .pr-enhancer-sync{font-size:11px;font-weight:700;color:#64748b;white-space:nowrap;padding-top:4px;text-align:right}
     th[data-pr-enhancer]{white-space:nowrap}.pr-current-approver{font-size:11px;font-weight:700;color:#0f172a;white-space:nowrap}.pr-detail-pending{font-size:10px;font-weight:700;color:#94a3b8;white-space:nowrap}
     .pr-days{display:inline-flex;min-width:42px;justify-content:center;padding:4px 7px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap}.pr-days.fresh{background:#dcfce7;color:#166534}.pr-days.watch{background:#fef9c3;color:#854d0e}.pr-days.warn{background:#ffedd5;color:#9a3412}.pr-days.danger{background:#fee2e2;color:#b91c1c}.pr-days.neutral{background:#f1f5f9;color:#64748b}
-    @media(max-width:900px){.pr-enhancer-toolbar{align-items:flex-start;flex-direction:column}.pr-enhancer-sync{white-space:normal}}
+    .pr-flow-count{display:inline-flex;min-width:28px;justify-content:center;padding:4px 7px;border-radius:999px;background:#f1f5f9;color:#64748b;font-size:10px;font-weight:800}.pr-flow-count.active{background:#dbeafe;color:#1d4ed8}
+    .pr-flow-badge{display:inline-flex;justify-content:center;padding:4px 8px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap}.pr-flow-badge.good{background:#dcfce7;color:#166534}.pr-flow-badge.waiting{background:#fef3c7;color:#92400e}.pr-flow-badge.neutral{background:#f1f5f9;color:#64748b}
+    @media(max-width:1100px){.pr-enhancer-toolbar{flex-direction:column}.pr-enhancer-sync{text-align:left;white-space:normal}}
   `}</style>
 }
