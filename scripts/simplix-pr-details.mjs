@@ -61,32 +61,72 @@ function isOpenStatus(status) {
   return !['closed', 'completed', 'complete', 'cancelled', 'canceled', 'rejected'].some((word) => text.includes(word))
 }
 
-function detailCandidates(headers, syncedMap, recentDays, staleHours, maxDetails) {
+function sortNewestFirst(rows) {
+  return [...rows].sort((a, b) => {
+    const aDate = parseHeaderDate(a)?.valueOf() || 0
+    const bDate = parseHeaderDate(b)?.valueOf() || 0
+    return bDate - aDate
+  })
+}
+
+function detailCandidates(headers, syncedMap, recentDays, staleHours, historicalRefreshHours, maxDetails) {
   const now = Date.now()
   const recentCutoff = now - recentDays * 86400000
-  const staleCutoff = now - staleHours * 3600000
+  const activeStaleCutoff = now - staleHours * 3600000
+  const historicalStaleCutoff = now - historicalRefreshHours * 3600000
 
-  return headers
-    .filter((row) => {
-      const prNo = String(row.purch_req_id || row.purchReqId || '').trim()
-      const recId = row.rec_id ?? row.recId
-      if (!prNo || !recId) return false
+  const unsyncedActive = []
+  const unsyncedHistorical = []
+  const staleActive = []
+  const staleHistorical = []
 
-      const created = parseHeaderDate(row)
-      const recent = created ? created.valueOf() >= recentCutoff : false
-      if (!recent && !isOpenStatus(row.status)) return false
+  for (const row of headers) {
+    const prNo = String(row.purch_req_id || row.purchReqId || '').trim()
+    const recId = row.rec_id ?? row.recId
+    if (!prNo || !recId) continue
 
-      const previous = syncedMap.get(prNo)
-      if (!previous) return true
-      const lastSync = new Date(previous).valueOf()
-      return Number.isNaN(lastSync) || lastSync < staleCutoff
-    })
-    .sort((a, b) => {
-      const aDate = parseHeaderDate(a)?.valueOf() || 0
-      const bDate = parseHeaderDate(b)?.valueOf() || 0
-      return bDate - aDate
-    })
-    .slice(0, maxDetails)
+    const created = parseHeaderDate(row)
+    const recent = created ? created.valueOf() >= recentCutoff : false
+    const active = recent || isOpenStatus(row.status)
+    const previous = syncedMap.get(prNo)
+
+    // Every PR must receive at least one detail sync, including old/closed PRs.
+    if (!previous) {
+      if (active) unsyncedActive.push(row)
+      else unsyncedHistorical.push(row)
+      continue
+    }
+
+    const lastSync = new Date(previous).valueOf()
+    if (Number.isNaN(lastSync)) {
+      if (active) unsyncedActive.push(row)
+      else unsyncedHistorical.push(row)
+      continue
+    }
+
+    // Open/recent PRs are refreshed frequently. Historical PRs are still refreshed,
+    // but on a slower cycle so late PO/receipt changes are not permanently missed.
+    if (active && lastSync < activeStaleCutoff) staleActive.push(row)
+    else if (!active && lastSync < historicalStaleCutoff) staleHistorical.push(row)
+  }
+
+  const ordered = [
+    ...sortNewestFirst(unsyncedActive),
+    ...sortNewestFirst(unsyncedHistorical),
+    ...sortNewestFirst(staleActive),
+    ...sortNewestFirst(staleHistorical),
+  ]
+
+  return {
+    candidates: ordered.slice(0, maxDetails),
+    stats: {
+      unsyncedActive: unsyncedActive.length,
+      unsyncedHistorical: unsyncedHistorical.length,
+      staleActive: staleActive.length,
+      staleHistorical: staleHistorical.length,
+      eligible: ordered.length,
+    },
+  }
 }
 
 async function graphqlRequest({ url, bearerToken, operationName, variables, query }) {
@@ -189,13 +229,37 @@ export async function syncPrDetails({
   onTokenChange,
   recentDays = 180,
   staleHours = 6,
+  historicalRefreshHours = 168,
   maxDetails = 100,
   dryRun = false,
 }) {
   const syncedMap = await loadExistingDetailSyncs(supabase)
-  const candidates = detailCandidates(headers, syncedMap, recentDays, staleHours, maxDetails)
+  const { candidates, stats } = detailCandidates(
+    headers,
+    syncedMap,
+    recentDays,
+    staleHours,
+    historicalRefreshHours,
+    maxDetails,
+  )
 
-  console.log('\nPR detail sync candidates: ' + candidates.length)
+  const validHeaderCount = headers.filter((row) => {
+    const prNo = String(row.purch_req_id || row.purchReqId || '').trim()
+    return Boolean(prNo && (row.rec_id ?? row.recId))
+  }).length
+  const neverSynced = Math.max(0, validHeaderCount - syncedMap.size)
+
+  console.log('\nPR detail coverage: ' + syncedMap.size + ' / ' + validHeaderCount + ' previously synced')
+  console.log('Never synced remaining: ' + neverSynced)
+  console.log(
+    'Eligible now: ' + stats.eligible +
+    ' (new active ' + stats.unsyncedActive +
+    ', new historical ' + stats.unsyncedHistorical +
+    ', stale active ' + stats.staleActive +
+    ', stale historical ' + stats.staleHistorical + ')'
+  )
+  console.log('PR detail sync candidates this cycle: ' + candidates.length)
+
   if (!candidates.length) return { bearerToken, synced: 0 }
 
   const tokenState = { value: bearerToken }
