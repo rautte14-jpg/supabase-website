@@ -86,22 +86,32 @@ function PrDetailOverlay() {
 
   useEffect(() => {
     function handleClick(event) {
-      const cell = event.target.closest('td')
-      if (!cell) return
-      const value = clean(cell.textContent)
-      if (!/^PR\d+$/i.test(value)) return
+      const target = event.target instanceof Element ? event.target : null
+      if (!target) return
 
-      const table = cell.closest('table')
+      const table = target.closest('table')
       if (!table) return
+
       const headerText = lower(table.querySelector('thead')?.textContent)
       if (!headerText.includes('pr number') && !headerText.includes('pr no')) return
 
+      const row = target.closest('tr')
+      if (!row || row.closest('thead')) return
+
+      const clickedCell = target.closest('td')
+      const clickedText = clean(clickedCell?.textContent)
+      const rowText = clean(row.textContent)
+      const match = clickedText.match(/\bPR\s*\d+\b/i) || rowText.match(/\bPR\s*\d+\b/i)
+      if (!match) return
+
+      const value = match[0].replace(/\s+/g, '').toUpperCase()
       event.preventDefault()
-      setPrNo(value.toUpperCase())
+      setPrNo(value)
     }
 
-    document.addEventListener('click', handleClick)
-    return () => document.removeEventListener('click', handleClick)
+    // Capture phase means this still works if the table or another component stops bubbling.
+    document.addEventListener('click', handleClick, true)
+    return () => document.removeEventListener('click', handleClick, true)
   }, [])
 
   useEffect(() => {
