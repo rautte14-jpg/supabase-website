@@ -21,7 +21,7 @@ function findPrfTable() {
 
 function getStatusCards(section) {
   if (!section) return []
-  const candidates = [...section.querySelectorAll('button, [role="button"], .metric-card, .prf-status-card, div')]
+
   const wanted = [
     ['NOT ATTENDED', 'Needs initial action', 'red'],
     ['ITEM CREATION', 'Item master / creation is pending', 'amber'],
@@ -30,15 +30,25 @@ function getStatusCards(section) {
     ['CANCEL/REJECT', 'Cancelled or rejected requests', 'rose'],
   ]
 
+  const buttons = [...section.querySelectorAll('button.prf-status-card')]
+
   return wanted.map(([label, helper, tone]) => {
-    const el = candidates.find((node) => {
-      const text = upper(node.textContent)
-      return text.startsWith(label) || text.includes(` ${label} `) || text === label
-    })
-    if (!el) return { label, helper, tone, value: 0, target: null }
-    const text = clean(el.textContent)
-    const match = text.match(/\b(\d{1,5})\b/)
-    return { label, helper, tone, value: match ? Number(match[1]) : 0, target: el }
+    const target = buttons.find((button) => {
+      const labelNode = button.querySelector('span')
+      return upper(labelNode?.textContent) === label
+    }) || null
+
+    if (!target) return { label, helper, tone, value: 0, target: null }
+
+    const strong = target.querySelector('strong')
+    const parsed = Number(clean(strong?.textContent).replace(/,/g, ''))
+    return {
+      label,
+      helper,
+      tone,
+      value: Number.isFinite(parsed) ? parsed : 0,
+      target,
+    }
   })
 }
 
@@ -110,18 +120,20 @@ export default function PrfWorkspace() {
 
   useEffect(() => {
     if (!status) return
-    const id = window.setInterval(() => setStatusCards(getStatusCards(status)), 2000)
+    const refresh = () => setStatusCards(getStatusCards(status))
+    refresh()
+    const id = window.setInterval(refresh, 1000)
     return () => window.clearInterval(id)
   }, [status])
 
   const totalAttention = useMemo(
-    () => statusCards.filter((c) => !['CANCEL/REJECT'].includes(c.label)).reduce((sum, c) => sum + Number(c.value || 0), 0),
+    () => statusCards.filter((c) => c.label !== 'CANCEL/REJECT').reduce((sum, c) => sum + Number(c.value || 0), 0),
     [statusCards],
   )
 
   const openCard = (card) => {
     if (card.target) {
-      card.target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }))
+      card.target.click()
     }
   }
 
