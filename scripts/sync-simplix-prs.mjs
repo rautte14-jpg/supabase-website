@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import readline from 'node:readline'
+import { syncPrDetails } from './simplix-pr-details.mjs'
 
 const SUPABASE_URL = 'https://cqimpmvaobrnpejokuvx.supabase.co'
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_tAoik_yGhIhp3VCE2qnf4g_GAviUG_B'
@@ -224,6 +225,9 @@ async function main() {
   const maxPages = Number(argValue('max-pages', '0')) || null
   const dryRun = hasFlag('dry-run')
   const watchMinutes = Number(argValue('watch', '0')) || 0
+  const detailDays = Number(argValue('detail-days', '180')) || 180
+  const detailStaleHours = Number(argValue('detail-stale-hours', '6')) || 6
+  const maxDetails = Number(argValue('max-details', '100')) || 100
 
   let bearerToken = process.env.SIMPLIX_BEARER_TOKEN || await promptHidden('Paste Simplix Authorization bearer token: ')
   if (!bearerToken) throw new Error('Simplix bearer token is required')
@@ -268,17 +272,36 @@ async function main() {
     console.log('\nPrepared ' + rows.length + ' PR records.')
 
     if (dryRun) {
-      console.log('Dry run complete. Nothing was written to Supabase.')
+      console.log('Dry run: header records were not written to Supabase.')
     } else {
       const uniqueStatuses = [...new Set(rows.map((row) => row.status).filter(Boolean))]
-      console.log('Sync complete at ' + new Date().toLocaleString())
+      console.log('Header sync complete at ' + new Date().toLocaleString())
       console.log('Records synced: ' + rows.length)
       console.log('Statuses seen: ' + (uniqueStatuses.join(', ') || 'None'))
     }
 
+    const detailResult = await syncPrDetails({
+      supabase,
+      url: graphqlUrl,
+      bearerToken,
+      headers: rows,
+      promptHidden,
+      onTokenChange: (freshToken) => {
+        bearerToken = freshToken
+      },
+      recentDays: detailDays,
+      staleHours: detailStaleHours,
+      maxDetails,
+      dryRun,
+    })
+
+    bearerToken = detailResult.bearerToken
+    console.log('PR detail records ' + (dryRun ? 'checked: ' : 'synced: ') + detailResult.synced)
+
     if (!watchMinutes) break
 
     console.log('\nNext automatic sync in ' + watchMinutes + ' minutes. Keep this window open.')
+    console.log('Header data syncs every cycle; PR detail data refreshes when stale or newly available.')
     console.log('You only need to paste a fresh Simplix token if the current one expires.\n')
     await sleep(watchMinutes * 60 * 1000)
   } while (true)
