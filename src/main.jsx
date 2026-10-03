@@ -6,6 +6,7 @@ import PrTrackerCompleteV2 from './PrTrackerCompleteV2.jsx'
 import PrOpenPositionV2 from './PrOpenPositionV2.jsx'
 import PrPoSectionTabs from './PrPoSectionTabs.jsx'
 import PrMonthlyChart from './PrMonthlyChart.jsx'
+import PurchaseRequestsRename from './PurchaseRequestsRename.jsx'
 import './styles.css'
 import './tailwind.css'
 
@@ -17,5 +18,6 @@ createRoot(document.getElementById('root')).render(
     <PrOpenPositionV2 />
     <PrPoSectionTabs />
     <PrMonthlyChart />
+    <PurchaseRequestsRename />
   </StrictMode>,
 )
