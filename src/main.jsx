@@ -9,6 +9,7 @@ import PrMonthlyChart from './PrMonthlyChart.jsx'
 import PurchaseRequestsRename from './PurchaseRequestsRename.jsx'
 import PrfWorkspace from './PrfWorkspace.jsx'
 import PendingPaymentsWorkspace from './PendingPaymentsWorkspace.jsx'
+import MtrNavPlacement from './MtrNavPlacement.jsx'
 import './styles.css'
 import './tailwind.css'
 
@@ -23,5 +24,6 @@ createRoot(document.getElementById('root')).render(
     <PurchaseRequestsRename />
     <PrfWorkspace />
     <PendingPaymentsWorkspace />
+    <MtrNavPlacement />
   </StrictMode>,
 )
