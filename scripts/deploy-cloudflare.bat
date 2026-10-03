@@ -7,15 +7,18 @@ echo SRD Warehouse System - Local Cloudflare Deploy
 echo -----------------------------------------------
 
 set "NODE_EXE="
+set "NODE_DIR="
 set "NPM_CMD="
 
 if exist "portable-node\node.exe" (
   set "NODE_EXE=%CD%\portable-node\node.exe"
+  set "NODE_DIR=%CD%\portable-node"
   set "NPM_CMD=%CD%\portable-node\npm.cmd"
 ) else (
   for /d %%D in ("portable-node\node-v*-win-x64") do (
     if exist "%%~fD\node.exe" (
       set "NODE_EXE=%%~fD\node.exe"
+      set "NODE_DIR=%%~fD"
       set "NPM_CMD=%%~fD\npm.cmd"
     )
   )
@@ -31,6 +34,8 @@ if not defined NODE_EXE (
   )
   set "NODE_EXE=node"
   set "NPM_CMD=npm"
+) else (
+  set "PATH=%NODE_DIR%;%PATH%"
 )
 
 if not exist "node_modules" (
