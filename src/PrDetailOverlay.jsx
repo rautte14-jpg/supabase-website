@@ -37,19 +37,17 @@ function elapsed(step) {
 
 function WorkflowStep({ step }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '42px 12px 1fr', alignItems: 'start', gap: 10, position: 'relative' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '42px 12px 1fr', alignItems: 'start', gap: 10 }}>
       <div style={{ fontSize: 12, color: '#6b7280', paddingTop: 2, textAlign: 'right' }}>{elapsed(step)}</div>
       <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
         <span style={{ width: 9, height: 9, borderRadius: 999, background: statusColor(step?.Status), display: 'block' }} />
       </div>
-      <div style={{ paddingBottom: 16 }}>
-        <div style={{ fontSize: 12, lineHeight: 1.55, color: '#111827' }}>
-          <div><span style={{ color: '#7c8595' }}>Approver:</span> <strong style={{ fontWeight: 600 }}>{clean(step?.UserName) || '—'}</strong></div>
-          <div><span style={{ color: '#7c8595' }}>Status:</span> <span>{clean(step?.Status) || '—'}</span></div>
-          <div><span style={{ color: '#7c8595' }}>Position:</span> <span>{clean(step?.Position) || '—'}</span></div>
-          {(step?.ApprovedDateTime || step?.ApprovedDate) && <div><span style={{ color: '#7c8595' }}>Approved At:</span> <span>{fmtDate(step.ApprovedDateTime || step.ApprovedDate)}</span></div>}
-          {clean(step?.Comment) && <div style={{ marginTop: 4, color: '#64748b' }}>{step.Comment}</div>}
-        </div>
+      <div style={{ paddingBottom: 16, fontSize: 12, lineHeight: 1.55, color: '#111827' }}>
+        <div><span style={{ color: '#7c8595' }}>Approver:</span> <strong>{clean(step?.UserName) || '—'}</strong></div>
+        <div><span style={{ color: '#7c8595' }}>Status:</span> {clean(step?.Status) || '—'}</div>
+        <div><span style={{ color: '#7c8595' }}>Position:</span> {clean(step?.Position) || '—'}</div>
+        {(step?.ApprovedDateTime || step?.ApprovedDate) && <div><span style={{ color: '#7c8595' }}>Approved At:</span> {fmtDate(step.ApprovedDateTime || step.ApprovedDate)}</div>}
+        {clean(step?.Comment) && <div style={{ marginTop: 4, color: '#64748b' }}>{step.Comment}</div>}
       </div>
     </div>
   )
@@ -60,10 +58,7 @@ function EmptyText({ children }) {
 }
 
 function ReceiptSummary({ receipts }) {
-  if (!receipts.length) {
-    return <div style={{ color: '#f59e0b', fontSize: 13, paddingTop: 4 }}>The goods have not yet been received.</div>
-  }
-
+  if (!receipts.length) return <div style={{ color: '#f59e0b', fontSize: 13, paddingTop: 4 }}>The goods have not yet been received.</div>
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       {receipts.map((r, i) => (
@@ -82,7 +77,6 @@ function TimelineCard({ details, receipts }) {
   const prFlow = arr(details?.pr_workflow)
   const poGroups = arr(details?.po_workflow)
   const poSteps = poGroups.flatMap((g) => arr(g?.Workflow))
-
   return (
     <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 16, boxShadow: '0 2px 12px rgba(15,23,42,.05)', overflow: 'hidden' }}>
       <div style={{ minHeight: 50, borderBottom: '1px solid #e5e7eb', padding: '0 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -91,15 +85,15 @@ function TimelineCard({ details, receipts }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr 1.15fr', gap: 44, padding: '22px 52px 26px' }}>
         <div>
-          <h3 style={{ margin: '0 0 12px', fontSize: 14, color: '#111827' }}>PR Workflow</h3>
+          <h3 style={{ margin: '0 0 12px', fontSize: 14 }}>PR Workflow</h3>
           {prFlow.length ? prFlow.map((s, i) => <WorkflowStep key={s?.RecId ?? i} step={s} />) : <EmptyText>No PR Workflow data available.</EmptyText>}
         </div>
         <div>
-          <h3 style={{ margin: '0 0 12px', fontSize: 14, color: '#111827' }}>PO Workflow</h3>
+          <h3 style={{ margin: '0 0 12px', fontSize: 14 }}>PO Workflow</h3>
           {poSteps.length ? poSteps.map((s, i) => <WorkflowStep key={s?.RecId ?? i} step={s} />) : <div style={{ color: '#f59e0b', fontSize: 13, paddingTop: 4 }}>No PO Workflow data available.</div>}
         </div>
         <div>
-          <h3 style={{ margin: '0 0 12px', fontSize: 14, color: '#111827' }}>Goods Receiving</h3>
+          <h3 style={{ margin: '0 0 12px', fontSize: 14 }}>Goods Receiving</h3>
           <ReceiptSummary receipts={receipts} />
         </div>
       </div>
@@ -107,13 +101,14 @@ function TimelineCard({ details, receipts }) {
   )
 }
 
-function SectionCard({ title, children, dot = '#f59e0b' }) {
+function SectionCard({ title, children, dot = '#f59e0b', note = '' }) {
   return (
     <div style={{ position: 'relative', marginTop: 18 }}>
       <span style={{ position: 'absolute', left: -27, top: 10, width: 9, height: 9, borderRadius: 999, background: '#fff', border: `3px solid ${dot}`, zIndex: 2 }} />
       <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 16, boxShadow: '0 2px 12px rgba(15,23,42,.045)', overflow: 'hidden' }}>
-        <div style={{ minHeight: 50, borderBottom: '1px solid #e5e7eb', padding: '0 22px', display: 'flex', alignItems: 'center' }}>
+        <div style={{ minHeight: 50, borderBottom: '1px solid #e5e7eb', padding: '0 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <strong style={{ fontSize: 14, color: '#111827' }}>{title}</strong>
+          {note && <span style={{ fontSize: 11, color: '#64748b' }}>{note}</span>}
         </div>
         <div style={{ padding: '0 18px' }}>{children}</div>
       </section>
@@ -127,14 +122,8 @@ function DataTable({ columns, rows }) {
   return (
     <div style={{ overflowX: 'auto', padding: '12px 0 18px' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead>
-          <tr>{columns.map((c) => <th key={c.key} style={{ textAlign: 'left', color: '#7c8595', padding: '9px 10px', borderBottom: '1px solid #e5e7eb', background: '#f1f5f9', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.03em' }}>{c.label}</th>)}</tr>
-        </thead>
-        <tbody>
-          {data.map((row, i) => (
-            <tr key={i}>{columns.map((c) => <td key={c.key} style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', color: '#334155', verticalAlign: 'top' }}>{c.render ? c.render(row[c.key], row) : (clean(row[c.key]) || '—')}</td>)}</tr>
-          ))}
-        </tbody>
+        <thead><tr>{columns.map((c) => <th key={c.key} style={{ textAlign: 'left', color: '#7c8595', padding: '9px 10px', borderBottom: '1px solid #e5e7eb', background: '#f1f5f9', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.03em' }}>{c.label}</th>)}</tr></thead>
+        <tbody>{data.map((row, i) => <tr key={i}>{columns.map((c) => <td key={c.key} style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', color: '#334155', verticalAlign: 'top' }}>{c.render ? c.render(row[c.key], row) : (clean(row[c.key]) || '—')}</td>)}</tr>)}</tbody>
       </table>
     </div>
   )
@@ -144,6 +133,7 @@ export default function PrDetailOverlay() {
   const [prNo, setPrNo] = useState('')
   const [header, setHeader] = useState(null)
   const [details, setDetails] = useState(null)
+  const [prItems, setPrItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -175,10 +165,17 @@ export default function PrDetailOverlay() {
     setError('')
     setHeader(null)
     setDetails(null)
+    setPrItems([])
+
     Promise.all([
       supabase.from('erp_pr_headers').select('*').eq('purch_req_id', prNo).maybeSingle(),
       supabase.from('erp_pr_details').select('*').eq('purch_req_id', prNo).maybeSingle(),
-    ]).then(([h, d]) => {
+      supabase
+        .from('procurement_records')
+        .select('priority,item_code,item_description,qty_requested,unit,raw_source')
+        .eq('source_type', 'PR')
+        .eq('pr_no', prNo),
+    ]).then(([h, d, items]) => {
       if (!active) return
       setLoading(false)
       if (h.error) {
@@ -187,6 +184,7 @@ export default function PrDetailOverlay() {
       }
       setHeader(h.data || null)
       setDetails(d.data || null)
+      setPrItems(items.error ? [] : (items.data || []))
     }).catch((e) => {
       if (active) {
         setLoading(false)
@@ -232,7 +230,7 @@ export default function PrDetailOverlay() {
         <span style={{ position: 'absolute', left: 12, top: 31, width: 9, height: 9, borderRadius: 999, background: '#fff', border: '3px solid #57b833', zIndex: 2 }} />
 
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>Loading synced Simplix data…</div>
+          <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>Loading PR details…</div>
         ) : error ? (
           <div style={{ padding: 18, borderRadius: 12, background: '#fee2e2', color: '#b91c1c' }}>{error}</div>
         ) : !header ? (
@@ -240,6 +238,18 @@ export default function PrDetailOverlay() {
         ) : (
           <>
             <TimelineCard details={details} receipts={receipts} />
+
+            <SectionCard title="PR Items" dot="#3b82f6" note="From uploaded ERP PR Lines">
+              {!prItems.length ? <EmptyText>No item lines were found in the uploaded ERP PR Lines file for this PR.</EmptyText> : (
+                <DataTable rows={prItems} columns={[
+                  { key: 'priority', label: 'Priority', render: (v) => <span style={{ fontWeight: 700 }}>{clean(v) || '—'}</span> },
+                  { key: 'item_code', label: 'Item ID', render: (v) => <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{clean(v) || '—'}</span> },
+                  { key: 'item_description', label: 'Item Description' },
+                  { key: 'qty_requested', label: 'Quantity', render: (v) => v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString(undefined, { maximumFractionDigits: 3 }) },
+                  { key: 'unit', label: 'UOM' },
+                ]} />
+              )}
+            </SectionCard>
 
             <SectionCard title="Requests for Quotation">
               {!rfqs.length ? <EmptyText>No RFQs have been generated for this request at this time.</EmptyText> : (
@@ -263,10 +273,7 @@ export default function PrDetailOverlay() {
                   { key: 'VendorAccount', label: 'Vendor Account' },
                   { key: 'InventSiteId', label: 'Site' },
                   { key: 'InventLocationId', label: 'Location' },
-                  { key: 'PendingApprovers', label: 'Pending Approver', render: (v) => {
-                    if (Array.isArray(v)) return v.length ? v.join(', ') : 'No pending approvers'
-                    return clean(v) || 'No pending approvers'
-                  } },
+                  { key: 'PendingApprovers', label: 'Pending Approver', render: (v) => Array.isArray(v) ? (v.length ? v.join(', ') : 'No pending approvers') : (clean(v) || 'No pending approvers') },
                 ]} />
               )}
             </SectionCard>
