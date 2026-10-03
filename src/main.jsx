@@ -10,6 +10,7 @@ import PurchaseRequestsRename from './PurchaseRequestsRename.jsx'
 import PrfWorkspace from './PrfWorkspace.jsx'
 import PendingPaymentsWorkspace from './PendingPaymentsWorkspace.jsx'
 import MtrNavPlacement from './MtrNavPlacement.jsx'
+import SidebarCollapse from './SidebarCollapse.jsx'
 import './styles.css'
 import './tailwind.css'
 
@@ -25,5 +26,6 @@ createRoot(document.getElementById('root')).render(
     <PrfWorkspace />
     <PendingPaymentsWorkspace />
     <MtrNavPlacement />
+    <SidebarCollapse />
   </StrictMode>,
 )
