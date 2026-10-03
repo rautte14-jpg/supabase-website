@@ -34,152 +34,203 @@ function statusGroup(status) {
 }
 
 function ageTone(days) {
-  if (days == null) return ''
+  if (days == null) return 'neutral'
   if (days >= 30) return 'danger'
   if (days >= 14) return 'warn'
   if (days >= 7) return 'watch'
   return 'fresh'
 }
 
+function findPrTable() {
+  return [...document.querySelectorAll('table')].find((table) => {
+    const heads = [...table.querySelectorAll('thead th')].map((x) => lower(x.textContent))
+    return heads.includes('pr number') && heads.includes('requested by') && heads.includes('erp status')
+  }) || null
+}
+
+function ensureCell(row, kind) {
+  let cell = row.querySelector(`td[data-pr-enhancer="${kind}"]`)
+  if (!cell) {
+    cell = document.createElement('td')
+    cell.dataset.prEnhancer = kind
+    row.appendChild(cell)
+  }
+  return cell
+}
+
+function setCellBadge(cell, text, className) {
+  const existing = cell.firstElementChild
+  if (existing && existing.tagName === 'SPAN') {
+    if (existing.textContent !== text) existing.textContent = text
+    if (existing.className !== className) existing.className = className
+    return
+  }
+  cell.replaceChildren()
+  const span = document.createElement('span')
+  span.className = className
+  span.textContent = text
+  cell.appendChild(span)
+}
+
 export default function PrTrackerEnhancer() {
   const [detailMap, setDetailMap] = useState(new Map())
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [detailCount, setDetailCount] = useState(0)
-  const timerRef = useRef(null)
+  const detailTimerRef = useRef(null)
 
   useEffect(() => {
     let active = true
+
     async function loadDetails() {
       const map = new Map()
       let from = 0
       const pageSize = 1000
+
       while (active) {
         const { data, error } = await supabase
           .from('erp_pr_details')
           .select('purch_req_id,current_approver,current_workflow_status,detail_synced_at')
           .range(from, from + pageSize - 1)
-        if (error) break
-        for (const row of data || []) map.set(clean(row.purch_req_id).toUpperCase(), row)
+
+        if (error) {
+          console.warn('Could not load PR detail summary', error.message)
+          break
+        }
+
+        for (const row of data || []) {
+          map.set(clean(row.purch_req_id).toUpperCase(), row)
+        }
+
         if (!data || data.length < pageSize) break
         from += pageSize
       }
+
       if (active) {
         setDetailMap(map)
         setDetailCount(map.size)
       }
     }
+
     loadDetails()
-    timerRef.current = setInterval(loadDetails, 60000)
+    detailTimerRef.current = window.setInterval(loadDetails, 60000)
+
     return () => {
       active = false
-      if (timerRef.current) clearInterval(timerRef.current)
+      if (detailTimerRef.current) window.clearInterval(detailTimerRef.current)
     }
   }, [])
 
   useEffect(() => {
+    let disposed = false
+
     const enhance = () => {
-      const tables = [...document.querySelectorAll('table')]
-      const table = tables.find((t) => {
-        const heads = [...t.querySelectorAll('thead th')].map((x) => lower(x.textContent))
-        return heads.includes('pr number') && heads.includes('requested by') && heads.includes('erp status')
-      })
+      if (disposed) return
+      const table = findPrTable()
       if (!table) return
 
-      const parent = table.closest('.data-table, .table-wrap, .overflow-x-auto') || table.parentElement
-      if (!parent) return
+      const wrapper = table.closest('.data-table, .table-wrap, .overflow-x-auto') || table.parentElement
+      if (!wrapper || !wrapper.parentElement) return
 
-      let toolbar = parent.parentElement?.querySelector(':scope > .pr-enhancer-toolbar')
+      let toolbar = wrapper.parentElement.querySelector(':scope > .pr-enhancer-toolbar')
       if (!toolbar) {
         toolbar = document.createElement('div')
         toolbar.className = 'pr-enhancer-toolbar'
-        toolbar.innerHTML = `
-          <div class="pr-enhancer-left">
-            <span class="pr-enhancer-label">PR STATUS</span>
-            <button data-filter="ALL">All</button>
-            <button data-filter="IN_REVIEW">In Review</button>
-            <button data-filter="APPROVED">Approved</button>
-            <button data-filter="REJECTED">Rejected</button>
-            <button data-filter="CANCELLED">Cancelled</button>
-          </div>
-          <div class="pr-enhancer-sync"></div>
-        `
-        parent.parentElement?.insertBefore(toolbar, parent)
-        toolbar.addEventListener('click', (event) => {
-          const button = event.target.closest('button[data-filter]')
-          if (!button) return
-          setStatusFilter(button.dataset.filter || 'ALL')
+
+        const left = document.createElement('div')
+        left.className = 'pr-enhancer-left'
+        const label = document.createElement('span')
+        label.className = 'pr-enhancer-label'
+        label.textContent = 'PR STATUS'
+        left.appendChild(label)
+
+        const filters = [
+          ['ALL', 'All'],
+          ['IN_REVIEW', 'In Review'],
+          ['APPROVED', 'Approved'],
+          ['REJECTED', 'Rejected'],
+          ['CANCELLED', 'Cancelled'],
+        ]
+        filters.forEach(([value, text]) => {
+          const button = document.createElement('button')
+          button.type = 'button'
+          button.dataset.filter = value
+          button.textContent = text
+          button.addEventListener('click', () => setStatusFilter(value))
+          left.appendChild(button)
         })
+
+        const sync = document.createElement('div')
+        sync.className = 'pr-enhancer-sync'
+        toolbar.append(left, sync)
+        wrapper.parentElement.insertBefore(toolbar, wrapper)
       }
 
       toolbar.querySelectorAll('button[data-filter]').forEach((button) => {
         button.classList.toggle('active', button.dataset.filter === statusFilter)
       })
       const sync = toolbar.querySelector('.pr-enhancer-sync')
-      if (sync) sync.textContent = `${detailCount.toLocaleString()} PR details synced`
+      if (sync) {
+        const next = `${detailCount.toLocaleString()} PR details synced`
+        if (sync.textContent !== next) sync.textContent = next
+      }
 
       const headerRow = table.querySelector('thead tr')
       if (!headerRow) return
-      let currentApproverHead = headerRow.querySelector('th[data-pr-enhancer="approver"]')
-      if (!currentApproverHead) {
-        currentApproverHead = document.createElement('th')
-        currentApproverHead.dataset.prEnhancer = 'approver'
-        currentApproverHead.textContent = 'Current Approver'
-        headerRow.appendChild(currentApproverHead)
+
+      if (!headerRow.querySelector('th[data-pr-enhancer="approver"]')) {
+        const th = document.createElement('th')
+        th.dataset.prEnhancer = 'approver'
+        th.textContent = 'Current Approver'
+        headerRow.appendChild(th)
       }
-      let daysHead = headerRow.querySelector('th[data-pr-enhancer="days"]')
-      if (!daysHead) {
-        daysHead = document.createElement('th')
-        daysHead.dataset.prEnhancer = 'days'
-        daysHead.textContent = 'Days Pending'
-        headerRow.appendChild(daysHead)
+      if (!headerRow.querySelector('th[data-pr-enhancer="days"]')) {
+        const th = document.createElement('th')
+        th.dataset.prEnhancer = 'days'
+        th.textContent = 'Days Pending'
+        headerRow.appendChild(th)
       }
 
-      const originalHeads = [...headerRow.querySelectorAll('th:not([data-pr-enhancer])')].map((x) => lower(x.textContent))
-      const prIndex = originalHeads.findIndex((x) => x === 'pr number')
-      const dateIndex = originalHeads.findIndex((x) => x === 'submitted date')
-      const statusIndex = originalHeads.findIndex((x) => x === 'erp status')
+      const baseHeads = [...headerRow.querySelectorAll('th:not([data-pr-enhancer])')].map((x) => lower(x.textContent))
+      const prIndex = baseHeads.findIndex((x) => x === 'pr number')
+      const dateIndex = baseHeads.findIndex((x) => x === 'submitted date')
+      const statusIndex = baseHeads.findIndex((x) => x === 'erp status')
       if (prIndex < 0 || statusIndex < 0) return
 
       table.querySelectorAll('tbody tr').forEach((row) => {
         const baseCells = [...row.querySelectorAll(':scope > td:not([data-pr-enhancer])')]
         const prNo = clean(baseCells[prIndex]?.textContent).replace(/\s+/g, '').toUpperCase()
         if (!/^PR\d+$/.test(prNo)) return
+
         const erpStatus = clean(baseCells[statusIndex]?.textContent)
         const group = statusGroup(erpStatus)
-        row.style.display = statusFilter === 'ALL' || group === statusFilter ? '' : 'none'
+        const visible = statusFilter === 'ALL' || group === statusFilter
+        const desiredDisplay = visible ? '' : 'none'
+        if (row.style.display !== desiredDisplay) row.style.display = desiredDisplay
 
         const detail = detailMap.get(prNo)
-        let approverCell = row.querySelector('td[data-pr-enhancer="approver"]')
-        if (!approverCell) {
-          approverCell = document.createElement('td')
-          approverCell.dataset.prEnhancer = 'approver'
-          row.appendChild(approverCell)
-        }
-        approverCell.innerHTML = detail?.current_approver
-          ? `<span class="pr-current-approver">${clean(detail.current_approver)}</span>`
-          : '<span class="pr-detail-pending">Sync pending</span>'
+        const approverCell = ensureCell(row, 'approver')
+        setCellBadge(
+          approverCell,
+          detail?.current_approver || 'Sync pending',
+          detail?.current_approver ? 'pr-current-approver' : 'pr-detail-pending',
+        )
 
-        let daysCell = row.querySelector('td[data-pr-enhancer="days"]')
-        if (!daysCell) {
-          daysCell = document.createElement('td')
-          daysCell.dataset.prEnhancer = 'days'
-          row.appendChild(daysCell)
-        }
+        const daysCell = ensureCell(row, 'days')
         const days = dateIndex >= 0 ? daysSince(clean(baseCells[dateIndex]?.textContent)) : null
         const isFinal = ['APPROVED', 'REJECTED', 'CANCELLED'].includes(group)
-        daysCell.innerHTML = days == null
-          ? '—'
-          : isFinal
-            ? `<span class="pr-days neutral">${days}d age</span>`
-            : `<span class="pr-days ${ageTone(days)}">${days}d</span>`
+        const labelText = days == null ? '—' : isFinal ? `${days}d age` : `${days}d`
+        const tone = days == null || isFinal ? 'neutral' : ageTone(days)
+        setCellBadge(daysCell, labelText, `pr-days ${tone}`)
       })
     }
 
     enhance()
-    const observer = new MutationObserver(() => enhance())
-    observer.observe(document.body, { childList: true, subtree: true })
-    return () => observer.disconnect()
-  }, [detailMap, statusFilter, detailCount])
+    const uiTimer = window.setInterval(enhance, 1500)
+    return () => {
+      disposed = true
+      window.clearInterval(uiTimer)
+    }
+  }, [detailMap, detailCount, statusFilter])
 
   return <style>{`
     .pr-enhancer-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:12px 0;padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)}
