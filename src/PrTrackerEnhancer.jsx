@@ -113,23 +113,35 @@ function lifecycleMatches(detail, erpStatus, filter) {
   return true
 }
 
-function updateAllSubmittedCard(count) {
-  const labels = [...document.querySelectorAll('body *')].filter((el) =>
-    el.children.length === 0 && lower(el.textContent) === 'all submitted prs'
-  )
+function updateCurrentYearCountLabels(count) {
+  const formatted = Number(count || 0).toLocaleString()
+
+  const labels = [...document.querySelectorAll('body *')].filter((el) => {
+    if (el.children.length !== 0) return false
+    return lower(el.textContent).startsWith('all submitted prs')
+  })
+
   for (const label of labels) {
     let box = label.parentElement
-    for (let depth = 0; box && depth < 5; depth += 1, box = box.parentElement) {
+    for (let depth = 0; box && depth < 8; depth += 1, box = box.parentElement) {
       const number = [...box.querySelectorAll('*')].find((el) =>
-        el.children.length === 0 && /^[\d,]+$/.test(clean(el.textContent)) && el !== label
+        el.children.length === 0 && /^\d[\d,]*$/.test(clean(el.textContent)) && el !== label
       )
       if (number) {
-        number.textContent = Number(count || 0).toLocaleString()
+        number.textContent = formatted
         label.textContent = `All Submitted PRs (${CURRENT_YEAR})`
-        return
+        break
       }
     }
   }
+
+  ;[...document.querySelectorAll('body *')].forEach((el) => {
+    if (el.children.length !== 0) return
+    const text = lower(el.textContent)
+    if (text.startsWith('simplix sync') && text.includes('prs')) {
+      el.textContent = `SIMPLIX SYNC · ${formatted} PRs · ${CURRENT_YEAR}`
+    }
+  })
 }
 
 export default function PrTrackerEnhancer() {
@@ -203,7 +215,7 @@ export default function PrTrackerEnhancer() {
 
     const enhance = () => {
       if (disposed) return
-      updateAllSubmittedCard(currentYearCount)
+      updateCurrentYearCountLabels(currentYearCount)
       const table = findPrTable()
       if (!table) return
       const wrapper = table.closest('.data-table, .table-wrap, .overflow-x-auto') || table.parentElement
