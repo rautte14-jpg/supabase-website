@@ -32,22 +32,22 @@ function elapsed(step) {
   if (d > 0 && h > 0) return `${d} d ${h} h`
   if (d > 0) return `${d} d`
   if (h > 0) return `${h} h`
-  return ''
+  return '0 h'
 }
 
 function WorkflowStep({ step }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '36px 12px 1fr', alignItems: 'start', gap: 10, position: 'relative' }}>
-      <div style={{ fontSize: 13, color: '#6b7280', paddingTop: 2, textAlign: 'right' }}>{elapsed(step)}</div>
+    <div style={{ display: 'grid', gridTemplateColumns: '42px 12px 1fr', alignItems: 'start', gap: 10, position: 'relative' }}>
+      <div style={{ fontSize: 12, color: '#6b7280', paddingTop: 2, textAlign: 'right' }}>{elapsed(step)}</div>
       <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
-        <span style={{ width: 10, height: 10, borderRadius: 999, background: statusColor(step?.Status), display: 'block' }} />
+        <span style={{ width: 9, height: 9, borderRadius: 999, background: statusColor(step?.Status), display: 'block' }} />
       </div>
-      <div style={{ paddingBottom: 18 }}>
-        <div style={{ fontSize: 13, lineHeight: 1.55, color: '#111827' }}>
-          <div><span style={{ color: '#7c8595' }}>Approver:</span> <strong style={{ fontWeight: 500 }}>{clean(step?.UserName) || '—'}</strong></div>
+      <div style={{ paddingBottom: 16 }}>
+        <div style={{ fontSize: 12, lineHeight: 1.55, color: '#111827' }}>
+          <div><span style={{ color: '#7c8595' }}>Approver:</span> <strong style={{ fontWeight: 600 }}>{clean(step?.UserName) || '—'}</strong></div>
           <div><span style={{ color: '#7c8595' }}>Status:</span> <span>{clean(step?.Status) || '—'}</span></div>
           <div><span style={{ color: '#7c8595' }}>Position:</span> <span>{clean(step?.Position) || '—'}</span></div>
-          {(step?.ApprovedDateTime || step?.ApprovedDate) && <div><span style={{ color: '#7c8595' }}>Approved At:</span> <span>{step.ApprovedDateTime || step.ApprovedDate}</span></div>}
+          {(step?.ApprovedDateTime || step?.ApprovedDate) && <div><span style={{ color: '#7c8595' }}>Approved At:</span> <span>{fmtDate(step.ApprovedDateTime || step.ApprovedDate)}</span></div>}
           {clean(step?.Comment) && <div style={{ marginTop: 4, color: '#64748b' }}>{step.Comment}</div>}
         </div>
       </div>
@@ -59,11 +59,29 @@ function EmptyText({ children }) {
   return <div style={{ fontSize: 13, color: '#8b95a5', padding: '18px 2px' }}>{children}</div>
 }
 
+function ReceiptSummary({ receipts }) {
+  if (!receipts.length) {
+    return <div style={{ color: '#f59e0b', fontSize: 13, paddingTop: 4 }}>The goods have not yet been received.</div>
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      {receipts.map((r, i) => (
+        <div key={r?.recId ?? r?.id ?? i} style={{ border: '1px solid #d1d5db', borderRadius: 4, padding: '9px 11px', fontSize: 12, lineHeight: 1.55, color: '#111827', background: '#fff' }}>
+          <div><b>Receipt Number:</b> {clean(r?.productReciept) || '—'}</div>
+          <div><b>PO Number:</b> {clean(r?.po) || '—'}</div>
+          <div><b>Received Date:</b> {fmtDate(r?.createdAt)}</div>
+          <div style={{ color: '#16a34a' }}><b>Status:</b> Received</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function TimelineCard({ details, receipts }) {
   const prFlow = arr(details?.pr_workflow)
   const poGroups = arr(details?.po_workflow)
   const poSteps = poGroups.flatMap((g) => arr(g?.Workflow))
-  const hasReceipts = receipts.length > 0
 
   return (
     <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 16, boxShadow: '0 2px 12px rgba(15,23,42,.05)', overflow: 'hidden' }}>
@@ -71,7 +89,7 @@ function TimelineCard({ details, receipts }) {
         <strong style={{ fontSize: 14, color: '#111827' }}>Request Timeline</strong>
         <span style={{ fontSize: 13, color: '#111827' }}>{clean(details?.total_pr_workflow_time) || ''}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr 1fr', gap: 52, padding: '22px 52px 26px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr 1.15fr', gap: 44, padding: '22px 52px 26px' }}>
         <div>
           <h3 style={{ margin: '0 0 12px', fontSize: 14, color: '#111827' }}>PR Workflow</h3>
           {prFlow.length ? prFlow.map((s, i) => <WorkflowStep key={s?.RecId ?? i} step={s} />) : <EmptyText>No PR Workflow data available.</EmptyText>}
@@ -82,13 +100,7 @@ function TimelineCard({ details, receipts }) {
         </div>
         <div>
           <h3 style={{ margin: '0 0 12px', fontSize: 14, color: '#111827' }}>Goods Receiving</h3>
-          {hasReceipts ? (
-            <div style={{ fontSize: 13, lineHeight: 1.7, color: '#166534' }}>
-              {receipts.length} product receipt{receipts.length === 1 ? '' : 's'} available.
-            </div>
-          ) : (
-            <div style={{ color: '#f59e0b', fontSize: 13, paddingTop: 4 }}>The goods have not yet been received.</div>
-          )}
+          <ReceiptSummary receipts={receipts} />
         </div>
       </div>
     </section>
@@ -116,7 +128,7 @@ function DataTable({ columns, rows }) {
     <div style={{ overflowX: 'auto', padding: '12px 0 18px' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
-          <tr>{columns.map((c) => <th key={c.key} style={{ textAlign: 'left', color: '#7c8595', padding: '9px 10px', borderBottom: '1px solid #e5e7eb', fontSize: 11, fontWeight: 600 }}>{c.label}</th>)}</tr>
+          <tr>{columns.map((c) => <th key={c.key} style={{ textAlign: 'left', color: '#7c8595', padding: '9px 10px', borderBottom: '1px solid #e5e7eb', background: '#f1f5f9', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.03em' }}>{c.label}</th>)}</tr>
         </thead>
         <tbody>
           {data.map((row, i) => (
@@ -233,10 +245,10 @@ export default function PrDetailOverlay() {
               {!rfqs.length ? <EmptyText>No RFQs have been generated for this request at this time.</EmptyText> : (
                 <DataTable rows={rfqs} columns={[
                   { key: 'rfqId', label: 'RFQ' },
-                  { key: 'title', label: 'Title' },
+                  { key: 'title', label: 'Quotation' },
                   { key: 'status', label: 'Status' },
-                  { key: 'expiration', label: 'Expiration' },
-                  { key: 'deliveryDate', label: 'Delivery Date' },
+                  { key: 'expiration', label: 'Expiration', render: (v) => fmtDate(v) },
+                  { key: 'deliveryDate', label: 'Delivery Date', render: (v) => fmtDate(v) },
                 ]} />
               )}
             </SectionCard>
@@ -245,11 +257,16 @@ export default function PrDetailOverlay() {
               {!pos.length ? <EmptyText>No purchase orders have been created for this request at this time.</EmptyText> : (
                 <DataTable rows={pos} columns={[
                   { key: 'PurchId', label: 'PO' },
-                  { key: 'PurchName', label: 'Name' },
                   { key: 'PurchStatus', label: 'Status' },
-                  { key: 'VendorAccount', label: 'Vendor' },
-                  { key: 'RFQNumber', label: 'RFQ' },
-                  { key: 'PendingApprovers', label: 'Pending Approvers', render: (v) => Array.isArray(v) ? v.join(', ') : (clean(v) || '—') },
+                  { key: 'RFQNumber', label: 'RFQ Number' },
+                  { key: 'PurchName', label: 'Vendor' },
+                  { key: 'VendorAccount', label: 'Vendor Account' },
+                  { key: 'InventSiteId', label: 'Site' },
+                  { key: 'InventLocationId', label: 'Location' },
+                  { key: 'PendingApprovers', label: 'Pending Approver', render: (v) => {
+                    if (Array.isArray(v)) return v.length ? v.join(', ') : 'No pending approvers'
+                    return clean(v) || 'No pending approvers'
+                  } },
                 ]} />
               )}
             </SectionCard>
@@ -257,10 +274,11 @@ export default function PrDetailOverlay() {
             <SectionCard title="Goods Receiving">
               {!receipts.length ? <EmptyText>No product receipts are currently available.</EmptyText> : (
                 <DataTable rows={receipts} columns={[
-                  { key: 'po', label: 'PO' },
+                  { key: 'po', label: 'Purchase Order' },
                   { key: 'productReciept', label: 'Product Receipt' },
-                  { key: 'createdAt', label: 'Created' },
+                  { key: 'createdAt', label: 'Created At', render: (v) => fmtDate(v) },
                   { key: 'recId', label: 'Record ID' },
+                  { key: '_status', label: 'Status', render: () => <span style={{ color: '#16a34a', fontWeight: 600 }}>Received</span> },
                 ]} />
               )}
             </SectionCard>
