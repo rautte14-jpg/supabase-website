@@ -8,6 +8,7 @@ import PrPoSectionTabs from './PrPoSectionTabs.jsx'
 import PrMonthlyChart from './PrMonthlyChart.jsx'
 import PurchaseRequestsRename from './PurchaseRequestsRename.jsx'
 import PrfWorkspace from './PrfWorkspace.jsx'
+import PendingPaymentsWorkspace from './PendingPaymentsWorkspace.jsx'
 import './styles.css'
 import './tailwind.css'
 
@@ -21,5 +22,6 @@ createRoot(document.getElementById('root')).render(
     <PrMonthlyChart />
     <PurchaseRequestsRename />
     <PrfWorkspace />
+    <PendingPaymentsWorkspace />
   </StrictMode>,
 )
