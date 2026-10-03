@@ -92,6 +92,12 @@ function parseSimplixDate(value) {
   return Number.isNaN(local.getTime()) ? null : local.toISOString()
 }
 
+function isRequestedInYear(node, year) {
+  const parsed = parseSimplixDate(node?.createdAt)
+  if (!parsed) return false
+  return new Date(parsed).getFullYear() === year
+}
+
 async function fetchPrPage({ url, bearerToken, after, first, site, search }) {
   const response = await fetch(url, {
     method: 'POST',
@@ -194,6 +200,7 @@ async function main() {
   const detailBatchSize = Math.max(1, Number(argValue('detail-batch-size', '100')) || 100)
   const detailLimitRaw = Number(argValue('detail-limit', '0'))
   const detailLimit = Number.isFinite(detailLimitRaw) && detailLimitRaw > 0 ? detailLimitRaw : null
+  const syncYear = Number(argValue('year', String(new Date().getFullYear())))
   const dryRun = hasFlag('dry-run')
 
   let bearerToken = process.env.SIMPLIX_BEARER_TOKEN || await promptHidden('Paste Simplix Authorization bearer token: ')
@@ -210,6 +217,7 @@ async function main() {
   if (authError) throw authError
 
   console.log('Signed in as ' + (authData.user?.email || email))
+  console.log('Sync year: ' + syncYear + ' (only PRs requested in this year will be written/refreshed)')
   console.log('Fetching Simplix PRs' + (site ? ' for site ' + site : '') + '...\n')
 
   const nodes = await fetchAllPrs({
@@ -220,13 +228,19 @@ async function main() {
     search,
     maxPages,
     onPage: dryRun ? null : async (pageNodes) => {
-      const pageRows = pageNodes.map(toDbRow).filter((row) => row.purch_req_id)
+      const pageRows = pageNodes
+        .filter((node) => isRequestedInYear(node, syncYear))
+        .map(toDbRow)
+        .filter((row) => row.purch_req_id)
       if (pageRows.length) await upsertInBatches(supabase, pageRows)
     },
   })
 
-  const rows = nodes.map(toDbRow).filter((row) => row.purch_req_id)
-  console.log('\nPrepared ' + rows.length + ' PR records.')
+  const yearNodes = nodes.filter((node) => isRequestedInYear(node, syncYear))
+  const rows = yearNodes.map(toDbRow).filter((row) => row.purch_req_id)
+  const ignored = nodes.length - yearNodes.length
+  console.log('\nPrepared ' + rows.length + ' PR records for ' + syncYear + '.')
+  if (ignored > 0) console.log('Ignored ' + ignored + ' PRs outside ' + syncYear + '.')
 
   if (dryRun) {
     console.log('Dry run complete. Nothing was written to Supabase.')
@@ -238,10 +252,10 @@ async function main() {
   console.log('Records synced: ' + rows.length)
   console.log('Statuses seen: ' + (uniqueStatuses.join(', ') || 'None'))
 
-  console.log('\nLoading workflow, RFQ, PO and receipt details...')
+  console.log('\nLoading workflow, RFQ, PO and receipt details for ' + syncYear + ' PRs only...')
   console.log('Detail batch size: ' + detailBatchSize)
   if (detailLimit) console.log('Detail run limit: ' + detailLimit + ' PRs')
-  else console.log('Detail run limit: ALL eligible PRs (processed in resumable batches)')
+  else console.log('Detail run limit: ALL eligible ' + syncYear + ' PRs (processed in resumable batches)')
 
   let totalDetailSynced = 0
   let batchNumber = 0
@@ -268,12 +282,12 @@ async function main() {
     totalDetailSynced += detailResult.synced
     console.log('PR detail records synced so far this run: ' + totalDetailSynced)
 
-    // A partial batch means there are no more eligible records right now.
     if (detailResult.synced < maxDetails) break
   }
 
   console.log('\nDetail sync finished.')
   console.log('PR detail records synced this run: ' + totalDetailSynced)
+  console.log('Only PRs requested in ' + syncYear + ' are refreshed by this tool.')
   console.log('You can safely stop and run this tool again later; already-synced PRs are skipped until refresh is due.')
   console.log('\nSync complete.')
 }
