@@ -191,10 +191,12 @@ async function main() {
   const search = argValue('search', '')
   const first = Number(argValue('page-size', '100'))
   const maxPages = Number(argValue('max-pages', '0')) || null
-  const maxDetails = Number(argValue('detail-limit', '100')) || 100
+  const detailBatchSize = Math.max(1, Number(argValue('detail-batch-size', '100')) || 100)
+  const detailLimitRaw = Number(argValue('detail-limit', '0'))
+  const detailLimit = Number.isFinite(detailLimitRaw) && detailLimitRaw > 0 ? detailLimitRaw : null
   const dryRun = hasFlag('dry-run')
 
-  const bearerToken = process.env.SIMPLIX_BEARER_TOKEN || await promptHidden('Paste Simplix Authorization bearer token: ')
+  let bearerToken = process.env.SIMPLIX_BEARER_TOKEN || await promptHidden('Paste Simplix Authorization bearer token: ')
   if (!bearerToken) throw new Error('Simplix bearer token is required')
 
   const email = process.env.SRD_PORTAL_EMAIL || await prompt('SRD portal email: ')
@@ -237,15 +239,42 @@ async function main() {
   console.log('Statuses seen: ' + (uniqueStatuses.join(', ') || 'None'))
 
   console.log('\nLoading workflow, RFQ, PO and receipt details...')
-  const detailResult = await syncPrDetails({
-    supabase,
-    url: graphqlUrl,
-    bearerToken,
-    headers: rows,
-    promptHidden,
-    maxDetails,
-  })
-  console.log('PR detail records synced this run: ' + detailResult.synced)
+  console.log('Detail batch size: ' + detailBatchSize)
+  if (detailLimit) console.log('Detail run limit: ' + detailLimit + ' PRs')
+  else console.log('Detail run limit: ALL eligible PRs (processed in resumable batches)')
+
+  let totalDetailSynced = 0
+  let batchNumber = 0
+
+  while (true) {
+    if (detailLimit && totalDetailSynced >= detailLimit) break
+
+    batchNumber += 1
+    const remainingAllowed = detailLimit ? detailLimit - totalDetailSynced : detailBatchSize
+    const maxDetails = Math.min(detailBatchSize, remainingAllowed)
+
+    console.log('\n--- Detail batch ' + batchNumber + ' ---')
+    const detailResult = await syncPrDetails({
+      supabase,
+      url: graphqlUrl,
+      bearerToken,
+      headers: rows,
+      promptHidden,
+      maxDetails,
+      onTokenChange: (freshToken) => { bearerToken = freshToken },
+    })
+
+    bearerToken = detailResult.bearerToken || bearerToken
+    totalDetailSynced += detailResult.synced
+    console.log('PR detail records synced so far this run: ' + totalDetailSynced)
+
+    // A partial batch means there are no more eligible records right now.
+    if (detailResult.synced < maxDetails) break
+  }
+
+  console.log('\nDetail sync finished.')
+  console.log('PR detail records synced this run: ' + totalDetailSynced)
+  console.log('You can safely stop and run this tool again later; already-synced PRs are skipped until refresh is due.')
   console.log('\nSync complete.')
 }
 
