@@ -48,22 +48,50 @@ export default function RouteEnhancers() {
 
   useEffect(() => {
     let disposed = false
+    let observer = null
+    let observedTarget = null
+
     const sync = () => {
       if (disposed) return
       const next = readRoute()
       setRoute((old) => (old === next ? old : next))
     }
 
-    sync()
-    const observer = new MutationObserver(sync)
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
-    const onClick = () => requestAnimationFrame(sync)
+    const attachObserver = () => {
+      const target = document.querySelector('.topbar-context strong') || document.querySelector('.topbar-context')
+      if (!target || target === observedTarget) return
+      observer?.disconnect()
+      observedTarget = target
+      observer = new MutationObserver(sync)
+      observer.observe(target, { childList: true, subtree: true, characterData: true })
+      sync()
+    }
+
+    attachObserver()
+
+    const onClick = (event) => {
+      if (!event.target.closest('.nav-item')) return
+      requestAnimationFrame(() => {
+        attachObserver()
+        sync()
+      })
+    }
+
     document.addEventListener('click', onClick, true)
+
+    const bootTimer = window.setInterval(() => {
+      if (observedTarget?.isConnected) {
+        window.clearInterval(bootTimer)
+        return
+      }
+      attachObserver()
+    }, 120)
 
     return () => {
       disposed = true
-      observer.disconnect()
+      observer?.disconnect()
       document.removeEventListener('click', onClick, true)
+      window.clearInterval(bootTimer)
     }
   }, [])
 
