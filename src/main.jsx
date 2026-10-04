@@ -14,6 +14,7 @@ import SidebarCollapse from './SidebarCollapse.jsx'
 import MtrWorkspace from './MtrWorkspace.jsx'
 import MtrFastUpload from './MtrFastUpload.jsx'
 import MtrLegacyHider from './MtrLegacyHider.jsx'
+import MtrRouteVisibility from './MtrRouteVisibility.jsx'
 import './styles.css'
 import './tailwind.css'
 
@@ -33,5 +34,6 @@ createRoot(document.getElementById('root')).render(
     <MtrWorkspace />
     <MtrFastUpload />
     <MtrLegacyHider />
+    <MtrRouteVisibility />
   </StrictMode>,
 )
