@@ -9,6 +9,7 @@ import PrMonthlyChart from './PrMonthlyChart.jsx'
 import PurchaseRequestsRename from './PurchaseRequestsRename.jsx'
 import PrfWorkspace from './PrfWorkspace.jsx'
 import PendingPaymentsWorkspace from './PendingPaymentsWorkspace.jsx'
+import PendingPaymentsRouteVisibility from './PendingPaymentsRouteVisibility.jsx'
 import MtrNavPlacement from './MtrNavPlacement.jsx'
 import SidebarCollapse from './SidebarCollapse.jsx'
 import MtrWorkspace from './MtrWorkspace.jsx'
@@ -29,6 +30,7 @@ createRoot(document.getElementById('root')).render(
     <PurchaseRequestsRename />
     <PrfWorkspace />
     <PendingPaymentsWorkspace />
+    <PendingPaymentsRouteVisibility />
     <MtrNavPlacement />
     <SidebarCollapse />
     <MtrWorkspace />
