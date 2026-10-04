@@ -12,6 +12,7 @@ import PendingPaymentsWorkspace from './PendingPaymentsWorkspace.jsx'
 import MtrNavPlacement from './MtrNavPlacement.jsx'
 import SidebarCollapse from './SidebarCollapse.jsx'
 import MtrWorkspace from './MtrWorkspace.jsx'
+import MtrFastUpload from './MtrFastUpload.jsx'
 import './styles.css'
 import './tailwind.css'
 
@@ -29,5 +30,6 @@ createRoot(document.getElementById('root')).render(
     <MtrNavPlacement />
     <SidebarCollapse />
     <MtrWorkspace />
+    <MtrFastUpload />
   </StrictMode>,
 )
