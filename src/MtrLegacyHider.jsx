@@ -2,6 +2,20 @@ import { useEffect } from 'react'
 
 const clean = (v) => String(v ?? '').trim()
 
+function activeRoute() {
+  return clean(document.querySelector('.topbar-context strong')?.textContent)
+}
+
+function restoreHidden() {
+  document.querySelectorAll('[data-mtr-legacy-display]').forEach((el) => {
+    const previous = el.dataset.mtrLegacyDisplay
+    if (previous === '__empty__') el.style.removeProperty('display')
+    else el.style.display = previous || ''
+    el.removeAttribute('aria-hidden')
+    delete el.dataset.mtrLegacyDisplay
+  })
+}
+
 function getMtrFrame() {
   const heading = [...document.querySelectorAll('h1,h2,h3')].find(
     (el) => clean(el.textContent) === 'MTR Tracker',
@@ -18,10 +32,20 @@ function getMtrFrame() {
 export default function MtrLegacyHider() {
   useEffect(() => {
     let observer = null
+    let observedContent = null
     let disposed = false
 
     const apply = () => {
       if (disposed) return
+
+      if (activeRoute() !== 'MTR Tracker') {
+        restoreHidden()
+        observer?.disconnect()
+        observer = null
+        observedContent = null
+        return
+      }
+
       const frame = getMtrFrame()
       if (!frame) return
       const { content, pageHeader, host } = frame
@@ -35,26 +59,22 @@ export default function MtrLegacyHider() {
         child.setAttribute('aria-hidden', 'true')
       })
 
-      if (!observer) {
+      if (!observer || observedContent !== content) {
+        observer?.disconnect()
         observer = new MutationObserver(() => apply())
         observer.observe(content, { childList: true, subtree: false })
+        observedContent = content
       }
     }
 
     apply()
-    const id = window.setInterval(apply, 300)
+    const id = window.setInterval(apply, 120)
 
     return () => {
       disposed = true
       window.clearInterval(id)
       observer?.disconnect()
-      document.querySelectorAll('[data-mtr-legacy-display]').forEach((el) => {
-        const previous = el.dataset.mtrLegacyDisplay
-        if (previous === '__empty__') el.style.removeProperty('display')
-        else el.style.display = previous || ''
-        el.removeAttribute('aria-hidden')
-        delete el.dataset.mtrLegacyDisplay
-      })
+      restoreHidden()
     }
   }, [])
 
