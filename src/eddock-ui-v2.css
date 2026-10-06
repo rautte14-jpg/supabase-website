@@ -1,0 +1,203 @@
+/* EDDOCK second visual pass: MRN, stock, overview and navigation polish. */
+
+/* Top bar and search */
+.topbar{
+  min-height:64px!important;
+  padding:10px 22px!important;
+  border-bottom-color:#e2e8f0!important;
+  box-shadow:0 1px 0 rgba(15,23,42,.02)!important;
+}
+.search-wrap{
+  max-width:700px!important;
+  border-color:#dbe3ee!important;
+  border-radius:10px!important;
+  background:#f8fafc!important;
+}
+.search-wrap:focus-within{
+  border-color:#93c5fd!important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.08)!important;
+  background:#fff!important;
+}
+.top-actions .secondary,.top-actions .primary{
+  min-height:36px!important;
+  border-radius:9px!important;
+  font-size:12px!important;
+}
+
+/* Overview: less stretched, clearer card rhythm */
+.overview-summary-grid,
+.overview-kpi-grid{
+  gap:12px!important;
+}
+.overview-summary-grid .metric-card,
+.overview-kpi-grid .metric-card{
+  min-height:100px!important;
+}
+
+/* MRN & Issues: remove the heavy dark-block feeling and match Dashboard cards */
+.mrn-hero-strip,
+.mrn-weekly-strip{
+  background:#fff!important;
+  color:#0f172a!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:12px!important;
+  box-shadow:0 1px 2px rgba(15,23,42,.04)!important;
+  padding:14px!important;
+}
+.mrn-hero-strip .eyebrow,
+.mrn-weekly-strip .eyebrow{color:#2563eb!important}
+.mrn-hero-strip h3,
+.mrn-weekly-strip h3{color:#0f172a!important}
+.mrn-hero-strip small,
+.mrn-weekly-strip small,
+.mrn-period-context span,
+.mrn-period-context small{color:#64748b!important}
+.mrn-period-context{
+  background:#f8fafc!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:10px!important;
+}
+.mrn-primary-metrics{
+  gap:12px!important;
+  margin-top:14px!important;
+}
+.mrn-summary-card .metric-card{
+  min-height:108px!important;
+  border-left-width:3px!important;
+}
+.mrn-summary-card.total .metric-card{border-left-color:#2563eb!important}
+.mrn-summary-card.issued .metric-card{border-left-color:#10b981!important}
+.mrn-summary-card.pending .metric-card{border-left-color:#f59e0b!important}
+.mrn-analysis-grid{gap:14px!important}
+.mrn-analysis-panel,
+.mrn-wp-panel,
+.sr-issues-feature{
+  background:#fff!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:12px!important;
+  box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.03)!important;
+  padding:15px!important;
+}
+.mrn-analysis-panel .prf-status-head,
+.mrn-wp-panel .prf-status-head,
+.sr-issues-feature .prf-status-head{
+  margin-bottom:12px!important;
+}
+.mrn-analysis-panel .prf-status-card,
+.mrn-wp-panel .prf-status-card{
+  background:#f8fafc!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:10px!important;
+  min-height:70px!important;
+  transition:border-color .15s ease,background .15s ease,transform .15s ease!important;
+}
+.mrn-analysis-panel .prf-status-card:hover,
+.mrn-wp-panel .prf-status-card:hover{
+  border-color:#bfdbfe!important;
+  background:#eff6ff!important;
+  transform:translateY(-1px)!important;
+}
+.mrn-section-divider{
+  margin:18px 0 12px!important;
+  padding:10px 12px!important;
+  border:1px solid #dbe3ee!important;
+  border-radius:10px!important;
+  background:#f8fafc!important;
+  color:#334155!important;
+}
+.mrn-active-filter-bar{
+  margin-top:14px!important;
+  border:1px solid #e2e8f0!important;
+  border-radius:10px!important;
+  background:#fff!important;
+  box-shadow:0 1px 2px rgba(15,23,42,.03)!important;
+}
+.mrn-active-filter-chips span{
+  border:1px solid #dbeafe!important;
+  background:#eff6ff!important;
+  color:#1d4ed8!important;
+}
+
+/* Stock & Ageing: stop the KPI row becoming an ultra-wide strip */
+.stock-ageing-metrics{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:12px!important;
+}
+.stock-ageing-metrics .metric-card{
+  min-height:105px!important;
+}
+.ageing-headline-comparison{
+  gap:14px!important;
+  margin-bottom:14px!important;
+}
+.ageing-headline-card{
+  border:1px solid #e2e8f0!important;
+  border-radius:12px!important;
+  background:#fff!important;
+  box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.03)!important;
+  padding:15px!important;
+}
+.ageing-headline-title strong{
+  font-size:20px!important;
+  color:#0f172a!important;
+}
+.ageing-headline-values{
+  background:#f8fafc!important;
+  border:1px solid #edf2f7!important;
+  border-radius:10px!important;
+}
+.ageing-movement-panel{
+  margin-top:14px!important;
+}
+.ageing-movement-table{
+  border:1px solid #e2e8f0!important;
+  border-radius:10px!important;
+  overflow:hidden!important;
+}
+.ageing-movement-row{
+  min-height:42px!important;
+  border-bottom:1px solid #edf2f7!important;
+}
+.ageing-movement-head{
+  background:#f8fafc!important;
+  color:#64748b!important;
+  font-size:10px!important;
+  text-transform:uppercase!important;
+  letter-spacing:.06em!important;
+}
+.ageing-takeaway{
+  border:1px solid #fed7aa!important;
+  border-radius:12px!important;
+  background:#fffaf5!important;
+  box-shadow:none!important;
+}
+
+/* PRF and PR pages: reduce visual noise in long tables */
+.prf-status-summary{
+  border-color:#e2e8f0!important;
+  border-radius:12px!important;
+  box-shadow:0 1px 2px rgba(15,23,42,.03)!important;
+}
+.prf-status-card{
+  border-radius:10px!important;
+}
+.prv2-host table tbody tr:nth-child(even),
+.opv2-host table tbody tr:nth-child(even){background:#fcfdff!important}
+.prv2-host table tbody tr:hover,
+.opv2-host table tbody tr:hover{background:#f8fafc!important}
+
+/* Wide desktop: keep readable density instead of shrinking everything */
+@media (min-width:1500px){
+  .stock-ageing-metrics{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+  .mrn-primary-metrics{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+
+@media (max-width:1100px){
+  .stock-ageing-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .mrn-analysis-grid{grid-template-columns:1fr!important}
+}
+
+@media (max-width:700px){
+  .stock-ageing-metrics{grid-template-columns:1fr!important}
+  .topbar{padding:9px 12px!important}
+}
