@@ -1398,11 +1398,11 @@ export default function App() {
     prpo: ['procurement', 'lld', 'notes', 'erpPrHeaders'],
     payments: ['pendingPayments'],
     mtr: ['material', 'notes'],
-    mrn: ['material', 'srIssues', 'notes'],
+    mrn: ['material', 'srIssues', 'transactions', 'notes'],
     vessel: ['procurement', 'material', 'transactions', 'srIssues', 'lld'],
     stock: ['stock', 'snapshots'],
     updates: ['sourceUpdates'],
-    warehouse: ['procurement', 'material', 'srIssues'],
+    warehouse: ['procurement', 'material', 'srIssues', 'transactions'],
     history: ['sourceUpdates', 'snapshots'],
   }
 
@@ -2364,6 +2364,52 @@ export default function App() {
     [allMrnRows],
   )
 
+  const srIssueCostIndex = useMemo(() => {
+    const exact = new Map()
+    const item = new Map()
+
+    const add = (map, key, qty, cost) => {
+      if (!key || !qty || !cost) return
+      const current = map.get(key) || { qty: 0, cost: 0, lines: 0 }
+      current.qty += qty
+      current.cost += cost
+      current.lines += 1
+      map.set(key, current)
+    }
+
+    data.transactions.forEach((tx) => {
+      const referenceType = lower(rawField(tx, ['Reference']) || tx.transaction_type)
+      const referenceNo = String(rawField(tx, ['Number']) || tx.sales_order || '').trim().toUpperCase()
+      const itemCode = String(tx.item_code || rawField(tx, ['Item number', 'Item Number', 'Product number'])).trim().toUpperCase()
+      const warehouse = String(rawField(tx, ['Warehouse']) || '').trim().toUpperCase()
+      const issueStatus = lower(rawField(tx, ['Issue']) || tx.status)
+
+      if (!referenceType.includes('sales order') || !referenceNo || !itemCode) return
+      if (warehouse && warehouse !== 'THWS01079') return
+      if (issueStatus && !issueStatus.includes('sold') && !issueStatus.includes('deducted')) return
+
+      const qty = Math.abs(Number(tx.quantity || rawNumber(tx, ['Quantity']) || 0))
+      const cost = Math.abs(Number(tx.cost || rawNumber(tx, ['Cost amount', 'Cost Amount']) || 0))
+      if (!(qty > 0) || !(cost > 0)) return
+
+      add(exact, referenceNo + '|' + itemCode, qty, cost)
+      add(item, itemCode, qty, cost)
+    })
+
+    const finalize = (map) => {
+      const out = new Map()
+      map.forEach((value, key) => {
+        out.set(key, {
+          ...value,
+          unitCost: value.qty > 0 ? value.cost / value.qty : 0,
+        })
+      })
+      return out
+    }
+
+    return { exact: finalize(exact), item: finalize(item) }
+  }, [data.transactions])
+
   const srIssuesEnriched = useMemo(() => data.srIssues.map((issue) => {
     const workshop = normalizedWorkshop(issue.workshop)
     const srNo = normalizedSr(issue.sr_no)
@@ -2409,14 +2455,53 @@ export default function App() {
       }
     }
 
+    const lineStatus = lower(issue.line_status)
+    const issueStage =
+      lineStatus.includes('invoiced') ? 'Invoiced' :
+      lineStatus.includes('delivered') ? 'Delivered' :
+      lineStatus.includes('open order') ? 'Open Order' :
+      lineStatus.includes('cancel') ? 'Cancelled' :
+      (issue.line_status || issue.issue_state || 'Other')
+
+    const salesOrder = String(issue.sales_order || '').trim().toUpperCase()
+    const itemCode = String(issue.item_code || '').trim().toUpperCase()
+    const originalUnitPrice = Math.abs(rawNumber(issue, ['Unit price', 'Unit Price']))
+    const originalNetAmount = Math.abs(rawNumber(issue, ['Net amount', 'Net Amount']))
+    const exactCost = srIssueCostIndex.exact.get(salesOrder + '|' + itemCode)
+    const itemCost = srIssueCostIndex.item.get(itemCode)
+
+    let costUnitPrice = originalUnitPrice
+    let costSource = originalUnitPrice > 0 ? 'SR issue file' : ''
+    let costMatch = originalUnitPrice > 0 ? 'SOURCE' : 'UNMATCHED'
+
+    if (!(costUnitPrice > 0) && exactCost?.unitCost > 0) {
+      costUnitPrice = exactCost.unitCost
+      costSource = 'Inventory · SO + Item'
+      costMatch = 'EXACT'
+    } else if (!(costUnitPrice > 0) && itemCost?.unitCost > 0) {
+      costUnitPrice = itemCost.unitCost
+      costSource = 'Inventory · Item fallback'
+      costMatch = 'ITEM'
+    }
+
+    const issueQty = Math.abs(Number(issue.quantity || 0))
+    const lineValue = originalNetAmount > 0
+      ? originalNetAmount
+      : (costUnitPrice > 0 && issueQty > 0 ? costUnitPrice * issueQty : 0)
+
     return {
       ...issue,
+      issue_stage: issueStage,
+      cost_unit_price: costUnitPrice || 0,
+      issue_value: lineValue || 0,
+      cost_source: costSource || 'Cost unavailable',
+      cost_match: costMatch,
       match_type: matchType,
       matched_mrn_source_id: matched?.sourceId || '',
       matched_mrn_no: matched?.mrnNo || '',
       matched_mrn_created: matched?.createdDate || '',
     }
-  }), [data.srIssues, mrnMatchRecords])
+  }), [data.srIssues, mrnMatchRecords, srIssueCostIndex])
 
   const srIssueWeekOptions = useMemo(() => {
     const currentWeek = weekStartWednesday(new Date().toISOString().slice(0, 10))
@@ -2432,12 +2517,24 @@ export default function App() {
   const srIssueSummary = useMemo(() => {
     const todayIsoLocal = new Date().toISOString().slice(0, 10)
     const monthStart = todayIsoLocal.slice(0, 7) + '-01'
+    const activeRows = srIssuesEnriched.filter((r) => r.issue_stage !== 'Cancelled')
+    const costKnown = activeRows.filter((r) => Number(r.cost_unit_price || 0) > 0)
 
     return {
       total: srIssuesEnriched.length,
-      completed: srIssuesEnriched.filter((r) => r.issue_state === 'Completed issue').length,
-      pendingInvoice: srIssuesEnriched.filter((r) => r.issue_state === 'Pending invoice').length,
-      cancelled: srIssuesEnriched.filter((r) => r.issue_state === 'Cancelled').length,
+      invoiced: srIssuesEnriched.filter((r) => r.issue_stage === 'Invoiced').length,
+      delivered: srIssuesEnriched.filter((r) => r.issue_stage === 'Delivered').length,
+      openOrder: srIssuesEnriched.filter((r) => r.issue_stage === 'Open Order').length,
+      completed: srIssuesEnriched.filter((r) => ['Invoiced', 'Delivered'].includes(r.issue_stage)).length,
+      pendingInvoice: srIssuesEnriched.filter((r) => r.issue_stage === 'Open Order').length,
+      cancelled: srIssuesEnriched.filter((r) => r.issue_stage === 'Cancelled').length,
+      issueValue: activeRows.reduce((sum, r) => sum + Number(r.issue_value || 0), 0),
+      pendingValue: srIssuesEnriched
+        .filter((r) => r.issue_stage === 'Open Order')
+        .reduce((sum, r) => sum + Number(r.issue_value || 0), 0),
+      costKnown: costKnown.length,
+      costMissing: Math.max(0, activeRows.length - costKnown.length),
+      costCoverage: activeRows.length ? (costKnown.length / activeRows.length) * 100 : 0,
       selectedWeek: srIssuesEnriched.filter((r) => {
         const d = parseFlexibleDate(r.requested_receipt_date)
         return d && weekStartWednesday(d) === srIssueWeekFilter
@@ -2459,9 +2556,11 @@ export default function App() {
       if (!issueDate || weekStartWednesday(issueDate) !== srIssueWeekFilter) return false
 
       if (srIssueFilter === 'ALL') return true
-      if (srIssueFilter === 'COMPLETED') return row.issue_state === 'Completed issue'
-      if (srIssueFilter === 'PENDING') return row.issue_state === 'Pending invoice'
-      if (srIssueFilter === 'CANCELLED') return row.issue_state === 'Cancelled'
+      if (srIssueFilter === 'COMPLETED') return ['Invoiced', 'Delivered'].includes(row.issue_stage)
+      if (srIssueFilter === 'INVOICED') return row.issue_stage === 'Invoiced'
+      if (srIssueFilter === 'DELIVERED') return row.issue_stage === 'Delivered'
+      if (srIssueFilter === 'PENDING') return row.issue_stage === 'Open Order'
+      if (srIssueFilter === 'CANCELLED') return row.issue_stage === 'Cancelled'
       return true
     }),
     [srIssuesEnriched, srIssueFilter, srIssueWeekFilter, query],
@@ -2892,18 +2991,21 @@ export default function App() {
   ]
 
   const srIssueColumns = [
-    { key: 'requested_receipt_date', label: 'Requested Receipt Date' },
+    { key: 'requested_receipt_date', label: 'Requested Date' },
     { key: 'sales_order', label: 'Sales Order', render: (v) => <span className="font-mono text-[11px] font-semibold text-slate-800">{v || '—'}</span> },
+    { key: 'sr_no', label: 'SR' },
     { key: 'item_code', label: 'Item', render: (v) => <span className="font-mono text-[11px] text-slate-700">{v || '—'}</span> },
     { key: 'item_description', label: 'Product Name' },
     { key: 'quantity', label: 'Qty' },
     { key: 'unit', label: 'Unit' },
+    { key: 'cost_unit_price', label: 'Cost / Unit Price', render: (v) => Number(v || 0) > 0 ? mvr(v) : '—' },
+    { key: 'issue_value', label: 'Line Value', render: (v) => Number(v || 0) > 0 ? mvr(v) : '—' },
+    { key: 'cost_source', label: 'Cost Source', render: (v) => <StatusPill value={v || 'Cost unavailable'} /> },
+    { key: 'issue_stage', label: 'Line Status', render: (v) => <StatusPill value={v} /> },
     { key: 'workshop', label: 'Workshop' },
-    { key: 'sr_no', label: 'SR' },
     { key: 'mrn_no', label: 'MRN in Delivery' },
     { key: 'service_order', label: 'Service Order' },
-    { key: 'issue_state', label: 'Issue Status', render: (v) => <StatusPill value={v} /> },
-    { key: 'match_type', label: 'MRN Match', render: (v, r) => {
+    { key: 'match_type', label: 'MRN Match', render: (v) => {
       const labels = {
         VERIFIED: 'Verified MRN',
         LIKELY: 'Likely MRN',
@@ -2913,7 +3015,6 @@ export default function App() {
       }
       return <StatusPill value={labels[v] || v} />
     } },
-    { key: 'matched_mrn_source_id', label: 'Matched ID', render: (v) => v || '—' },
     { key: 'delivery_name', label: 'Delivery Name' },
   ]
 
@@ -5615,9 +5716,12 @@ export default function App() {
                   <>
                     <div className="metric-grid sr-issue-metrics">
                       <MetricCard label="Issue Lines" value={fmt(srIssueSummary.total)} helper={fmt(srIssueSummary.salesOrders) + ' sales orders · ' + fmt(srIssueSummary.srs) + ' SRs'} active={srIssueFilter === 'ALL'} onClick={() => setSrIssueFilter('ALL')} />
-                      <div className="sr-kpi-accent sr-kpi-completed"><MetricCard label="Completed Issue" value={fmt(srIssueSummary.completed)} helper="Invoiced or delivered lines" active={srIssueFilter === 'COMPLETED'} onClick={() => setSrIssueFilter(srIssueFilter === 'COMPLETED' ? 'ALL' : 'COMPLETED')} /></div>
-                      <div className="sr-kpi-accent sr-kpi-pending"><MetricCard label="Pending Invoice" value={fmt(srIssueSummary.pendingInvoice)} helper="ERP line status: Open order" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} /></div>
-                      <div className="sr-kpi-accent sr-kpi-cancelled"><MetricCard label="Cancelled" value={fmt(srIssueSummary.cancelled)} helper="Cancelled sales-order lines" tone="bad" active={srIssueFilter === 'CANCELLED'} onClick={() => setSrIssueFilter(srIssueFilter === 'CANCELLED' ? 'ALL' : 'CANCELLED')} /></div>
+                      <div className="sr-kpi-accent sr-kpi-completed"><MetricCard label="Invoiced" value={fmt(srIssueSummary.invoiced)} helper="Completed ERP issue lines" active={srIssueFilter === 'INVOICED'} onClick={() => setSrIssueFilter(srIssueFilter === 'INVOICED' ? 'ALL' : 'INVOICED')} /></div>
+                      <div className="sr-kpi-accent sr-kpi-completed"><MetricCard label="Delivered" value={fmt(srIssueSummary.delivered)} helper="Delivered but not yet invoiced" active={srIssueFilter === 'DELIVERED'} onClick={() => setSrIssueFilter(srIssueFilter === 'DELIVERED' ? 'ALL' : 'DELIVERED')} /></div>
+                      <div className="sr-kpi-accent sr-kpi-pending"><MetricCard label="Open Order" value={fmt(srIssueSummary.openOrder)} helper="Pending issue / invoice follow-up" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} /></div>
+                      <MetricCard label="Issue Value" value={mvr(srIssueSummary.issueValue)} helper="SR line value with transaction cost fallback" />
+                      <MetricCard label="Pending Value" value={mvr(srIssueSummary.pendingValue)} helper="Value of Open Order lines" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} />
+                      <MetricCard label="Cost Coverage" value={fmt(srIssueSummary.costCoverage, 1) + '%'} helper={fmt(srIssueSummary.costKnown) + ' lines priced · ' + fmt(srIssueSummary.costMissing) + ' missing'} />
                       <div className="metric-card sr-week-card !min-h-[108px] !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm">
                         <div className="sr-week-card-head">
                           <span>Selected Week</span>
@@ -5631,9 +5735,8 @@ export default function App() {
                           </select>
                         </div>
                         <strong>{fmt(srIssueSummary.selectedWeek)}</strong>
-                        <small>Issue lines in the selected Wednesday–Tuesday week</small>
+                        <small>Issue lines in selected Wednesday–Tuesday week</small>
                       </div>
-                      <div className="sr-kpi-accent sr-kpi-month"><MetricCard label="This Month" value={fmt(srIssueSummary.thisMonth)} helper="Issue lines dated in the current calendar month" /></div>
                     </div>
 
                     <div className="sr-issue-context-bar">
