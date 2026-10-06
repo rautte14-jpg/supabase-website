@@ -7,10 +7,12 @@ import PurchaseRequestsRename from './PurchaseRequestsRename.jsx'
 import MtrNavPlacement from './MtrNavPlacement.jsx'
 import SidebarCollapse from './SidebarCollapse.jsx'
 import RouteEnhancers from './RouteEnhancers.jsx'
+import EddockExperience from './EddockExperience.jsx'
 import './styles.css'
 import './tailwind.css'
 import './eddock-ui.css'
 import './eddock-ui-v2.css'
+import './eddock-ui-v3.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -22,5 +24,6 @@ createRoot(document.getElementById('root')).render(
     <MtrNavPlacement />
     <SidebarCollapse />
     <RouteEnhancers />
+    <EddockExperience />
   </StrictMode>,
 )
