@@ -2529,13 +2529,13 @@ export default function App() {
       total: periodRows.length,
       invoiced: periodRows.filter((r) => r.issue_stage === 'Invoiced').length,
       delivered: periodRows.filter((r) => r.issue_stage === 'Delivered').length,
-      openOrder: periodRows.filter((r) => r.issue_stage === 'Open Order').length,
-      completed: periodRows.filter((r) => ['Invoiced', 'Delivered'].includes(r.issue_stage)).length,
-      pendingInvoice: periodRows.filter((r) => r.issue_stage === 'Open Order').length,
+      openOrder: periodRows.filter((r) => ['Open Order', 'Delivered'].includes(r.issue_stage)).length,
+      completed: periodRows.filter((r) => r.issue_stage === 'Invoiced').length,
+      pendingInvoice: periodRows.filter((r) => ['Open Order', 'Delivered'].includes(r.issue_stage)).length,
       cancelled: periodRows.filter((r) => r.issue_stage === 'Cancelled').length,
       issueValue: activeRows.reduce((sum, r) => sum + Number(r.issue_value || 0), 0),
       pendingValue: periodRows
-        .filter((r) => r.issue_stage === 'Open Order')
+        .filter((r) => ['Open Order', 'Delivered'].includes(r.issue_stage))
         .reduce((sum, r) => sum + Number(r.issue_value || 0), 0),
       costKnown: costKnown.length,
       costMissing: Math.max(0, activeRows.length - costKnown.length),
@@ -2556,10 +2556,10 @@ export default function App() {
       }
 
       if (srIssueFilter === 'ALL') return true
-      if (srIssueFilter === 'COMPLETED') return ['Invoiced', 'Delivered'].includes(row.issue_stage)
+      if (srIssueFilter === 'COMPLETED') return row.issue_stage === 'Invoiced'
       if (srIssueFilter === 'INVOICED') return row.issue_stage === 'Invoiced'
       if (srIssueFilter === 'DELIVERED') return row.issue_stage === 'Delivered'
-      if (srIssueFilter === 'PENDING') return row.issue_stage === 'Open Order'
+      if (srIssueFilter === 'PENDING') return ['Open Order', 'Delivered'].includes(row.issue_stage)
       if (srIssueFilter === 'CANCELLED') return row.issue_stage === 'Cancelled'
       return true
     }),
@@ -3497,10 +3497,10 @@ export default function App() {
       total: rows.length,
       invoiced: rows.filter((row) => row.issue_stage === 'Invoiced').length,
       delivered: rows.filter((row) => row.issue_stage === 'Delivered').length,
-      openOrder: rows.filter((row) => row.issue_stage === 'Open Order').length,
+      openOrder: rows.filter((row) => ['Open Order', 'Delivered'].includes(row.issue_stage)).length,
       value: active.reduce((sum, row) => sum + Number(row.issue_value || 0), 0),
       pendingValue: rows
-        .filter((row) => row.issue_stage === 'Open Order')
+        .filter((row) => ['Open Order', 'Delivered'].includes(row.issue_stage))
         .reduce((sum, row) => sum + Number(row.issue_value || 0), 0),
       costCoverage: active.length ? (priced.length / active.length) * 100 : 0,
     }
@@ -3665,11 +3665,11 @@ export default function App() {
       total: rows.length,
       invoiced: rows.filter((row) => row.issue_stage === 'Invoiced').length,
       delivered: rows.filter((row) => row.issue_stage === 'Delivered').length,
-      openOrder: rows.filter((row) => row.issue_stage === 'Open Order').length,
+      openOrder: rows.filter((row) => ['Open Order', 'Delivered'].includes(row.issue_stage)).length,
       cancelled: rows.filter((row) => row.issue_stage === 'Cancelled').length,
       issueValue: active.reduce((sum, row) => sum + Number(row.issue_value || 0), 0),
       pendingValue: rows
-        .filter((row) => row.issue_stage === 'Open Order')
+        .filter((row) => ['Open Order', 'Delivered'].includes(row.issue_stage))
         .reduce((sum, row) => sum + Number(row.issue_value || 0), 0),
       costCoverage: active.length ? (priced.length / active.length) * 100 : 0,
       salesOrders: new Set(rows.map((row) => row.sales_order).filter(Boolean)).size,
@@ -3918,10 +3918,9 @@ export default function App() {
             </button>
             <div><span>Invoiced</span><b>{fmt(warehouseIssueWeek.invoiced)}</b></div>
             <div><span>Delivered</span><b>{fmt(warehouseIssueWeek.delivered)}</b></div>
-            <div><span>Open Order</span><b>{fmt(warehouseIssueWeek.openOrder)}</b></div>
+            <div><span>Open Order</span><b>{fmt(warehouseIssueWeek.openOrder)}</b><small>Includes Delivered</small></div>
             <div><span>Issue value</span><b>{mvr(warehouseIssueWeek.issueValue)}</b></div>
             <div><span>Pending value</span><b>{mvr(warehouseIssueWeek.pendingValue)}</b></div>
-            <div><span>Cost coverage</span><b>{fmt(warehouseIssueWeek.costCoverage, 1)}%</b></div>
             <div><span>Sales orders</span><b>{fmt(warehouseIssueWeek.salesOrders)}</b></div>
             <div><span>Service requests</span><b>{fmt(warehouseIssueWeek.srs)}</b></div>
           </div>
@@ -5741,10 +5740,9 @@ export default function App() {
                       <MetricCard label="Issue Lines" value={fmt(srIssueSummary.total)} helper={fmt(srIssueSummary.salesOrders) + ' sales orders · ' + fmt(srIssueSummary.srs) + ' SRs'} active={srIssueFilter === 'ALL'} onClick={() => setSrIssueFilter('ALL')} />
                       <div className="sr-kpi-accent sr-kpi-completed"><MetricCard label="Invoiced" value={fmt(srIssueSummary.invoiced)} helper="Completed ERP issue lines" active={srIssueFilter === 'INVOICED'} onClick={() => setSrIssueFilter(srIssueFilter === 'INVOICED' ? 'ALL' : 'INVOICED')} /></div>
                       <div className="sr-kpi-accent sr-kpi-completed"><MetricCard label="Delivered" value={fmt(srIssueSummary.delivered)} helper="Delivered but not yet invoiced" active={srIssueFilter === 'DELIVERED'} onClick={() => setSrIssueFilter(srIssueFilter === 'DELIVERED' ? 'ALL' : 'DELIVERED')} /></div>
-                      <div className="sr-kpi-accent sr-kpi-pending"><MetricCard label="Open Order" value={fmt(srIssueSummary.openOrder)} helper="Pending issue / invoice follow-up" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} /></div>
+                      <div className="sr-kpi-accent sr-kpi-pending"><MetricCard label="Open Order" value={fmt(srIssueSummary.openOrder)} helper="Open Order + Delivered lines pending invoice" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} /></div>
                       <MetricCard label="Issue Value" value={mvr(srIssueSummary.issueValue)} helper="SR line value with transaction cost fallback" />
                       <MetricCard label="Pending Value" value={mvr(srIssueSummary.pendingValue)} helper="Value of Open Order lines" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} />
-                      <MetricCard label="Cost Coverage" value={fmt(srIssueSummary.costCoverage, 1) + '%'} helper={fmt(srIssueSummary.costKnown) + ' lines priced · ' + fmt(srIssueSummary.costMissing) + ' missing'} />
                       <div className="metric-card sr-week-card !min-h-[108px] !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm">
                         <div className="sr-week-card-head">
                           <span>Selected Period</span>
