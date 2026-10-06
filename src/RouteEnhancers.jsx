@@ -1,10 +1,6 @@
 import { Component, lazy, Suspense, useEffect, useState } from 'react'
 
 const PrDetailOverlayComplete = lazy(() => import('./PrDetailOverlayComplete.jsx'))
-const PrTrackerCompleteV2 = lazy(() => import('./PrTrackerCompleteV2.jsx'))
-const PrOpenPositionV2 = lazy(() => import('./PrOpenPositionV2.jsx'))
-const PrPoSectionTabs = lazy(() => import('./PrPoSectionTabs.jsx'))
-const PrMonthlyChart = lazy(() => import('./PrMonthlyChart.jsx'))
 const PrfWorkspace = lazy(() => import('./PrfWorkspace.jsx'))
 const MtrWorkspace = lazy(() => import('./MtrWorkspace.jsx'))
 const MtrFastUpload = lazy(() => import('./MtrFastUpload.jsx'))
@@ -117,13 +113,7 @@ export default function RouteEnhancers() {
   return (
     <EnhancerBoundary routeKey={desiredRoute || route}>
       <Suspense fallback={null}>
-        {purchaseRequests && <>
-          <PrDetailOverlayComplete />
-          <PrTrackerCompleteV2 />
-          <PrOpenPositionV2 />
-          <PrPoSectionTabs />
-          <PrMonthlyChart />
-        </>}
+        {purchaseRequests && <PrDetailOverlayComplete />}
         {prf && <PrfWorkspace />}
         {mtr && <MtrWorkspace />}
         {updates && <MtrFastUpload />}
