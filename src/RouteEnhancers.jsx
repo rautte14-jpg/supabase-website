@@ -6,6 +6,7 @@ const PrTrackerCompleteV2 = lazy(() => import('./PrTrackerCompleteV2.jsx'))
 const PrOpenPositionV2 = lazy(() => import('./PrOpenPositionV2.jsx'))
 const PrPoSectionTabs = lazy(() => import('./PrPoSectionTabs.jsx'))
 const PrMonthlyChart = lazy(() => import('./PrMonthlyChart.jsx'))
+const PendingPaymentsWorkspace = lazy(() => import('./PendingPaymentsWorkspace.jsx'))
 const PrfWorkspace = lazy(() => import('./PrfWorkspace.jsx'))
 const MtrWorkspace = lazy(() => import('./MtrWorkspace.jsx'))
 const MtrFastUpload = lazy(() => import('./MtrFastUpload.jsx'))
@@ -86,11 +87,9 @@ export default function RouteEnhancers() {
       const item = event.target.closest('.nav-item')
       if (!item) return
 
-      // Custom PR sections render through React portals into DOM nodes owned by
-      // App.jsx. If App changes the route in the same click before those portals
-      // unmount, React can later try to remove a child from a parent that has
-      // already been replaced (NotFoundError: removeChild). Force the enhancer
-      // tree to unmount while the current page DOM is still intact.
+      // All custom module workspaces render through portals into DOM owned by
+      // App.jsx. Unmount them synchronously before App swaps the page so React
+      // never tries to remove portal children from an already replaced parent.
       flushSync(() => {
         setMountedRoute('')
         setPrSecondaryReady(false)
@@ -122,6 +121,7 @@ export default function RouteEnhancers() {
 
   const route = mountedRoute
   const purchaseRequests = route === 'Purchase Requests' || route === 'PR & PO Tracker'
+  const payments = route === 'Pending Payments'
   const prf = route === 'PRF Tracker'
   const mtr = route === 'MTR Tracker'
   const updates = route === 'Update Centre'
@@ -147,6 +147,7 @@ export default function RouteEnhancers() {
             <PrMonthlyChart />
           </>}
         </>}
+        {payments && <PendingPaymentsWorkspace />}
         {prf && <PrfWorkspace />}
         {mtr && <MtrWorkspace />}
         {updates && <MtrFastUpload />}
