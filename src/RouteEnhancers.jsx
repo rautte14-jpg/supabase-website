@@ -131,7 +131,7 @@ export default function RouteEnhancers() {
     if (!purchaseRequests) return
     const id = window.setTimeout(() => {
       if (readRoute() === route) setPrSecondaryReady(true)
-    }, 450)
+    }, 250)
     return () => window.clearTimeout(id)
   }, [purchaseRequests, route])
 
