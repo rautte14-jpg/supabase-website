@@ -3917,7 +3917,6 @@ export default function App() {
               <small>Click to list issue items</small>
             </button>
             <div><span>Invoiced</span><b>{fmt(warehouseIssueWeek.invoiced)}</b></div>
-            <div><span>Delivered</span><b>{fmt(warehouseIssueWeek.delivered)}</b></div>
             <div><span>Open Order</span><b>{fmt(warehouseIssueWeek.openOrder)}</b><small>Includes Delivered</small></div>
             <div><span>Issue value</span><b>{mvr(warehouseIssueWeek.issueValue)}</b></div>
             <div><span>Pending value</span><b>{mvr(warehouseIssueWeek.pendingValue)}</b></div>
@@ -5739,7 +5738,6 @@ export default function App() {
                     <div className="metric-grid sr-issue-metrics">
                       <MetricCard label="Issue Lines" value={fmt(srIssueSummary.total)} helper={fmt(srIssueSummary.salesOrders) + ' sales orders · ' + fmt(srIssueSummary.srs) + ' SRs'} active={srIssueFilter === 'ALL'} onClick={() => setSrIssueFilter('ALL')} />
                       <div className="sr-kpi-accent sr-kpi-completed"><MetricCard label="Invoiced" value={fmt(srIssueSummary.invoiced)} helper="Completed ERP issue lines" active={srIssueFilter === 'INVOICED'} onClick={() => setSrIssueFilter(srIssueFilter === 'INVOICED' ? 'ALL' : 'INVOICED')} /></div>
-                      <div className="sr-kpi-accent sr-kpi-completed"><MetricCard label="Delivered" value={fmt(srIssueSummary.delivered)} helper="Delivered but not yet invoiced" active={srIssueFilter === 'DELIVERED'} onClick={() => setSrIssueFilter(srIssueFilter === 'DELIVERED' ? 'ALL' : 'DELIVERED')} /></div>
                       <div className="sr-kpi-accent sr-kpi-pending"><MetricCard label="Open Order" value={fmt(srIssueSummary.openOrder)} helper="Open Order + Delivered lines pending invoice" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} /></div>
                       <MetricCard label="Issue Value" value={mvr(srIssueSummary.issueValue)} helper="SR line value with transaction cost fallback" />
                       <MetricCard label="Pending Value" value={mvr(srIssueSummary.pendingValue)} helper="Value of Open Order lines" tone="warn" active={srIssueFilter === 'PENDING'} onClick={() => setSrIssueFilter(srIssueFilter === 'PENDING' ? 'ALL' : 'PENDING')} />
