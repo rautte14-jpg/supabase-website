@@ -6,7 +6,6 @@ const PrOpenPositionV2 = lazy(() => import('./PrOpenPositionV2.jsx'))
 const PrPoSectionTabs = lazy(() => import('./PrPoSectionTabs.jsx'))
 const PrMonthlyChart = lazy(() => import('./PrMonthlyChart.jsx'))
 const PrfWorkspace = lazy(() => import('./PrfWorkspace.jsx'))
-const PendingPaymentsWorkspace = lazy(() => import('./PendingPaymentsWorkspace.jsx'))
 const MtrWorkspace = lazy(() => import('./MtrWorkspace.jsx'))
 const MtrFastUpload = lazy(() => import('./MtrFastUpload.jsx'))
 
@@ -84,8 +83,6 @@ export default function RouteEnhancers() {
     const onNavClick = (event) => {
       const item = event.target.closest('.nav-item')
       if (!item) return
-      // Unmount the current enhancer before App swaps the page DOM. This avoids
-      // cleanup code from the previous module touching the next module's nodes.
       setMountedRoute('')
       window.clearTimeout(settleTimer)
       requestAnimationFrame(() => {
@@ -114,7 +111,6 @@ export default function RouteEnhancers() {
   const route = mountedRoute
   const purchaseRequests = route === 'Purchase Requests' || route === 'PR & PO Tracker'
   const prf = route === 'PRF Tracker'
-  const payments = route === 'Pending Payments'
   const mtr = route === 'MTR Tracker'
   const updates = route === 'Update Centre'
 
@@ -129,7 +125,6 @@ export default function RouteEnhancers() {
           <PrMonthlyChart />
         </>}
         {prf && <PrfWorkspace />}
-        {payments && <PendingPaymentsWorkspace />}
         {mtr && <MtrWorkspace />}
         {updates && <MtrFastUpload />}
       </Suspense>
