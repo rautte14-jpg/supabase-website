@@ -2515,36 +2515,34 @@ export default function App() {
   }, [])
 
   const srIssueSummary = useMemo(() => {
-    const todayIsoLocal = new Date().toISOString().slice(0, 10)
-    const monthStart = todayIsoLocal.slice(0, 7) + '-01'
-    const activeRows = srIssuesEnriched.filter((r) => r.issue_stage !== 'Cancelled')
+    const periodRows = srIssueWeekFilter === 'ALL'
+      ? srIssuesEnriched
+      : srIssuesEnriched.filter((r) => {
+          const d = parseFlexibleDate(r.requested_receipt_date)
+          return d && weekStartWednesday(d) === srIssueWeekFilter
+        })
+
+    const activeRows = periodRows.filter((r) => r.issue_stage !== 'Cancelled')
     const costKnown = activeRows.filter((r) => Number(r.cost_unit_price || 0) > 0)
 
     return {
-      total: srIssuesEnriched.length,
-      invoiced: srIssuesEnriched.filter((r) => r.issue_stage === 'Invoiced').length,
-      delivered: srIssuesEnriched.filter((r) => r.issue_stage === 'Delivered').length,
-      openOrder: srIssuesEnriched.filter((r) => r.issue_stage === 'Open Order').length,
-      completed: srIssuesEnriched.filter((r) => ['Invoiced', 'Delivered'].includes(r.issue_stage)).length,
-      pendingInvoice: srIssuesEnriched.filter((r) => r.issue_stage === 'Open Order').length,
-      cancelled: srIssuesEnriched.filter((r) => r.issue_stage === 'Cancelled').length,
+      total: periodRows.length,
+      invoiced: periodRows.filter((r) => r.issue_stage === 'Invoiced').length,
+      delivered: periodRows.filter((r) => r.issue_stage === 'Delivered').length,
+      openOrder: periodRows.filter((r) => r.issue_stage === 'Open Order').length,
+      completed: periodRows.filter((r) => ['Invoiced', 'Delivered'].includes(r.issue_stage)).length,
+      pendingInvoice: periodRows.filter((r) => r.issue_stage === 'Open Order').length,
+      cancelled: periodRows.filter((r) => r.issue_stage === 'Cancelled').length,
       issueValue: activeRows.reduce((sum, r) => sum + Number(r.issue_value || 0), 0),
-      pendingValue: srIssuesEnriched
+      pendingValue: periodRows
         .filter((r) => r.issue_stage === 'Open Order')
         .reduce((sum, r) => sum + Number(r.issue_value || 0), 0),
       costKnown: costKnown.length,
       costMissing: Math.max(0, activeRows.length - costKnown.length),
       costCoverage: activeRows.length ? (costKnown.length / activeRows.length) * 100 : 0,
-      selectedWeek: srIssuesEnriched.filter((r) => {
-        const d = parseFlexibleDate(r.requested_receipt_date)
-        return d && weekStartWednesday(d) === srIssueWeekFilter
-      }).length,
-      thisMonth: srIssuesEnriched.filter((r) => {
-        const d = parseFlexibleDate(r.requested_receipt_date)
-        return d && d >= monthStart && d <= todayIsoLocal
-      }).length,
-      salesOrders: new Set(srIssuesEnriched.map((r) => r.sales_order).filter(Boolean)).size,
-      srs: new Set(srIssuesEnriched.map((r) => normalizedSr(r.sr_no)).filter(Boolean)).size,
+      selectedWeek: periodRows.length,
+      salesOrders: new Set(periodRows.map((r) => r.sales_order).filter(Boolean)).size,
+      srs: new Set(periodRows.map((r) => normalizedSr(r.sr_no)).filter(Boolean)).size,
     }
   }, [srIssuesEnriched, srIssueWeekFilter])
 
@@ -2552,8 +2550,10 @@ export default function App() {
     () => srIssuesEnriched.filter((row) => {
       if (!matches(row)) return false
 
-      const issueDate = parseFlexibleDate(row.requested_receipt_date)
-      if (!issueDate || weekStartWednesday(issueDate) !== srIssueWeekFilter) return false
+      if (srIssueWeekFilter !== 'ALL') {
+        const issueDate = parseFlexibleDate(row.requested_receipt_date)
+        if (!issueDate || weekStartWednesday(issueDate) !== srIssueWeekFilter) return false
+      }
 
       if (srIssueFilter === 'ALL') return true
       if (srIssueFilter === 'COMPLETED') return ['Invoiced', 'Delivered'].includes(row.issue_stage)
@@ -5704,7 +5704,7 @@ export default function App() {
                     <span className="eyebrow">ACTUAL SR ISSUE ACTIVITY</span>
                     <h3>Actual SR Issue Activity</h3><p>Sales-order issue lines, invoice status and weekly movement</p>
                   </div>
-                  <span>{data.srIssues.length ? fmt(data.srIssues.length) + ' issue lines loaded' : 'No SR issue file loaded'}</span>
+                  <span>{data.srIssues.length ? fmt(srIssueSummary.total) + (srIssueWeekFilter === 'ALL' ? ' issue lines · all weeks' : ' issue lines · selected week') : 'No SR issue file loaded'}</span>
                 </div>
 
                 {!data.srIssues.length ? (
@@ -5724,8 +5724,9 @@ export default function App() {
                       <MetricCard label="Cost Coverage" value={fmt(srIssueSummary.costCoverage, 1) + '%'} helper={fmt(srIssueSummary.costKnown) + ' lines priced · ' + fmt(srIssueSummary.costMissing) + ' missing'} />
                       <div className="metric-card sr-week-card !min-h-[108px] !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm">
                         <div className="sr-week-card-head">
-                          <span>Selected Week</span>
+                          <span>Selected Period</span>
                           <select value={srIssueWeekFilter} onChange={(e) => setSrIssueWeekFilter(e.target.value)}>
+                            <option value="ALL">All weeks</option>
                             {srIssueWeekOptions.map((week, index) => (
                               <option key={week.weekStart} value={week.weekStart}>
                                 {index === 0 ? 'This week · ' : index === 1 ? 'Previous week · ' : ''}
@@ -5735,12 +5736,12 @@ export default function App() {
                           </select>
                         </div>
                         <strong>{fmt(srIssueSummary.selectedWeek)}</strong>
-                        <small>Issue lines in selected Wednesday–Tuesday week</small>
+                        <small>{srIssueWeekFilter === 'ALL' ? 'Issue lines across all available weeks' : 'Issue lines in selected Wednesday–Tuesday week'}</small>
                       </div>
                     </div>
 
                     <div className="sr-issue-context-bar">
-                      <div><span>Selected period</span><b>{formatShortDate(srIssueWeekFilter)} – {formatShortDate(addDaysIso(srIssueWeekFilter, 6))}</b></div>
+                      <div><span>Selected period</span><b>{srIssueWeekFilter === 'ALL' ? 'All weeks' : formatShortDate(srIssueWeekFilter) + ' – ' + formatShortDate(addDaysIso(srIssueWeekFilter, 6))}</b></div>
                       <div><span>Issue lines</span><b>{fmt(srIssueRows.length)}</b></div>
                       <div><span>SRs</span><b>{fmt(new Set(srIssueRows.map((r) => normalizedSr(r.sr_no)).filter(Boolean)).size)}</b></div>
                       <div><span>Sales orders</span><b>{fmt(new Set(srIssueRows.map((r) => r.sales_order).filter(Boolean)).size)}</b></div>
@@ -5749,8 +5750,8 @@ export default function App() {
 
                     <div className="sr-selected-week-heading">
                       <div>
-                        <span className="eyebrow">ITEMS FROM SELECTED WEEK</span>
-                        <h4>{formatShortDate(srIssueWeekFilter)} – {formatShortDate(addDaysIso(srIssueWeekFilter, 6))}</h4>
+                        <span className="eyebrow">{srIssueWeekFilter === 'ALL' ? 'ITEMS FROM ALL WEEKS' : 'ITEMS FROM SELECTED WEEK'}</span>
+                        <h4>{srIssueWeekFilter === 'ALL' ? 'All available SR issue records' : formatShortDate(srIssueWeekFilter) + ' – ' + formatShortDate(addDaysIso(srIssueWeekFilter, 6))}</h4>
                       </div>
                       <strong>{fmt(srIssueRows.length)} issue lines</strong>
                     </div>
