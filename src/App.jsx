@@ -3491,7 +3491,19 @@ export default function App() {
       const date = parseFlexibleDate(row.requested_receipt_date)
       return date && date >= warehouseMonthStart && date <= todayIso
     })
-    return { total: rows.length }
+    const active = rows.filter((row) => row.issue_stage !== 'Cancelled')
+    const priced = active.filter((row) => Number(row.cost_unit_price || 0) > 0)
+    return {
+      total: rows.length,
+      invoiced: rows.filter((row) => row.issue_stage === 'Invoiced').length,
+      delivered: rows.filter((row) => row.issue_stage === 'Delivered').length,
+      openOrder: rows.filter((row) => row.issue_stage === 'Open Order').length,
+      value: active.reduce((sum, row) => sum + Number(row.issue_value || 0), 0),
+      pendingValue: rows
+        .filter((row) => row.issue_stage === 'Open Order')
+        .reduce((sum, row) => sum + Number(row.issue_value || 0), 0),
+      costCoverage: active.length ? (priced.length / active.length) * 100 : 0,
+    }
   }, [srIssuesEnriched, warehouseMonthStart, todayIso])
 
   const warehouseReceiptPrState = useMemo(() => {
@@ -3646,12 +3658,20 @@ export default function App() {
       const date = parseFlexibleDate(row.requested_receipt_date)
       return date && weekStartWednesday(date) === weekStart
     })
+    const active = rows.filter((row) => row.issue_stage !== 'Cancelled')
+    const priced = active.filter((row) => Number(row.cost_unit_price || 0) > 0)
     return {
       rows,
       total: rows.length,
-      completed: rows.filter((row) => row.issue_state === 'Completed issue').length,
-      pendingInvoice: rows.filter((row) => row.issue_state === 'Pending invoice').length,
-      cancelled: rows.filter((row) => row.issue_state === 'Cancelled').length,
+      invoiced: rows.filter((row) => row.issue_stage === 'Invoiced').length,
+      delivered: rows.filter((row) => row.issue_stage === 'Delivered').length,
+      openOrder: rows.filter((row) => row.issue_stage === 'Open Order').length,
+      cancelled: rows.filter((row) => row.issue_stage === 'Cancelled').length,
+      issueValue: active.reduce((sum, row) => sum + Number(row.issue_value || 0), 0),
+      pendingValue: rows
+        .filter((row) => row.issue_stage === 'Open Order')
+        .reduce((sum, row) => sum + Number(row.issue_value || 0), 0),
+      costCoverage: active.length ? (priced.length / active.length) * 100 : 0,
       salesOrders: new Set(rows.map((row) => row.sales_order).filter(Boolean)).size,
       srs: new Set(rows.map((row) => normalizedSr(row.sr_no)).filter(Boolean)).size,
     }
@@ -3691,7 +3711,7 @@ export default function App() {
             <MetricCard label="Received Value This Month" value={mvr(warehouseReceiptMonth.value)} helper="Value of items received this month" />
             <MetricCard label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
             <MetricCard label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
-            <MetricCard label="SR Issues This Month" value={fmt(warehouseIssueMonth.total)} helper="SR issue records this month" />
+            <MetricCard label="SR Issues This Month" value={fmt(warehouseIssueMonth.total)} helper={mvr(warehouseIssueMonth.value) + ' issue value · ' + fmt(warehouseIssueMonth.openOrder) + ' open'} />
           </div>
         </>
       ),
@@ -3892,13 +3912,16 @@ export default function App() {
               className={warehouseIssueDetailOpen ? 'warehouse-issue-metric active' : 'warehouse-issue-metric'}
               onClick={() => setWarehouseIssueDetailOpen((current) => !current)}
             >
-              <span>Issue records</span>
+              <span>Issue lines</span>
               <b>{fmt(warehouseIssueWeek.total)}</b>
-              <small>Click to list issued items</small>
+              <small>Click to list issue items</small>
             </button>
-            <div><span>Completed issue</span><b>{fmt(warehouseIssueWeek.completed)}</b></div>
-            <div><span>Pending invoice</span><b>{fmt(warehouseIssueWeek.pendingInvoice)}</b></div>
-            <div><span>Cancelled</span><b>{fmt(warehouseIssueWeek.cancelled)}</b></div>
+            <div><span>Invoiced</span><b>{fmt(warehouseIssueWeek.invoiced)}</b></div>
+            <div><span>Delivered</span><b>{fmt(warehouseIssueWeek.delivered)}</b></div>
+            <div><span>Open Order</span><b>{fmt(warehouseIssueWeek.openOrder)}</b></div>
+            <div><span>Issue value</span><b>{mvr(warehouseIssueWeek.issueValue)}</b></div>
+            <div><span>Pending value</span><b>{mvr(warehouseIssueWeek.pendingValue)}</b></div>
+            <div><span>Cost coverage</span><b>{fmt(warehouseIssueWeek.costCoverage, 1)}%</b></div>
             <div><span>Sales orders</span><b>{fmt(warehouseIssueWeek.salesOrders)}</b></div>
             <div><span>Service requests</span><b>{fmt(warehouseIssueWeek.srs)}</b></div>
           </div>
@@ -3923,9 +3946,9 @@ export default function App() {
                   <span>Item</span>
                   <span>Product Name</span>
                   <span>Qty</span>
-                  <span>Workshop</span>
+                  <span>Unit Cost</span>
+                  <span>Line Value</span>
                   <span>SR</span>
-                  <span>MRN</span>
                   <span>Status</span>
                 </div>
                 {warehouseIssueWeek.rows.slice(0, 120).map((row, index) => (
@@ -3935,10 +3958,10 @@ export default function App() {
                     <span>{row.item_code || '—'}</span>
                     <span title={row.item_description || ''}>{row.item_description || '—'}</span>
                     <span>{fmt(row.quantity, 2)}</span>
-                    <span>{row.workshop || '—'}</span>
+                    <span>{Number(row.cost_unit_price || 0) > 0 ? mvr(row.cost_unit_price) : '—'}</span>
+                    <span>{Number(row.issue_value || 0) > 0 ? mvr(row.issue_value) : '—'}</span>
                     <span>{row.sr_no || '—'}</span>
-                    <span>{row.mrn_no || row.matched_mrn_no || '—'}</span>
-                    <em>{row.issue_state || '—'}</em>
+                    <em>{row.issue_stage || row.issue_state || '—'}</em>
                   </div>
                 ))}
                 {!warehouseIssueWeek.rows.length && (
