@@ -10,6 +10,7 @@ import RouteEnhancers from './RouteEnhancers.jsx'
 import './styles.css'
 import './tailwind.css'
 import './eddock-ui.css'
+import './eddock-ui-v2.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
