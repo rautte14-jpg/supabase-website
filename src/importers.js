@@ -62,7 +62,9 @@ const HEADER_HINTS = new Set([
   'onhandsrd', 'deliverystatuserp', 'workshopname', 'wptype',
   'wpnumber', 'boqnumber', 'assetservice', 'svojournalnumber',
   'submittedby', 'issuedstatus', 'modifiedby', 'itemtype',
-  'salesorder', 'deliveryname', 'linestatus', 'serviceorder', 'projectid'
+  'salesorder', 'deliveryname', 'linestatus', 'serviceorder', 'projectid',
+  'productnumber', 'physicaldate', 'financialdate', 'reference', 'number',
+  'receipt', 'issue', 'costamount', 'site', 'warehouse'
 ])
 
 export function normalizeSheetRows(matrix) {
@@ -132,6 +134,16 @@ export function detectSource(rows, fileName = '', sheetName = '') {
     has('Line status') &&
     has('Service order')
   ) return 'SR_ISSUES'
+
+  if (
+    has('Product number') &&
+    has('Item number') &&
+    has('Physical date') &&
+    has('Reference') &&
+    has('Number') &&
+    has('Quantity') &&
+    has('Cost amount')
+  ) return 'TRANSACTIONS'
 
   if (
     context.includes('pendingpayment') ||
@@ -395,23 +407,37 @@ export function mapRows(source, rows) {
   }
 
   if (source === 'TRANSACTIONS') {
-    return rows.map((r) => ({
-      physical_date: date(r, ['Physical Date', 'Date', 'Transaction Date']),
-      transaction_type: text(r, ['Type', 'Transaction Type', 'Receipt/Issue']),
-      item_code: text(r, ['Item', 'Item Code', 'Item Number', 'Item ID']),
-      item_description: text(r, ['Description', 'Item Description', 'Product Name']),
-      quantity: number(r, ['Quantity', 'Qty']),
-      unit: text(r, ['Unit', 'UOM']),
-      cost: number(r, ['Cost', 'Cost Amount', 'Value']),
-      po_no: text(r, ['PO', 'PO No', 'Purchase Order']),
-      sales_order: text(r, ['Sales Order', 'SO', 'SO No']),
-      journal_no: text(r, ['Journal', 'Journal No', 'Journal Number']),
-      delivery_name: text(r, ['Delivery Name', 'Delivery']),
-      vessel: text(r, ['Vessel', 'Asset']),
-      sr_wo: text(r, ['SR/WO', 'SR', 'WO']),
-      status: text(r, ['Status']),
-      raw_source: rawSource(r),
-    })).filter((r) => r.item_code || r.po_no || r.sales_order || r.journal_no)
+    return rows.map((r) => {
+      const referenceType = text(r, ['Reference', 'Type', 'Transaction Type', 'Receipt/Issue'])
+      const referenceNo = text(r, ['Number', 'Reference Number'])
+      const referenceLower = referenceType.toLowerCase()
+      const receiptStatus = text(r, ['Receipt', 'Receipt Status'])
+      const issueStatus = text(r, ['Issue', 'Issue Status'])
+
+      return {
+        physical_date: date(r, ['Physical date', 'Physical Date', 'Date', 'Transaction Date']),
+        transaction_type: referenceType,
+        item_code: text(r, ['Item number', 'Item Number', 'Product number', 'Product Number', 'Item', 'Item Code', 'Item ID']),
+        item_description: text(r, ['Description', 'Item Description', 'Product Name']),
+        quantity: number(r, ['Quantity', 'Qty']),
+        unit: text(r, ['Unit', 'UOM']),
+        cost: number(r, ['Cost amount', 'Cost Amount', 'Cost', 'Value']),
+        po_no: referenceLower.includes('purchase order')
+          ? referenceNo
+          : text(r, ['PO', 'PO No', 'Purchase Order']),
+        sales_order: referenceLower.includes('sales order')
+          ? referenceNo
+          : text(r, ['Sales Order', 'SO', 'SO No']),
+        journal_no: referenceLower.includes('journal')
+          ? referenceNo
+          : text(r, ['Journal', 'Journal No', 'Journal Number']),
+        delivery_name: text(r, ['Delivery Name', 'Delivery']),
+        vessel: text(r, ['Vessel', 'Asset']),
+        sr_wo: text(r, ['SR/WO', 'SR', 'WO']),
+        status: issueStatus || receiptStatus || text(r, ['Status']),
+        raw_source: rawSource(r),
+      }
+    }).filter((r) => r.item_code || r.po_no || r.sales_order || r.journal_no)
   }
 
   if (source === 'STOCK') {
