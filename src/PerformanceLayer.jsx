@@ -8,11 +8,11 @@ const ROUTE_TABLES = {
   'PR & PO Tracker': ['procurement_records', 'lld_updates', 'case_notes', 'erp_pr_headers'],
   'Pending Payments': ['pending_payment_records'],
   'MTR Tracker': ['material_records', 'case_notes'],
-  'MRN & Issues': ['material_records', 'sr_issue_records', 'case_notes'],
+  'MRN & Issues': ['material_records', 'sr_issue_records', 'inventory_transactions', 'case_notes'],
   'Vessel / SR View': ['procurement_records', 'material_records', 'inventory_transactions', 'sr_issue_records', 'lld_updates'],
   'Stock & Ageing': ['stock_items', 'weekly_snapshots'],
   'Update Centre': ['source_updates'],
-  'Warehouse Presentation': ['procurement_records', 'material_records', 'sr_issue_records'],
+  'Warehouse Presentation': ['procurement_records', 'material_records', 'sr_issue_records', 'inventory_transactions'],
   History: ['source_updates', 'weekly_snapshots'],
 }
 
