@@ -37,6 +37,7 @@ class EnhancerBoundary extends Component {
 export default function RouteEnhancers() {
   const [desiredRoute, setDesiredRoute] = useState('')
   const [mountedRoute, setMountedRoute] = useState('')
+  const [prSecondaryReady, setPrSecondaryReady] = useState(false)
 
   useEffect(() => {
     let disposed = false
@@ -84,6 +85,7 @@ export default function RouteEnhancers() {
       const item = event.target.closest('.nav-item')
       if (!item) return
       setMountedRoute('')
+      setPrSecondaryReady(false)
       window.clearTimeout(settleTimer)
       requestAnimationFrame(() => {
         attachObserver()
@@ -114,15 +116,26 @@ export default function RouteEnhancers() {
   const mtr = route === 'MTR Tracker'
   const updates = route === 'Update Centre'
 
+  useEffect(() => {
+    setPrSecondaryReady(false)
+    if (!purchaseRequests) return
+    const id = window.setTimeout(() => {
+      if (readRoute() === route) setPrSecondaryReady(true)
+    }, 1400)
+    return () => window.clearTimeout(id)
+  }, [purchaseRequests, route])
+
   return (
     <EnhancerBoundary routeKey={desiredRoute || route}>
       <Suspense fallback={null}>
         {purchaseRequests && <>
           <PrDetailOverlayComplete />
           <PrTrackerCompleteV2 />
-          <PrOpenPositionV2 />
-          <PrPoSectionTabs />
-          <PrMonthlyChart />
+          {prSecondaryReady && <>
+            <PrOpenPositionV2 />
+            <PrPoSectionTabs />
+            <PrMonthlyChart />
+          </>}
         </>}
         {prf && <PrfWorkspace />}
         {mtr && <MtrWorkspace />}
