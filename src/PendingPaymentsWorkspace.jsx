@@ -55,13 +55,27 @@ export default function PendingPaymentsWorkspace(){
   useEffect(()=>{
     if(!host) return
     let alive=true
+    let refreshTimer=null
     async function load(){
+      if(!alive) return
       setLoading(true)
       const {data,error}=await supabase.from('pending_payment_records').select('po_no,po_date,supplier,status,priority,po_value').order('po_date',{ascending:false})
       if(alive){ if(!error) setRows(data||[]); setLoading(false) }
     }
-    load(); const id=setInterval(load,60000)
-    return()=>{alive=false;clearInterval(id)}
+    const scheduleLoad=()=>{
+      window.clearTimeout(refreshTimer)
+      refreshTimer=window.setTimeout(load,250)
+    }
+    load()
+    const channel=supabase
+      .channel('pending-payments-workspace-live')
+      .on('postgres_changes',{event:'*',schema:'public',table:'pending_payment_records'},scheduleLoad)
+      .subscribe()
+    return()=>{
+      alive=false
+      window.clearTimeout(refreshTimer)
+      supabase.removeChannel(channel)
+    }
   },[host])
 
   const model=useMemo(()=>{
