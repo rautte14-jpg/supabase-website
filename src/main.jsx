@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
+import AppCrashBoundary from './AppCrashBoundary.jsx'
+import PerformanceLayer from './PerformanceLayer.jsx'
 import PurchaseRequestsRename from './PurchaseRequestsRename.jsx'
 import MtrNavPlacement from './MtrNavPlacement.jsx'
 import SidebarCollapse from './SidebarCollapse.jsx'
@@ -10,7 +12,10 @@ import './tailwind.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <AppCrashBoundary>
+      <App />
+    </AppCrashBoundary>
+    <PerformanceLayer />
     <PurchaseRequestsRename />
     <MtrNavPlacement />
     <SidebarCollapse />
