@@ -9,6 +9,7 @@ import SidebarCollapse from './SidebarCollapse.jsx'
 import RouteEnhancers from './RouteEnhancers.jsx'
 import './styles.css'
 import './tailwind.css'
+import './eddock-ui.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
