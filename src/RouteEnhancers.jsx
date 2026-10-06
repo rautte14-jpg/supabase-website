@@ -1,4 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useState } from 'react'
+import { flushSync } from 'react-dom'
 
 const PrDetailOverlayComplete = lazy(() => import('./PrDetailOverlayComplete.jsx'))
 const PrTrackerCompleteV2 = lazy(() => import('./PrTrackerCompleteV2.jsx'))
@@ -84,8 +85,17 @@ export default function RouteEnhancers() {
     const onNavClick = (event) => {
       const item = event.target.closest('.nav-item')
       if (!item) return
-      setMountedRoute('')
-      setPrSecondaryReady(false)
+
+      // Custom PR sections render through React portals into DOM nodes owned by
+      // App.jsx. If App changes the route in the same click before those portals
+      // unmount, React can later try to remove a child from a parent that has
+      // already been replaced (NotFoundError: removeChild). Force the enhancer
+      // tree to unmount while the current page DOM is still intact.
+      flushSync(() => {
+        setMountedRoute('')
+        setPrSecondaryReady(false)
+      })
+
       window.clearTimeout(settleTimer)
       requestAnimationFrame(() => {
         attachObserver()
