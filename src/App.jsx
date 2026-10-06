@@ -1441,11 +1441,11 @@ export default function App() {
         .order('on_hand', { ascending: false })
         .limit(6),
       supabase
-        .from('stock_items')
-        .select('item_code,item_description,on_hand,available,stock_value')
+        .from('home_high_consumption_stock')
+        .select('item_code,item_description,on_hand,available,stock_value,consumption_value,consumption_rank')
         .gt('on_hand', 0)
         .lte('on_hand', 5)
-        .order('on_hand', { ascending: true })
+        .order('consumption_rank', { ascending: true })
         .limit(7),
       supabase
         .from('source_updates')
@@ -1472,14 +1472,14 @@ export default function App() {
         .from('stock_items')
         .select('item_code', { count: 'exact', head: true }),
       supabase
-        .from('stock_items')
+        .from('home_high_consumption_stock')
         .select('item_code', { count: 'exact', head: true })
         .gt('on_hand', 0)
         .lte('on_hand', 5),
       supabase
-        .from('stock_items')
+        .from('home_high_consumption_stock')
         .select('item_code', { count: 'exact', head: true })
-        .eq('on_hand', 0),
+        .lte('on_hand', 0),
     ])
 
     if (summaryResult.error) throw summaryResult.error
@@ -4315,17 +4315,17 @@ export default function App() {
                     target: 'stock',
                   },
                   {
-                    label: 'Low Stock Items',
+                    label: 'High-Use Low Stock',
                     value: fmt(homeDashboard.lowStockItems),
-                    helper: 'Positive on-hand at 5 units or less',
+                    helper: 'Top 100 consumption-value items at 5 units or less',
                     icon: 'stock',
                     tone: 'blue',
                     target: 'stock',
                   },
                   {
-                    label: 'Out of Stock Items',
+                    label: 'High-Use Out of Stock',
                     value: fmt(homeDashboard.outOfStockItems),
-                    helper: 'Items with zero on-hand',
+                    helper: 'Top 100 consumption-value items with zero on-hand',
                     icon: 'prpo',
                     tone: 'orange',
                     target: 'stock',
@@ -4662,8 +4662,8 @@ export default function App() {
                 <section className="home-analytics-card">
                   <div className="home-card-head">
                     <div>
-                      <span className="eyebrow">LOW STOCK ALERT</span>
-                      <h3>Items at 5 Units or Less</h3>
+                      <span className="eyebrow">HIGH-CONSUMPTION STOCK ALERT</span>
+                      <h3>High-Use Items at 5 Units or Less</h3>
                     </div>
                     <button onClick={() => setView('stock')}>Review stock →</button>
                   </div>
@@ -4684,7 +4684,7 @@ export default function App() {
                         <em>{Number(row.on_hand || 0) <= 2 ? 'Critical' : 'Low'}</em>
                       </button>
                     ))}
-                    {!homeDashboard.lowStock.length && <EmptyState title="No low-stock items" text="No positive on-hand items are at 5 units or less." />}
+                    {!homeDashboard.lowStock.length && <EmptyState title="No high-use low-stock items" text="None of the top 100 consumption-value items are at 5 units or less." />}
                   </div>
                 </section>
 
