@@ -5018,7 +5018,7 @@ export default function App() {
   if (access === false) return <AccessDenied email={session.user.email} />
 
   return (
-    <div className="app-shell bg-slate-50">
+    <div className="app-shell bg-slate-50" data-view={view}>
       <aside className="sidebar !bg-[#0B1F3A] !border-r !border-white/10 !shadow-none">
         <div className="brand !border-white/10">
           <div className="brand-box !rounded-xl !bg-white/10 !text-white !shadow-none ring-1 ring-white/10">SRD</div>
@@ -5066,6 +5066,7 @@ export default function App() {
 
       <main className="workspace">
         <header className="topbar !min-h-[68px] !border-b !border-slate-200 !bg-white/95 !px-7 !shadow-sm backdrop-blur !items-center">
+          <div id="sidebar-toggle-host" className="srd-sidebar-toggle-host" />
           <div className="topbar-context !border-slate-200">
             <span>SRD Warehouse</span>
             <strong>{NAV.find(([key]) => key === view)?.[1] || 'Workspace'}</strong>
