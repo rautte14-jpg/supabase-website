@@ -768,30 +768,47 @@ function NoteModal({ state, note, onClose, onSave }) {
 
 async function fetchAllRows(table, orderColumn, ascending = false) {
   const pageSize = 1000
-  let from = 0
-  let all = []
 
-  while (true) {
+  const buildQuery = (from, to, withCount = false) => {
     let query = supabase
       .from(table)
-      .select('*')
-      .range(from, from + pageSize - 1)
+      .select('*', withCount ? { count: 'exact' } : undefined)
+      .range(from, to)
 
-    if (orderColumn) {
-      query = query.order(orderColumn, { ascending })
-    }
-
-    const { data, error } = await query
-    if (error) throw error
-
-    const batch = data ?? []
-    all = all.concat(batch)
-
-    if (batch.length < pageSize) break
-    from += pageSize
+    if (orderColumn) query = query.order(orderColumn, { ascending })
+    return query
   }
 
-  return all
+  // Get the first page and total row count in one request. The remaining pages
+  // are then fetched concurrently in small groups instead of serially.
+  const first = await buildQuery(0, pageSize - 1, true)
+  if (first.error) throw first.error
+
+  const firstRows = first.data ?? []
+  const total = Number(first.count ?? firstRows.length)
+  if (total <= pageSize || firstRows.length < pageSize) return firstRows
+
+  const ranges = []
+  for (let from = pageSize; from < total; from += pageSize) {
+    ranges.push([from, Math.min(from + pageSize - 1, total - 1)])
+  }
+
+  const pages = [firstRows]
+  const concurrency = 6
+
+  for (let i = 0; i < ranges.length; i += concurrency) {
+    const group = ranges.slice(i, i + concurrency)
+    const results = await Promise.all(
+      group.map(async ([from, to]) => {
+        const result = await buildQuery(from, to)
+        if (result.error) throw result.error
+        return result.data ?? []
+      }),
+    )
+    pages.push(...results)
+  }
+
+  return pages.flat()
 }
 
 function AgeingTrend({ snapshots }) {
