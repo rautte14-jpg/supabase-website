@@ -1367,6 +1367,14 @@ export default function App() {
   const [inventoryDetailLoading, setInventoryDetailLoading] = useState(false)
   const [warehouseIssueWeekFilter, setWarehouseIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseIssueDetailOpen, setWarehouseIssueDetailOpen] = useState(false)
+  const [warehouseIssueDetailRows, setWarehouseIssueDetailRows] = useState([])
+  const [warehouseIssueDetailLoading, setWarehouseIssueDetailLoading] = useState(false)
+  const [warehouseFast, setWarehouseFast] = useState({
+    mrnWeeks: [],
+    mrnMonth: null,
+    issueWeeks: [],
+    issueMonth: null,
+  })
 
   const canEdit = access && ['admin', 'editor'].includes(lower(access.role))
   const isAdmin = access && lower(access.role) === 'admin'
@@ -1434,7 +1442,7 @@ export default function App() {
     vessel: ['procurement', 'material', 'transactions', 'srIssues', 'lld'],
     stock: ['stock', 'snapshots'],
     updates: ['sourceUpdates'],
-    warehouse: ['procurement', 'material', 'srIssues', 'transactions'],
+    warehouse: ['procurement'],
     inventoryPresentation: ['procurement', 'pendingPayments'],
     history: ['sourceUpdates', 'snapshots'],
   }
@@ -1569,6 +1577,72 @@ export default function App() {
     })
   }
 
+  async function loadWarehousePresentationFast() {
+    const today = new Date().toISOString().slice(0, 10)
+    const monthStart = today.slice(0, 7) + '-01'
+    const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult] = await Promise.all([
+      supabase
+        .from('warehouse_mrn_weekly_summary')
+        .select('*')
+        .order('week_start', { ascending: false })
+        .limit(12),
+      supabase
+        .from('warehouse_mrn_month_summary')
+        .select('*')
+        .eq('month_start', monthStart)
+        .limit(1),
+      supabase
+        .from('warehouse_issue_weekly_summary')
+        .select('*')
+        .order('week_start', { ascending: false })
+        .limit(12),
+      supabase
+        .from('warehouse_issue_month_summary')
+        .select('*')
+        .eq('month_start', monthStart)
+        .limit(1),
+    ])
+
+    if (mrnWeeksResult.error) throw mrnWeeksResult.error
+    if (mrnMonthResult.error) throw mrnMonthResult.error
+    if (issueWeeksResult.error) throw issueWeeksResult.error
+    if (issueMonthResult.error) throw issueMonthResult.error
+
+    setWarehouseFast({
+      mrnWeeks: mrnWeeksResult.data || [],
+      mrnMonth: mrnMonthResult.data?.[0] || null,
+      issueWeeks: issueWeeksResult.data || [],
+      issueMonth: issueMonthResult.data?.[0] || null,
+    })
+  }
+
+  async function loadWarehouseIssueDetails(weekStart) {
+    setWarehouseIssueDetailLoading(true)
+    try {
+      const weekEnd = addDaysIso(weekStart, 6)
+      const { data: rows, error } = await supabase
+        .from('warehouse_issue_enriched_fast')
+        .select('id,requested_receipt_date,sales_order,item_code,item_description,quantity,unit,sr_no,line_status,issue_state,issue_stage,cost_unit_price,issue_value')
+        .gte('requested_receipt_date', weekStart)
+        .lte('requested_receipt_date', weekEnd)
+        .order('requested_receipt_date', { ascending: false })
+        .limit(120)
+      if (error) throw error
+      setWarehouseIssueDetailRows(rows || [])
+    } finally {
+      setWarehouseIssueDetailLoading(false)
+    }
+  }
+
+  async function toggleWarehouseIssueDetails() {
+    if (warehouseIssueDetailOpen) {
+      setWarehouseIssueDetailOpen(false)
+      return
+    }
+    await loadWarehouseIssueDetails(warehouseIssueWeekFilter)
+    setWarehouseIssueDetailOpen(true)
+  }
+
   async function loadInventoryPresentationFast() {
     const [mtrResult, stockResult, topStockResult] = await Promise.all([
       supabase.from('inventory_presentation_mtr_summary').select('*').limit(1),
@@ -1631,6 +1705,11 @@ export default function App() {
     try {
       if (targetView === 'home') {
         await loadHomeSummary()
+      } else if (targetView === 'warehouse') {
+        await Promise.all([
+          loadTables(VIEW_TABLES[targetView] || [], force),
+          loadWarehousePresentationFast(),
+        ])
       } else if (targetView === 'inventoryPresentation') {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
@@ -3582,38 +3661,19 @@ export default function App() {
     return { rows, prs: prs.size, qty, value }
   }, [allPrLines, warehouseMonthStart, todayIso])
 
-  const warehouseMrnMonth = useMemo(() => {
-    const rows = allMrnRows.filter((row) => {
-      const date = mrnCreatedDate(row)
-      return date && date >= warehouseMonthStart && date <= todayIso
-    })
-    const pending = new Set()
-    rows.forEach((row) => {
-      const id = mrnSourceId(row)
-      if (id && mrnIsPending(row)) pending.add(id)
-    })
-    return { created: rows.length, pending: pending.size }
-  }, [allMrnRows, warehouseMonthStart, todayIso])
+  const warehouseMrnMonth = useMemo(() => ({
+    created: Number(warehouseFast.mrnMonth?.created || 0),
+    pending: Number(warehouseFast.mrnMonth?.pending || 0),
+  }), [warehouseFast.mrnMonth])
 
-  const warehouseIssueMonth = useMemo(() => {
-    const rows = srIssuesEnriched.filter((row) => {
-      const date = parseFlexibleDate(row.requested_receipt_date)
-      return date && date >= warehouseMonthStart && date <= todayIso
-    })
-    const active = rows.filter((row) => row.issue_stage !== 'Cancelled')
-    const priced = active.filter((row) => Number(row.cost_unit_price || 0) > 0)
-    return {
-      total: rows.length,
-      invoiced: rows.filter((row) => row.issue_stage === 'Invoiced').length,
-      delivered: rows.filter((row) => row.issue_stage === 'Delivered').length,
-      openOrder: rows.filter((row) => ['Open Order', 'Delivered'].includes(row.issue_stage)).length,
-      value: active.reduce((sum, row) => sum + Number(row.issue_value || 0), 0),
-      pendingValue: rows
-        .filter((row) => ['Open Order', 'Delivered'].includes(row.issue_stage))
-        .reduce((sum, row) => sum + Number(row.issue_value || 0), 0),
-      costCoverage: active.length ? (priced.length / active.length) * 100 : 0,
-    }
-  }, [srIssuesEnriched, warehouseMonthStart, todayIso])
+  const warehouseIssueMonth = useMemo(() => ({
+    total: Number(warehouseFast.issueMonth?.total || 0),
+    invoiced: Number(warehouseFast.issueMonth?.invoiced || 0),
+    delivered: Number(warehouseFast.issueMonth?.delivered || 0),
+    openOrder: Number(warehouseFast.issueMonth?.open_order || 0),
+    value: Number(warehouseFast.issueMonth?.issue_value || 0),
+    pendingValue: Number(warehouseFast.issueMonth?.pending_value || 0),
+  }), [warehouseFast.issueMonth])
 
   const warehouseReceiptPrState = useMemo(() => {
     const receivedPrNos = new Set(
@@ -3700,11 +3760,6 @@ export default function App() {
         ? 'Fully Received PR Items'
         : 'PR Receipt Items'
 
-  const warehouseMrnCreated = useMemo(
-    () => allMrnRows.filter((row) => weekStartWednesday(mrnCreatedDate(row)) === warehouseWeekStart).length,
-    [allMrnRows, warehouseWeekStart],
-  )
-
   const warehouseMrnWeekOptions = useMemo(() => {
     const latestCompletedWeek = addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7)
     return Array.from({ length: 8 }, (_, index) => {
@@ -3713,46 +3768,22 @@ export default function App() {
     })
   }, [])
 
-  const warehouseMrnSelectedRows = useMemo(
-    () => allMrnRows.filter((row) => weekStartWednesday(mrnCreatedDate(row)) === warehouseMrnWeekFilter),
-    [allMrnRows, warehouseMrnWeekFilter],
-  )
-
   const warehouseMrnLive = useMemo(() => {
-    const issued = new Set()
-    const pending = new Set()
-    const pending30 = new Set()
-    const noJournal = new Set()
-
-    warehouseMrnSelectedRows.forEach((row) => {
-      const id = mrnSourceId(row)
-      if (!id) return
-      if (mrnIsIssued(row)) issued.add(id)
-      if (mrnIsPending(row)) {
-        pending.add(id)
-        if (mrnAgeDays(row) >= 30) pending30.add(id)
-        if (!mrnHasJournal(row)) noJournal.add(id)
-      }
-    })
-
+    const row = (warehouseFast.mrnWeeks || []).find((item) => item.week_start === warehouseMrnWeekFilter) || {}
     return {
-      total: warehouseMrnSelectedRows.length,
-      issued: issued.size,
-      pending: pending.size,
-      pending30: pending30.size,
-      noJournal: noJournal.size,
+      total: Number(row.total || 0),
+      issued: Number(row.issued || 0),
+      pending: Number(row.pending || 0),
+      pending30: Number(row.pending_30 || 0),
+      noJournal: Number(row.no_journal || 0),
     }
-  }, [warehouseMrnSelectedRows])
+  }, [warehouseFast.mrnWeeks, warehouseMrnWeekFilter])
 
   const warehousePendingWorkshopCounts = useMemo(() => {
-    const counts = new Map()
-    warehouseMrnSelectedRows.forEach((row) => {
-      if (!mrnIsPending(row)) return
-      const workshop = String(rawField(row, ['WORKSHOP NAME']) || row.workshop || '').trim() || 'BLANK'
-      counts.set(workshop, (counts.get(workshop) || 0) + 1)
-    })
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
-  }, [warehouseMrnSelectedRows])
+    const row = (warehouseFast.mrnWeeks || []).find((item) => item.week_start === warehouseMrnWeekFilter)
+    const list = Array.isArray(row?.top_pending_workshops) ? row.top_pending_workshops : []
+    return list.slice(0, 6).map((item) => [String(item?.[0] || 'BLANK'), Number(item?.[1] || 0)])
+  }, [warehouseFast.mrnWeeks, warehouseMrnWeekFilter])
 
   const warehouseIssueWeekOptions = useMemo(() => {
     const latestCompletedWeek = addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7)
@@ -3762,44 +3793,27 @@ export default function App() {
     })
   }, [])
 
-  const summarizeWarehouseIssues = (weekStart) => {
-    const rows = srIssuesEnriched.filter((row) => {
-      const date = parseFlexibleDate(row.requested_receipt_date)
-      return date && weekStartWednesday(date) === weekStart
-    })
-    const active = rows.filter((row) => row.issue_stage !== 'Cancelled')
-    const priced = active.filter((row) => Number(row.cost_unit_price || 0) > 0)
+  const warehouseIssueWeek = useMemo(() => {
+    const row = (warehouseFast.issueWeeks || []).find((item) => item.week_start === warehouseIssueWeekFilter) || {}
     return {
-      rows,
-      total: rows.length,
-      invoiced: rows.filter((row) => row.issue_stage === 'Invoiced').length,
-      delivered: rows.filter((row) => row.issue_stage === 'Delivered').length,
-      openOrder: rows.filter((row) => ['Open Order', 'Delivered'].includes(row.issue_stage)).length,
-      cancelled: rows.filter((row) => row.issue_stage === 'Cancelled').length,
-      issueValue: active.reduce((sum, row) => sum + Number(row.issue_value || 0), 0),
-      pendingValue: rows
-        .filter((row) => ['Open Order', 'Delivered'].includes(row.issue_stage))
-        .reduce((sum, row) => sum + Number(row.issue_value || 0), 0),
-      costCoverage: active.length ? (priced.length / active.length) * 100 : 0,
-      salesOrders: new Set(rows.map((row) => row.sales_order).filter(Boolean)).size,
-      srs: new Set(rows.map((row) => normalizedSr(row.sr_no)).filter(Boolean)).size,
+      rows: warehouseIssueDetailRows,
+      total: Number(row.total || 0),
+      invoiced: Number(row.invoiced || 0),
+      delivered: Number(row.delivered || 0),
+      openOrder: Number(row.open_order || 0),
+      cancelled: Number(row.cancelled || 0),
+      issueValue: Number(row.issue_value || 0),
+      pendingValue: Number(row.pending_value || 0),
+      salesOrders: Number(row.sales_orders || 0),
+      srs: Number(row.srs || 0),
     }
-  }
+  }, [warehouseFast.issueWeeks, warehouseIssueWeekFilter, warehouseIssueDetailRows])
 
-  const warehouseIssueReporting = useMemo(
-    () => summarizeWarehouseIssues(warehouseWeekStart),
-    [srIssuesEnriched, warehouseWeekStart],
-  )
-
-  const warehouseIssueWeek = useMemo(
-    () => summarizeWarehouseIssues(warehouseIssueWeekFilter),
-    [srIssuesEnriched, warehouseIssueWeekFilter],
-  )
-
-  const warehouseIssuePreviousWeek = useMemo(
-    () => summarizeWarehouseIssues(addDaysIso(warehouseIssueWeekFilter, -7)).total,
-    [srIssuesEnriched, warehouseIssueWeekFilter],
-  )
+  const warehouseIssuePreviousWeek = useMemo(() => {
+    const previousWeek = addDaysIso(warehouseIssueWeekFilter, -7)
+    const row = (warehouseFast.issueWeeks || []).find((item) => item.week_start === previousWeek)
+    return Number(row?.total || 0)
+  }, [warehouseFast.issueWeeks, warehouseIssueWeekFilter])
 
   const warehouseSlides = [
     {
@@ -4006,6 +4020,7 @@ export default function App() {
               onChange={(e) => {
                 setWarehouseIssueWeekFilter(e.target.value)
                 setWarehouseIssueDetailOpen(false)
+                setWarehouseIssueDetailRows([])
               }}
             >
               {warehouseIssueWeekOptions.map((week) => (
@@ -4019,7 +4034,7 @@ export default function App() {
           <div className="meeting-exception-metrics warehouse-issue-metrics">
             <button
               className={warehouseIssueDetailOpen ? 'warehouse-issue-metric active' : 'warehouse-issue-metric'}
-              onClick={() => setWarehouseIssueDetailOpen((current) => !current)}
+              onClick={toggleWarehouseIssueDetails}
             >
               <span>Issue lines</span>
               <b>{fmt(warehouseIssueWeek.total)}</b>
@@ -4041,7 +4056,7 @@ export default function App() {
                   <h4>{formatShortDate(warehouseIssueWeekFilter)} – {formatShortDate(addDaysIso(warehouseIssueWeekFilter, 6))}</h4>
                 </div>
                 <div>
-                  <strong>{fmt(warehouseIssueWeek.rows.length)} item lines</strong>
+                  <strong>{warehouseIssueDetailLoading ? 'Loading…' : fmt(warehouseIssueWeek.rows.length) + ' item lines shown'}</strong>
                   <button onClick={() => setWarehouseIssueDetailOpen(false)}>Close</button>
                 </div>
               </div>
