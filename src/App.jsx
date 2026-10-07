@@ -4060,6 +4060,23 @@ export default function App() {
     [inventoryHighUseTop100],
   )
 
+  const inventoryPresentationPayments = useMemo(() => {
+    const rows = data.pendingPayments || []
+    const totalValue = rows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
+    const urgent = rows.filter((row) => isUrgent(row.priority)).length
+    const statusCounts = new Map()
+    rows.forEach((row) => {
+      const status = String(row.status || '').trim() || 'BLANK'
+      statusCounts.set(status, (statusCounts.get(status) || 0) + 1)
+    })
+    return {
+      total: rows.length,
+      totalValue,
+      urgent,
+      statusCounts: [...statusCounts.entries()].sort((a, b) => b[1] - a[1]),
+    }
+  }, [data.pendingPayments])
+
   const inventoryPresentationProcurement = useMemo(() => {
     const monthStart = todayIso.slice(0, 7) + '-01'
     const submittedPrs = new Set()
@@ -4158,7 +4175,7 @@ export default function App() {
             <MetricCard label="PRs Submitted This Month" value={fmt(inventoryPresentationProcurement.submittedThisMonth)} helper="Distinct purchase requisitions submitted" />
             <MetricCard label="PRs Received This Month" value={fmt(warehouseReceiptMonth.prs)} helper={fmt(warehouseReceiptMonth.qty, 2) + ' quantity received'} />
             <MetricCard label="Received Value This Month" value={mvr(warehouseReceiptMonth.value)} helper="Receipt value recorded this month" />
-            <MetricCard label="Pending Payment POs" value={fmt(pendingPaymentsSummary.total)} tone="warn" helper={mvr(pendingPaymentsSummary.totalValue) + ' pending value'} />
+            <MetricCard label="Pending Payment POs" value={fmt(inventoryPresentationPayments.total)} tone="warn" helper={mvr(inventoryPresentationPayments.totalValue) + ' pending value'} />
             <MetricCard label="Pending MTRs" value={fmt(inventoryPresentationMaterials.mtrPending)} tone="warn" helper={fmt(inventoryPresentationMaterials.mtrNoStock) + ' with no SRD stock'} />
             <MetricCard label="High-Use Low Stock" value={fmt(inventoryHighUseLowStock.length)} helper="Top 100 consumption-value items at 1–5 on hand" />
             <MetricCard label="High-Use Out of Stock" value={fmt(inventoryHighUseOutOfStock.length)} tone="bad" helper="Top 100 consumption-value items with zero stock" />
@@ -4247,21 +4264,21 @@ export default function App() {
           <div className="meeting-period-banner">
             <div>
               <span>CURRENT PAYMENT EXPOSURE</span>
-              <b>{mvr(pendingPaymentsSummary.totalValue)}</b>
+              <b>{mvr(inventoryPresentationPayments.totalValue)}</b>
             </div>
-            <small>{fmt(pendingPaymentsSummary.total)} purchase orders awaiting payment action</small>
+            <small>{fmt(inventoryPresentationPayments.total)} purchase orders awaiting payment action</small>
           </div>
           <div className="meeting-exception-metrics">
-            <div><span>Pending POs</span><b>{fmt(pendingPaymentsSummary.total)}</b></div>
-            <div><span>Urgent POs</span><b>{fmt(pendingPaymentsSummary.urgent)}</b></div>
-            {pendingPaymentsSummary.statusCounts.slice(0, 5).map(([status, count]) => (
+            <div><span>Pending POs</span><b>{fmt(inventoryPresentationPayments.total)}</b></div>
+            <div><span>Urgent POs</span><b>{fmt(inventoryPresentationPayments.urgent)}</b></div>
+            {inventoryPresentationPayments.statusCounts.slice(0, 5).map(([status, count]) => (
               <div key={status}><span>{status}</span><b>{fmt(count)}</b></div>
             ))}
           </div>
           <div className="meeting-period-banner" style={{ marginTop: 18 }}>
             <div>
               <span>MANAGEMENT FOCUS</span>
-              <b>{fmt(pendingPaymentsSummary.urgent)} urgent payment POs</b>
+              <b>{fmt(inventoryPresentationPayments.urgent)} urgent payment POs</b>
             </div>
             <small>Prioritize payment blockers affecting delivery and receipt completion</small>
           </div>
@@ -5688,7 +5705,7 @@ export default function App() {
               <div className="metric-grid prpo-metrics prpo-operational-metrics">
                 <MetricCard
                   label="Total POs"
-                  value={fmt(pendingPaymentsSummary.total)}
+                  value={fmt(inventoryPresentationPayments.total)}
                   helper="Click to show all POs"
                   tone="warn"
                   active={pendingPaymentDetailFilter === 'ALL'}
@@ -5696,20 +5713,20 @@ export default function App() {
                 />
                 <MetricCard
                   label="Total PO Value"
-                  value={mvr(pendingPaymentsSummary.totalValue)}
+                  value={mvr(inventoryPresentationPayments.totalValue)}
                   helper="Click to show all POs"
                   active={pendingPaymentDetailFilter === 'ALL'}
                   onClick={() => setPendingPaymentDetailFilter('ALL')}
                 />
                 <MetricCard
                   label="Urgent"
-                  value={fmt(pendingPaymentsSummary.urgent)}
+                  value={fmt(inventoryPresentationPayments.urgent)}
                   helper="Click to show urgent POs"
                   tone="bad"
                   active={pendingPaymentDetailFilter === 'URGENT'}
                   onClick={() => setPendingPaymentDetailFilter('URGENT')}
                 />
-                {pendingPaymentsSummary.statusCounts.slice(0, 3).map(([status, count]) => (
+                {inventoryPresentationPayments.statusCounts.slice(0, 3).map(([status, count]) => (
                   <MetricCard
                     key={status}
                     label={status}
