@@ -15,6 +15,7 @@ const NAV = [
   ['stock', 'Stock & Ageing', 'S'],
   ['updates', 'Update Centre', 'U'],
   ['warehouse', 'Warehouse Presentation', 'W'],
+  ['inventoryPresentation', 'Inventory Presentation', 'S'],
   ['history', 'History', 'H'],
 ]
 
@@ -23,7 +24,7 @@ const NAV_GROUPS = [
   ['Procurement', ['prf', 'prpo', 'payments']],
   ['Materials', ['mtr', 'mrn', 'vessel']],
   ['Inventory', ['stock']],
-  ['Reporting', ['warehouse', 'history']],
+  ['Reporting', ['warehouse', 'inventoryPresentation', 'history']],
   ['Administration', ['updates']],
 ]
 
@@ -1337,6 +1338,8 @@ export default function App() {
   const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseReceiptDetail, setWarehouseReceiptDetail] = useState('NONE')
   const [warehouseFullscreen, setWarehouseFullscreen] = useState(false)
+  const [inventorySlide, setInventorySlide] = useState(0)
+  const [inventoryFullscreen, setInventoryFullscreen] = useState(false)
   const [warehouseIssueWeekFilter, setWarehouseIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseIssueDetailOpen, setWarehouseIssueDetailOpen] = useState(false)
 
@@ -1357,7 +1360,11 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const onFullscreenChange = () => setWarehouseFullscreen(Boolean(document.fullscreenElement))
+    const onFullscreenChange = () => {
+      const active = Boolean(document.fullscreenElement)
+      setWarehouseFullscreen(active && document.fullscreenElement?.id === 'warehouse-presentation-shell')
+      setInventoryFullscreen(active && document.fullscreenElement?.id === 'inventory-presentation-shell')
+    }
     document.addEventListener('fullscreenchange', onFullscreenChange)
     return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
   }, [])
@@ -1403,6 +1410,7 @@ export default function App() {
     stock: ['stock', 'snapshots'],
     updates: ['sourceUpdates'],
     warehouse: ['procurement', 'material', 'srIssues', 'transactions'],
+    inventoryPresentation: ['stock', 'snapshots', 'transactions'],
     history: ['sourceUpdates', 'snapshots'],
   }
 
@@ -1611,6 +1619,21 @@ export default function App() {
       }
     } catch (error) {
       console.error('Could not toggle presentation fullscreen', error)
+    }
+  }
+
+  async function toggleInventoryFullscreen() {
+    const target = document.getElementById('inventory-presentation-shell')
+    if (!target) return
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else if (target.requestFullscreen) {
+        await target.requestFullscreen()
+      }
+    } catch (error) {
+      console.error('Could not toggle inventory presentation fullscreen', error)
     }
   }
 
@@ -3981,6 +4004,223 @@ export default function App() {
     },
   ]
 
+  const inventoryConsumption = useMemo(() => {
+    const yearStart = new Date().getFullYear() + '-01-01'
+    const stockMap = new Map(
+      data.stock.map((row) => [String(row.item_code || '').trim().toUpperCase(), row])
+    )
+    const map = new Map()
+
+    data.transactions.forEach((row) => {
+      const status = lower(row.status)
+      const date = parseFlexibleDate(row.physical_date)
+      if (!date || date < yearStart) return
+      if (!status.includes('sold') && !status.includes('deducted')) return
+
+      const itemCode = String(row.item_code || '').trim()
+      if (!itemCode) return
+      const key = itemCode.toUpperCase()
+      const current = map.get(key) || {
+        item_code: itemCode,
+        item_description: row.item_description || '',
+        quantity: 0,
+        value: 0,
+      }
+      current.quantity += Math.abs(Number(row.quantity || 0))
+      current.value += Math.abs(Number(row.cost || 0))
+      if (!current.item_description) current.item_description = row.item_description || ''
+      map.set(key, current)
+    })
+
+    return [...map.values()]
+      .map((row) => {
+        const stock = stockMap.get(String(row.item_code || '').trim().toUpperCase())
+        return {
+          ...row,
+          item_description: stock?.item_description || row.item_description,
+          on_hand: Number(stock?.on_hand || 0),
+          stock_value: Number(stock?.stock_value || 0),
+        }
+      })
+      .sort((a, b) => b.value - a.value)
+  }, [data.transactions, data.stock])
+
+  const inventoryHighUseTop100 = useMemo(
+    () => inventoryConsumption.slice(0, 100),
+    [inventoryConsumption],
+  )
+
+  const inventoryHighUseLowStock = useMemo(
+    () => inventoryHighUseTop100.filter((row) => row.on_hand > 0 && row.on_hand <= 5),
+    [inventoryHighUseTop100],
+  )
+
+  const inventoryHighUseOutOfStock = useMemo(
+    () => inventoryHighUseTop100.filter((row) => row.on_hand <= 0),
+    [inventoryHighUseTop100],
+  )
+
+  const inventoryPresentationSlides = [
+    {
+      kicker: 'INVENTORY EXECUTIVE SUMMARY',
+      title: 'Inventory Position',
+      body: (
+        <>
+          <div className="meeting-period-banner">
+            <div>
+              <span>CURRENT INVENTORY POSITION</span>
+              <b>{fmt(data.stock.length)} stock items</b>
+            </div>
+            <small>Latest uploaded stock and ageing data</small>
+          </div>
+          <div className="meeting-metrics">
+            <MetricCard label="On-Hand Value" value={mvr(ageingSummary.onHandValue)} helper="Current SRD inventory value" />
+            <MetricCard label="Aged Over 1 Year" value={mvr(ageingSummary.agedOver365)} helper={ageingSummary.onHandValue > 0 ? fmt((ageingSummary.agedOver365 / ageingSummary.onHandValue) * 100, 1) + '% of on-hand value' : 'No ageing value'} />
+            <MetricCard label="Top 100 High Value" value={mvr(top100HighValueTotal)} helper="Combined value of highest-value stock items" />
+            <MetricCard label="High-Use Low Stock" value={fmt(inventoryHighUseLowStock.length)} helper="Top 100 consumption-value items with 1–5 on hand" />
+            <MetricCard label="High-Use Out of Stock" value={fmt(inventoryHighUseOutOfStock.length)} tone="bad" helper="Top 100 consumption-value items with zero on hand" />
+            <MetricCard label="Consumption Value YTD" value={mvr(inventoryConsumption.reduce((sum, row) => sum + row.value, 0))} helper="Sold / deducted inventory transactions this year" />
+          </div>
+        </>
+      ),
+    },
+    {
+      kicker: 'INVENTORY AGEING',
+      title: 'Ageing Exposure',
+      body: (
+        <>
+          <div className="meeting-period-banner">
+            <div>
+              <span>LATEST AGEING POSITION</span>
+              <b>{ageingComparison.current?.snapshot_date ? formatShortDate(ageingComparison.current.snapshot_date) : 'Latest snapshot'}</b>
+            </div>
+            <small>{ageingComparison.previous ? 'Compared with previous ageing snapshot' : 'No previous snapshot available'}</small>
+          </div>
+          <div className="meeting-exception-metrics">
+            <div><span>P1 · Under 1 Year</span><b>{mvr(ageingSummary.p1)}</b></div>
+            <div><span>P2</span><b>{mvr(ageingSummary.p2)}</b></div>
+            <div><span>P3</span><b>{mvr(ageingSummary.p3)}</b></div>
+            <div><span>P4</span><b>{mvr(ageingSummary.p4)}</b></div>
+            <div><span>P5</span><b>{mvr(ageingSummary.p5)}</b></div>
+            <div><span>Total Aged 1+ Year</span><b>{mvr(ageingSummary.agedOver365)}</b></div>
+          </div>
+          {ageingComparison.previous && (
+            <div className="meeting-period-banner" style={{ marginTop: 18 }}>
+              <div>
+                <span>WEEK-TO-WEEK AGED VALUE</span>
+                <b>{mvr(ageingComparison.previousValue)} → {mvr(ageingComparison.currentValue)}</b>
+              </div>
+              <small>{ageingComparison.change >= 0 ? '+' : '−'}{mvr(Math.abs(ageingComparison.change || 0))}</small>
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      kicker: 'HIGH VALUE INVENTORY',
+      title: 'Top Stock Value Items',
+      body: (
+        <>
+          <div className="meeting-period-banner">
+            <div>
+              <span>TOP 10 BY STOCK VALUE</span>
+              <b>{mvr(top100HighValueTotal)} in Top 100</b>
+            </div>
+            <small>Items requiring value exposure review</small>
+          </div>
+          <div className="warehouse-receipt-table">
+            <div className="warehouse-receipt-row warehouse-receipt-head">
+              <span>#</span><span>Item</span><span>Description</span><span>On Hand</span><span>Stock Value</span><span>Age Band</span><span></span><span></span>
+            </div>
+            {top100HighValue.slice(0, 10).map((row, index) => (
+              <div className="warehouse-receipt-row" key={row.item_code || index}>
+                <b>{index + 1}</b>
+                <span>{row.item_code || '—'}</span>
+                <span title={row.item_description || ''}>{row.item_description || '—'}</span>
+                <span>{fmt(row.on_hand, 2)}</span>
+                <strong>{mvr(stockOnHandValue(row))}</strong>
+                <span>{row.age_band || rawField(row, ['Age Band', 'Ageing', 'Aging']) || '—'}</span>
+                <span></span><span></span>
+              </div>
+            ))}
+          </div>
+        </>
+      ),
+    },
+    {
+      kicker: 'CONSUMPTION & STOCK RISK',
+      title: 'High-Use Stock Risk',
+      body: (
+        <>
+          <div className="meeting-period-banner">
+            <div>
+              <span>TOP 100 ITEMS BY CONSUMPTION VALUE</span>
+              <b>{fmt(inventoryHighUseLowStock.length + inventoryHighUseOutOfStock.length)} items need stock attention</b>
+            </div>
+            <small>Based on Sold / Deducted transactions this year</small>
+          </div>
+          <div className="meeting-exception-metrics">
+            <div><span>High-Use Low Stock</span><b>{fmt(inventoryHighUseLowStock.length)}</b></div>
+            <div><span>High-Use Out of Stock</span><b>{fmt(inventoryHighUseOutOfStock.length)}</b></div>
+            <div><span>Top 100 Consumption Value</span><b>{mvr(inventoryHighUseTop100.reduce((sum, row) => sum + row.value, 0))}</b></div>
+          </div>
+          <div className="warehouse-receipt-table" style={{ marginTop: 18 }}>
+            <div className="warehouse-receipt-row warehouse-receipt-head">
+              <span>Rank</span><span>Item</span><span>Description</span><span>YTD Consumption</span><span>Consumption Value</span><span>On Hand</span><span>Status</span><span></span>
+            </div>
+            {inventoryHighUseTop100
+              .filter((row) => row.on_hand <= 5)
+              .slice(0, 12)
+              .map((row, index) => (
+                <div className="warehouse-receipt-row" key={row.item_code || index}>
+                  <b>{inventoryHighUseTop100.findIndex((x) => x.item_code === row.item_code) + 1}</b>
+                  <span>{row.item_code || '—'}</span>
+                  <span title={row.item_description || ''}>{row.item_description || '—'}</span>
+                  <span>{fmt(row.quantity, 2)}</span>
+                  <strong>{mvr(row.value)}</strong>
+                  <span>{fmt(row.on_hand, 2)}</span>
+                  <em>{row.on_hand <= 0 ? 'OUT OF STOCK' : 'LOW STOCK'}</em>
+                  <span></span>
+                </div>
+              ))}
+          </div>
+        </>
+      ),
+    },
+    {
+      kicker: 'CONSUMPTION PROFILE',
+      title: 'Top Consumed Items',
+      body: (
+        <>
+          <div className="meeting-period-banner">
+            <div>
+              <span>YEAR-TO-DATE CONSUMPTION</span>
+              <b>{mvr(inventoryConsumption.reduce((sum, row) => sum + row.value, 0))}</b>
+            </div>
+            <small>Issue-side inventory movement value</small>
+          </div>
+          <div className="warehouse-receipt-table">
+            <div className="warehouse-receipt-row warehouse-receipt-head">
+              <span>#</span><span>Item</span><span>Description</span><span>Consumed Qty</span><span>Consumption Value</span><span>On Hand</span><span>Stock Value</span><span></span>
+            </div>
+            {inventoryConsumption.slice(0, 12).map((row, index) => (
+              <div className="warehouse-receipt-row" key={row.item_code || index}>
+                <b>{index + 1}</b>
+                <span>{row.item_code || '—'}</span>
+                <span title={row.item_description || ''}>{row.item_description || '—'}</span>
+                <span>{fmt(row.quantity, 2)}</span>
+                <strong>{mvr(row.value)}</strong>
+                <span>{fmt(row.on_hand, 2)}</span>
+                <span>{mvr(row.stock_value)}</span>
+                <span></span>
+              </div>
+            ))}
+          </div>
+        </>
+      ),
+    },
+  ]
+
   const pendingPaymentsSummary = useMemo(() => {
     const rows = data.pendingPayments || []
     const totalValue = rows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
@@ -6027,6 +6267,80 @@ export default function App() {
                       <button className="secondary" onClick={() => setSlide(Math.max(0, Math.min(slide, warehouseSlides.length - 1) - 1))} disabled={Math.min(slide, warehouseSlides.length - 1) === 0}>Previous</button>
                       <span>{Math.min(slide, warehouseSlides.length - 1) + 1} / {warehouseSlides.length}</span>
                       <button className="primary" onClick={() => setSlide(Math.min(warehouseSlides.length - 1, Math.min(slide, warehouseSlides.length - 1) + 1))} disabled={Math.min(slide, warehouseSlides.length - 1) === warehouseSlides.length - 1}>Next</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </>
+          )}
+
+          {view === 'inventoryPresentation' && (
+            <>
+              <PageHeader
+                title="Inventory Presentation"
+                subtitle="Inventory value, ageing, high-value exposure and consumption-driven stock risk."
+                actions={
+                  <>
+                    <button className="secondary" onClick={toggleInventoryFullscreen}>
+                      {inventoryFullscreen ? 'Exit Full Screen' : 'Full Screen'}
+                    </button>
+                    <button className="secondary" onClick={() => window.print()}>Print / PDF</button>
+                  </>
+                }
+              />
+              <section id="inventory-presentation-shell" className="meeting-shell warehouse-presentation-shell">
+                <div className="meeting-workspace">
+                  <aside className="meeting-agenda">
+                    <div className="meeting-agenda-head">
+                      <span>INVENTORY REVIEW</span>
+                      <strong>Presentation</strong>
+                    </div>
+                    <div className="meeting-agenda-list">
+                      {inventoryPresentationSlides.map((item, i) => (
+                        <button
+                          key={item.title}
+                          className={i === inventorySlide ? 'meeting-agenda-item active' : 'meeting-agenda-item'}
+                          onClick={() => setInventorySlide(i)}
+                        >
+                          <span>{String(i + 1).padStart(2, '0')}</span>
+                          <div>
+                            <small>{item.kicker}</small>
+                            <b>{item.title}</b>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="meeting-agenda-foot">
+                      <span>SRD Warehouse System</span>
+                      <small>Inventory management presentation</small>
+                    </div>
+                  </aside>
+
+                  <div className="meeting-stage">
+                    <div className="meeting-slide-topline">
+                      <span>Slide {Math.min(inventorySlide + 1, inventoryPresentationSlides.length)} of {inventoryPresentationSlides.length}</span>
+                      <div><i style={{ width: ((Math.min(inventorySlide, inventoryPresentationSlides.length - 1) + 1) / inventoryPresentationSlides.length * 100) + '%' }} /></div>
+                    </div>
+
+                    <div className="meeting-slide">
+                      <div className="meeting-slide-header">
+                        <div>
+                          <span className="meeting-kicker">{inventoryPresentationSlides[Math.min(inventorySlide, inventoryPresentationSlides.length - 1)].kicker}</span>
+                          <h2>{inventoryPresentationSlides[Math.min(inventorySlide, inventoryPresentationSlides.length - 1)].title}</h2>
+                        </div>
+                        <div className="meeting-slide-mark">SRD</div>
+                      </div>
+                      <div className="meeting-body">{inventoryPresentationSlides[Math.min(inventorySlide, inventoryPresentationSlides.length - 1)].body}</div>
+                      <footer>
+                        <span>Shipbuilding & Repair Division · Materials Management</span>
+                        <span>Inventory Review</span>
+                      </footer>
+                    </div>
+
+                    <div className="meeting-controls">
+                      <button className="secondary" onClick={() => setInventorySlide(Math.max(0, inventorySlide - 1))} disabled={inventorySlide === 0}>Previous</button>
+                      <span>{inventorySlide + 1} / {inventoryPresentationSlides.length}</span>
+                      <button className="primary" onClick={() => setInventorySlide(Math.min(inventoryPresentationSlides.length - 1, inventorySlide + 1))} disabled={inventorySlide === inventoryPresentationSlides.length - 1}>Next</button>
                     </div>
                   </div>
                 </div>
