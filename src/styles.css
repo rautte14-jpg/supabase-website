@@ -6513,3 +6513,47 @@ tbody tr:hover {
 #inventory-presentation-shell {
   position: relative;
 }
+
+
+/* Inventory presentation MTR weekly transfer trend */
+.mtr-weekly-trend {
+  margin-top: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 12px;
+  background: rgba(255,255,255,.04);
+}
+.mtr-weekly-trend-row {
+  display: grid;
+  grid-template-columns: 170px minmax(160px,1fr) 90px 70px;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 14px;
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+.mtr-weekly-trend-row > span {
+  color: #9fb1cc;
+  font-size: 10px;
+}
+.mtr-weekly-trend-row > div {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+}
+.mtr-weekly-trend-row > div i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #60a5fa;
+}
+.mtr-weekly-trend-row strong {
+  color: #fff;
+  font-size: 12px;
+  text-align: right;
+}
+.mtr-weekly-trend-row small {
+  color: #93c5fd;
+  font-size: 9px;
+  text-align: right;
+}
