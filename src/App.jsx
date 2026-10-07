@@ -4097,30 +4097,16 @@ export default function App() {
     const previousWeekStart = addDaysIso(currentWeekStart, -7)
     const previousWeekEnd = addDaysIso(currentWeekStart, -1)
 
-    const clearedThisWeek = classified.filter((row) =>
-      row.clearedByReceipt &&
-      row.clearedDate &&
-      row.clearedDate >= currentWeekStart &&
-      row.clearedDate <= todayIso
-    )
+    // The uploaded Pending Payment file is the prior-week baseline.
+    // Reconcile that baseline against the latest receipt data to get this week's live position.
+    const baselineRows = classified
+    const clearedSinceBaseline = classified.filter((row) => row.clearedByReceipt)
 
-    const clearedLastWeek = classified.filter((row) =>
-      row.clearedByReceipt &&
-      row.clearedDate &&
-      row.clearedDate >= previousWeekStart &&
-      row.clearedDate <= previousWeekEnd
-    )
-
-    const newPendingThisWeek = currentRows.filter((row) => {
-      const date = parseFlexibleDate(row.po_date)
-      return date && date >= currentWeekStart && date <= todayIso
-    })
-
-    const lastWeekCount = Math.max(0, currentRows.length + clearedThisWeek.length - newPendingThisWeek.length)
+    const lastWeekCount = baselineRows.length
+    const lastWeekValue = baselineRows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
     const currentValue = currentRows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
-    const clearedThisWeekValue = clearedThisWeek.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
-    const newPendingThisWeekValue = newPendingThisWeek.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
-    const lastWeekValue = Math.max(0, currentValue + clearedThisWeekValue - newPendingThisWeekValue)
+    const clearedThisWeek = clearedSinceBaseline
+    const clearedThisWeekValue = clearedSinceBaseline.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
 
     return {
       rows: currentRows,
@@ -4132,7 +4118,7 @@ export default function App() {
       valueChange: currentValue - lastWeekValue,
       clearedThisWeek,
       clearedThisWeekValue,
-      clearedLastWeek,
+      clearedLastWeek: [],
       currentWeekStart,
       previousWeekStart,
       previousWeekEnd,
@@ -4487,9 +4473,9 @@ export default function App() {
               <div><small>{mvr(pendingPaymentReconciliation.currentValue)}</small><strong>{pendingPaymentReconciliation.countChange <= 0 ? 'Down ' : 'Up '}{fmt(Math.abs(pendingPaymentReconciliation.countChange))} POs</strong></div>
             </div>
             <div className="meeting-change-card">
-              <span>Cleared by Receipt This Week</span>
+              <span>Cleared Since Last Week</span>
               <b>{fmt(pendingPaymentReconciliation.clearedThisWeek.length)}</b>
-              <div><small>{mvr(pendingPaymentReconciliation.clearedThisWeekValue)}</small><strong>Advance / Credit received</strong></div>
+              <div><small>{mvr(pendingPaymentReconciliation.clearedThisWeekValue)}</small><strong>Advance / Credit receipts cleared</strong></div>
             </div>
           </div>
           <div className="meeting-period-banner" style={{ marginTop: 18 }}>
