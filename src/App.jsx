@@ -1410,7 +1410,7 @@ export default function App() {
     stock: ['stock', 'snapshots'],
     updates: ['sourceUpdates'],
     warehouse: ['procurement', 'material', 'srIssues', 'transactions'],
-    inventoryPresentation: ['stock', 'snapshots', 'transactions'],
+    inventoryPresentation: ['procurement', 'material', 'pendingPayments', 'stock', 'snapshots', 'transactions'],
     history: ['sourceUpdates', 'snapshots'],
   }
 
@@ -4060,167 +4060,282 @@ export default function App() {
     [inventoryHighUseTop100],
   )
 
+  const inventoryPresentationProcurement = useMemo(() => {
+    const monthStart = todayIso.slice(0, 7) + '-01'
+    const submittedPrs = new Set()
+    const receiptPendingPos = new Set()
+    const urgentPendingPrs = new Set()
+
+    allPrLines.forEach((row) => {
+      const prNo = String(row.pr_no || '').trim()
+      const poNo = String(row.po_no || '').trim()
+      const submitted = prSubmittedDate(row)
+
+      if (prNo && submitted && submitted >= monthStart && submitted <= todayIso) submittedPrs.add(prNo)
+      if (poNo && isReceiptNotDoneRow(row)) receiptPendingPos.add(poNo)
+      if (prNo && isUrgentPendingRow(row)) urgentPendingPrs.add(prNo)
+    })
+
+    return {
+      submittedThisMonth: submittedPrs.size,
+      receiptPendingPos: receiptPendingPos.size,
+      urgentPendingPrs: urgentPendingPrs.size,
+      agedThreeToSix: prPoAgeing.agedThreeToSix,
+      agedSixPlus: prPoAgeing.agedSixPlus,
+      oldestOpenDays: prPoAgeing.oldestOpenDays,
+      paymentPendingPos: pendingPaymentPoCount,
+    }
+  }, [allPrLines, prPoAgeing, pendingPaymentPoCount, todayIso])
+
+  const inventoryPresentationMaterials = useMemo(() => {
+    const mtrMap = new Map()
+    allMtrRows.forEach((row) => {
+      const no = String(row.document_no || '').trim()
+      if (!no) return
+      const req = mtrRequestedQty(row)
+      const tr = mtrTransferredQty(row)
+      const rem = mtrRemainingQty(row)
+      const current = mtrMap.get(no) || { requested: 0, transferred: 0, remaining: 0, rows: [] }
+      current.requested += req
+      current.transferred += tr
+      current.remaining += rem
+      current.rows.push(row)
+      mtrMap.set(no, current)
+    })
+
+    let mtrPending = 0
+    let mtrPartial = 0
+    let mtrNoStock = 0
+    let mtr30 = 0
+    for (const entry of mtrMap.values()) {
+      const pending = entry.remaining > 0 || (entry.requested > 0 && entry.transferred < entry.requested)
+      if (!pending) continue
+      mtrPending += 1
+      if (entry.transferred > 0) mtrPartial += 1
+      if (entry.rows.some((row) => !mtrStockAvailable(row))) mtrNoStock += 1
+      if (entry.rows.some((row) => mtrAgeDays(row) >= 30)) mtr30 += 1
+    }
+
+    const mrnPending = new Set()
+    const mrn30 = new Set()
+    const mrnNoJournal = new Set()
+    allMrnRows.forEach((row) => {
+      if (!mrnIsPending(row)) return
+      const id = mrnSourceId(row)
+      if (!id) return
+      mrnPending.add(id)
+      if (mrnAgeDays(row) >= 30) mrn30.add(id)
+      if (!mrnHasJournal(row)) mrnNoJournal.add(id)
+    })
+
+    return {
+      mtrTotal: mtrMap.size,
+      mtrPending,
+      mtrPartial,
+      mtrNoStock,
+      mtr30,
+      mrnTotal: allMrnRows.length,
+      mrnPending: mrnPending.size,
+      mrn30: mrn30.size,
+      mrnNoJournal: mrnNoJournal.size,
+    }
+  }, [allMtrRows, allMrnRows])
+
   const inventoryPresentationSlides = [
     {
-      kicker: 'INVENTORY EXECUTIVE SUMMARY',
-      title: 'Inventory Position',
+      kicker: 'MATERIALS & PROCUREMENT SUMMARY',
+      title: 'Operational Position',
       body: (
         <>
           <div className="meeting-period-banner">
             <div>
-              <span>CURRENT INVENTORY POSITION</span>
-              <b>{fmt(data.stock.length)} stock items</b>
+              <span>MONTH-TO-DATE + CURRENT OPEN POSITION</span>
+              <b>{warehouseMonthLabel}</b>
             </div>
-            <small>Latest uploaded stock and ageing data</small>
+            <small>Procurement, receipts, payments, material transfers and inventory risk</small>
           </div>
           <div className="meeting-metrics">
-            <MetricCard label="On-Hand Value" value={mvr(ageingSummary.onHandValue)} helper="Current SRD inventory value" />
-            <MetricCard label="Aged Over 1 Year" value={mvr(ageingSummary.agedOver365)} helper={ageingSummary.onHandValue > 0 ? fmt((ageingSummary.agedOver365 / ageingSummary.onHandValue) * 100, 1) + '% of on-hand value' : 'No ageing value'} />
-            <MetricCard label="Top 100 High Value" value={mvr(top100HighValueTotal)} helper="Combined value of highest-value stock items" />
-            <MetricCard label="High-Use Low Stock" value={fmt(inventoryHighUseLowStock.length)} helper="Top 100 consumption-value items with 1–5 on hand" />
-            <MetricCard label="High-Use Out of Stock" value={fmt(inventoryHighUseOutOfStock.length)} tone="bad" helper="Top 100 consumption-value items with zero on hand" />
-            <MetricCard label="Consumption Value YTD" value={mvr(inventoryConsumption.reduce((sum, row) => sum + row.value, 0))} helper="Sold / deducted inventory transactions this year" />
+            <MetricCard label="PRs Submitted This Month" value={fmt(inventoryPresentationProcurement.submittedThisMonth)} helper="Distinct purchase requisitions submitted" />
+            <MetricCard label="PRs Received This Month" value={fmt(warehouseReceiptMonth.prs)} helper={fmt(warehouseReceiptMonth.qty, 2) + ' quantity received'} />
+            <MetricCard label="Received Value This Month" value={mvr(warehouseReceiptMonth.value)} helper="Receipt value recorded this month" />
+            <MetricCard label="Pending Payment POs" value={fmt(pendingPaymentsSummary.total)} tone="warn" helper={mvr(pendingPaymentsSummary.totalValue) + ' pending value'} />
+            <MetricCard label="Pending MTRs" value={fmt(inventoryPresentationMaterials.mtrPending)} tone="warn" helper={fmt(inventoryPresentationMaterials.mtrNoStock) + ' with no SRD stock'} />
+            <MetricCard label="Pending MRNs" value={fmt(inventoryPresentationMaterials.mrnPending)} tone="warn" helper={fmt(inventoryPresentationMaterials.mrn30) + ' pending 30+ days'} />
+            <MetricCard label="High-Use Low Stock" value={fmt(inventoryHighUseLowStock.length)} helper="Top 100 consumption-value items at 1–5 on hand" />
+            <MetricCard label="High-Use Out of Stock" value={fmt(inventoryHighUseOutOfStock.length)} tone="bad" helper="Top 100 consumption-value items with zero stock" />
           </div>
         </>
       ),
     },
     {
-      kicker: 'INVENTORY AGEING',
-      title: 'Ageing Exposure',
+      kicker: 'PROCUREMENT CONTROL',
+      title: 'PR / PO Open Position',
       body: (
         <>
           <div className="meeting-period-banner">
             <div>
-              <span>LATEST AGEING POSITION</span>
-              <b>{ageingComparison.current?.snapshot_date ? formatShortDate(ageingComparison.current.snapshot_date) : 'Latest snapshot'}</b>
+              <span>OPEN PROCUREMENT FOLLOW-UP</span>
+              <b>{fmt(inventoryPresentationProcurement.receiptPendingPos)} POs awaiting receipt</b>
             </div>
-            <small>{ageingComparison.previous ? 'Compared with previous ageing snapshot' : 'No previous snapshot available'}</small>
+            <small>Ageing, urgency, receipts and payment follow-up</small>
           </div>
           <div className="meeting-exception-metrics">
-            <div><span>P1 · Under 1 Year</span><b>{mvr(ageingSummary.p1)}</b></div>
-            <div><span>P2</span><b>{mvr(ageingSummary.p2)}</b></div>
-            <div><span>P3</span><b>{mvr(ageingSummary.p3)}</b></div>
-            <div><span>P4</span><b>{mvr(ageingSummary.p4)}</b></div>
-            <div><span>P5</span><b>{mvr(ageingSummary.p5)}</b></div>
-            <div><span>Total Aged 1+ Year</span><b>{mvr(ageingSummary.agedOver365)}</b></div>
+            <div><span>PRs Submitted This Month</span><b>{fmt(inventoryPresentationProcurement.submittedThisMonth)}</b></div>
+            <div><span>POs Receipt Not Done</span><b>{fmt(inventoryPresentationProcurement.receiptPendingPos)}</b></div>
+            <div><span>Urgent Pending PRs</span><b>{fmt(inventoryPresentationProcurement.urgentPendingPrs)}</b></div>
+            <div><span>PRs Aged 3–6 Months</span><b>{fmt(inventoryPresentationProcurement.agedThreeToSix)}</b></div>
+            <div><span>PRs Aged 6+ Months</span><b>{fmt(inventoryPresentationProcurement.agedSixPlus)}</b></div>
+            <div><span>Oldest Open PR</span><b>{fmt(inventoryPresentationProcurement.oldestOpenDays)} days</b></div>
+            <div><span>Payment Pending POs</span><b>{fmt(inventoryPresentationProcurement.paymentPendingPos)}</b></div>
           </div>
-          {ageingComparison.previous && (
-            <div className="meeting-period-banner" style={{ marginTop: 18 }}>
-              <div>
-                <span>WEEK-TO-WEEK AGED VALUE</span>
-                <b>{mvr(ageingComparison.previousValue)} → {mvr(ageingComparison.currentValue)}</b>
-              </div>
-              <small>{ageingComparison.change >= 0 ? '+' : '−'}{mvr(Math.abs(ageingComparison.change || 0))}</small>
+          <div className="meeting-period-banner" style={{ marginTop: 18 }}>
+            <div>
+              <span>PROCUREMENT PRIORITY</span>
+              <b>{fmt(inventoryPresentationProcurement.urgentPendingPrs + inventoryPresentationProcurement.agedSixPlus)} high-attention PRs</b>
             </div>
-          )}
+            <small>Urgent pending plus PRs aged six months or more</small>
+          </div>
         </>
       ),
     },
     {
-      kicker: 'HIGH VALUE INVENTORY',
-      title: 'Top Stock Value Items',
+      kicker: 'RECEIPTS & DELIVERY',
+      title: 'Goods Receipt Performance',
       body: (
         <>
           <div className="meeting-period-banner">
             <div>
-              <span>TOP 10 BY STOCK VALUE</span>
-              <b>{mvr(top100HighValueTotal)} in Top 100</b>
+              <span>LAST COMPLETED WEEK</span>
+              <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
             </div>
-            <small>Items requiring value exposure review</small>
+            <small>Compared with the previous Wednesday–Tuesday period</small>
           </div>
-          <div className="warehouse-receipt-table">
-            <div className="warehouse-receipt-row warehouse-receipt-head">
-              <span>#</span><span>Item</span><span>Description</span><span>On Hand</span><span>Stock Value</span><span>Age Band</span><span></span><span></span>
+          <div className="meeting-change-grid warehouse-receipt-cards">
+            <div className="meeting-change-card">
+              <span>PRs received</span>
+              <b>{fmt(warehouseReceiptCurrent.prs)}</b>
+              <div><small>Previous: {fmt(warehouseReceiptPrevious.prs)}</small><strong>{deltaText(warehouseReceiptCurrent.prs, warehouseReceiptPrevious.prs)}</strong></div>
             </div>
-            {top100HighValue.slice(0, 10).map((row, index) => (
-              <div className="warehouse-receipt-row" key={row.item_code || index}>
-                <b>{index + 1}</b>
-                <span>{row.item_code || '—'}</span>
-                <span title={row.item_description || ''}>{row.item_description || '—'}</span>
-                <span>{fmt(row.on_hand, 2)}</span>
-                <strong>{mvr(stockOnHandValue(row))}</strong>
-                <span>{row.age_band || rawField(row, ['Age Band', 'Ageing', 'Aging']) || '—'}</span>
-                <span></span><span></span>
-              </div>
-            ))}
+            <div className="meeting-change-card">
+              <span>Received quantity</span>
+              <b>{fmt(warehouseReceiptCurrent.qty, 2)}</b>
+              <div><small>Previous: {fmt(warehouseReceiptPrevious.qty, 2)}</small><strong>{deltaText(warehouseReceiptCurrent.qty, warehouseReceiptPrevious.qty)}</strong></div>
+            </div>
+            <div className="meeting-change-card">
+              <span>Received value</span>
+              <b>{mvr(warehouseReceiptCurrent.value)}</b>
+              <div><small>Previous: {mvr(warehouseReceiptPrevious.value)}</small><strong>{deltaText(warehouseReceiptCurrent.value, warehouseReceiptPrevious.value)}</strong></div>
+            </div>
+            <div className="meeting-change-card">
+              <span>Fully received PRs</span>
+              <b>{fmt(warehouseFullyReceivedPrNos.size)}</b>
+              <div><small>Completed receipt position</small></div>
+            </div>
+            <div className="meeting-change-card">
+              <span>Part received PRs</span>
+              <b>{fmt(warehousePartReceivedPrNos.size)}</b>
+              <div><small>PRs still carrying balance</small></div>
+            </div>
           </div>
         </>
       ),
     },
     {
-      kicker: 'CONSUMPTION & STOCK RISK',
-      title: 'High-Use Stock Risk',
+      kicker: 'PAYMENT CONTROL',
+      title: 'Pending Payments',
+      body: (
+        <>
+          <div className="meeting-period-banner">
+            <div>
+              <span>CURRENT PAYMENT EXPOSURE</span>
+              <b>{mvr(pendingPaymentsSummary.totalValue)}</b>
+            </div>
+            <small>{fmt(pendingPaymentsSummary.total)} purchase orders awaiting payment action</small>
+          </div>
+          <div className="meeting-exception-metrics">
+            <div><span>Pending POs</span><b>{fmt(pendingPaymentsSummary.total)}</b></div>
+            <div><span>Urgent POs</span><b>{fmt(pendingPaymentsSummary.urgent)}</b></div>
+            {pendingPaymentsSummary.statusCounts.slice(0, 5).map(([status, count]) => (
+              <div key={status}><span>{status}</span><b>{fmt(count)}</b></div>
+            ))}
+          </div>
+          <div className="meeting-period-banner" style={{ marginTop: 18 }}>
+            <div>
+              <span>MANAGEMENT FOCUS</span>
+              <b>{fmt(pendingPaymentsSummary.urgent)} urgent payment POs</b>
+            </div>
+            <small>Prioritize payment blockers affecting delivery and receipt completion</small>
+          </div>
+        </>
+      ),
+    },
+    {
+      kicker: 'MATERIAL FLOW',
+      title: 'MTR / MRN Control',
+      body: (
+        <>
+          <div className="meeting-period-banner">
+            <div>
+              <span>WAREHOUSE MATERIAL MOVEMENT</span>
+              <b>MTR → MRN → SR Issue</b>
+            </div>
+            <small>Current transfer and issue-control position</small>
+          </div>
+          <div className="meeting-exception-metrics">
+            <div><span>Total MTRs</span><b>{fmt(inventoryPresentationMaterials.mtrTotal)}</b></div>
+            <div><span>Pending MTRs</span><b>{fmt(inventoryPresentationMaterials.mtrPending)}</b></div>
+            <div><span>Partially Transferred</span><b>{fmt(inventoryPresentationMaterials.mtrPartial)}</b></div>
+            <div><span>Pending · No SRD Stock</span><b>{fmt(inventoryPresentationMaterials.mtrNoStock)}</b></div>
+            <div><span>MTR Pending 30+ Days</span><b>{fmt(inventoryPresentationMaterials.mtr30)}</b></div>
+            <div><span>Pending MRNs</span><b>{fmt(inventoryPresentationMaterials.mrnPending)}</b></div>
+            <div><span>MRN Pending 30+ Days</span><b>{fmt(inventoryPresentationMaterials.mrn30)}</b></div>
+            <div><span>MRN Without SVO / Journal</span><b>{fmt(inventoryPresentationMaterials.mrnNoJournal)}</b></div>
+          </div>
+        </>
+      ),
+    },
+    {
+      kicker: 'INVENTORY RISK',
+      title: 'Consumption-Driven Stock Position',
       body: (
         <>
           <div className="meeting-period-banner">
             <div>
               <span>TOP 100 ITEMS BY CONSUMPTION VALUE</span>
-              <b>{fmt(inventoryHighUseLowStock.length + inventoryHighUseOutOfStock.length)} items need stock attention</b>
+              <b>{fmt(inventoryHighUseLowStock.length + inventoryHighUseOutOfStock.length)} items require attention</b>
             </div>
-            <small>Based on Sold / Deducted transactions this year</small>
+            <small>High-use inventory risk, with ageing kept as a secondary control</small>
           </div>
           <div className="meeting-exception-metrics">
             <div><span>High-Use Low Stock</span><b>{fmt(inventoryHighUseLowStock.length)}</b></div>
             <div><span>High-Use Out of Stock</span><b>{fmt(inventoryHighUseOutOfStock.length)}</b></div>
-            <div><span>Top 100 Consumption Value</span><b>{mvr(inventoryHighUseTop100.reduce((sum, row) => sum + row.value, 0))}</b></div>
+            <div><span>YTD Consumption Value</span><b>{mvr(inventoryConsumption.reduce((sum, row) => sum + row.value, 0))}</b></div>
+            <div><span>Current Inventory Value</span><b>{mvr(ageingSummary.onHandValue)}</b></div>
+            <div><span>Aged 1+ Year</span><b>{mvr(ageingSummary.agedOver365)}</b></div>
           </div>
           <div className="warehouse-receipt-table" style={{ marginTop: 18 }}>
             <div className="warehouse-receipt-row warehouse-receipt-head">
-              <span>Rank</span><span>Item</span><span>Description</span><span>YTD Consumption</span><span>Consumption Value</span><span>On Hand</span><span>Status</span><span></span>
+              <span>Rank</span><span>Item</span><span>Description</span><span>Consumption Value</span><span>On Hand</span><span>Status</span><span></span><span></span>
             </div>
             {inventoryHighUseTop100
               .filter((row) => row.on_hand <= 5)
-              .slice(0, 12)
+              .slice(0, 10)
               .map((row, index) => (
                 <div className="warehouse-receipt-row" key={row.item_code || index}>
                   <b>{inventoryHighUseTop100.findIndex((x) => x.item_code === row.item_code) + 1}</b>
                   <span>{row.item_code || '—'}</span>
                   <span title={row.item_description || ''}>{row.item_description || '—'}</span>
-                  <span>{fmt(row.quantity, 2)}</span>
                   <strong>{mvr(row.value)}</strong>
                   <span>{fmt(row.on_hand, 2)}</span>
                   <em>{row.on_hand <= 0 ? 'OUT OF STOCK' : 'LOW STOCK'}</em>
-                  <span></span>
+                  <span></span><span></span>
                 </div>
               ))}
           </div>
         </>
       ),
     },
-    {
-      kicker: 'CONSUMPTION PROFILE',
-      title: 'Top Consumed Items',
-      body: (
-        <>
-          <div className="meeting-period-banner">
-            <div>
-              <span>YEAR-TO-DATE CONSUMPTION</span>
-              <b>{mvr(inventoryConsumption.reduce((sum, row) => sum + row.value, 0))}</b>
-            </div>
-            <small>Issue-side inventory movement value</small>
-          </div>
-          <div className="warehouse-receipt-table">
-            <div className="warehouse-receipt-row warehouse-receipt-head">
-              <span>#</span><span>Item</span><span>Description</span><span>Consumed Qty</span><span>Consumption Value</span><span>On Hand</span><span>Stock Value</span><span></span>
-            </div>
-            {inventoryConsumption.slice(0, 12).map((row, index) => (
-              <div className="warehouse-receipt-row" key={row.item_code || index}>
-                <b>{index + 1}</b>
-                <span>{row.item_code || '—'}</span>
-                <span title={row.item_description || ''}>{row.item_description || '—'}</span>
-                <span>{fmt(row.quantity, 2)}</span>
-                <strong>{mvr(row.value)}</strong>
-                <span>{fmt(row.on_hand, 2)}</span>
-                <span>{mvr(row.stock_value)}</span>
-                <span></span>
-              </div>
-            ))}
-          </div>
-        </>
-      ),
-    },
   ]
-
   const pendingPaymentsSummary = useMemo(() => {
     const rows = data.pendingPayments || []
     const totalValue = rows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
