@@ -7,7 +7,6 @@ const PrOpenPositionV2 = lazy(() => import('./PrOpenPositionV2.jsx'))
 const PrMonthlyChart = lazy(() => import('./PrMonthlyChart.jsx'))
 const PendingPaymentsWorkspace = lazy(() => import('./PendingPaymentsWorkspace.jsx'))
 const PrfWorkspace = lazy(() => import('./PrfWorkspace.jsx'))
-const MtrWorkspace = lazy(() => import('./MtrWorkspace.jsx'))
 const MtrFastUpload = lazy(() => import('./MtrFastUpload.jsx'))
 
 const clean = (v) => String(v ?? '').trim()
@@ -122,7 +121,6 @@ export default function RouteEnhancers() {
   const purchaseRequests = route === 'Purchase Requests' || route === 'PR & PO Tracker'
   const payments = route === 'Pending Payments'
   const prf = route === 'PRF Tracker'
-  const mtr = route === 'MTR Tracker'
   const updates = route === 'Update Centre'
 
   useEffect(() => {
@@ -147,7 +145,6 @@ export default function RouteEnhancers() {
         </>}
         {payments && <PendingPaymentsWorkspace />}
         {prf && <PrfWorkspace />}
-        {mtr && <MtrWorkspace />}
         {updates && <MtrFastUpload />}
       </Suspense>
     </EnhancerBoundary>
