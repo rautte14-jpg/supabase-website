@@ -1355,7 +1355,13 @@ export default function App() {
     issueQty: 0,
   })
   const [mtrWeekFilter, setMtrWeekFilter] = useState('ALL')
-  const [mtrMaterialRows, setMtrMaterialRows] = useState([])
+  const [mtrFast, setMtrFast] = useState({
+    summary: null,
+    rows: [],
+    lineCount: 0,
+    mtrCount: 0,
+    loading: false,
+  })
   const [mtrControlFilter, setMtrControlFilter] = useState('ALL')
   const [mtrStatusFilter, setMtrStatusFilter] = useState('ALL')
   const [mtrDeliveryFilter, setMtrDeliveryFilter] = useState('ALL')
@@ -1618,46 +1624,37 @@ export default function App() {
     })
   }
 
-  async function fetchMtrRowsFast() {
-    const pageSize = 1000
-    const first = await supabase
-      .from('material_records_fast')
-      .select('*', { count: 'exact' })
-      .eq('document_type', 'MTR')
-      .order('updated_at', { ascending: false })
-      .range(0, pageSize - 1)
-    if (first.error) throw first.error
-
-    const rows = [...(first.data || [])]
-    const total = Number(first.count || rows.length)
-    const ranges = []
-    for (let from = pageSize; from < total; from += pageSize) {
-      ranges.push([from, Math.min(from + pageSize - 1, total - 1)])
-    }
-
-    for (let i = 0; i < ranges.length; i += 6) {
-      const group = await Promise.all(
-        ranges.slice(i, i + 6).map(async ([from, to]) => {
-          const result = await supabase
-            .from('material_records_fast')
-            .select('*')
-            .eq('document_type', 'MTR')
-            .order('updated_at', { ascending: false })
-            .range(from, to)
-          if (result.error) throw result.error
-          return result.data || []
+  async function loadMtrPageFast() {
+    setMtrFast((current) => ({ ...current, loading: true }))
+    try {
+      const week = mtrWeekFilter === 'ALL' ? null : mtrWeekFilter
+      const [summaryResult, detailResult] = await Promise.all([
+        supabase.rpc('mtr_tracker_summary', { p_week_start: week }),
+        supabase.rpc('mtr_tracker_details', {
+          p_week_start: week,
+          p_control: mtrControlFilter,
+          p_status: mtrStatusFilter,
+          p_delivery: mtrDeliveryFilter,
+          p_search: query,
+          p_limit: 300,
         }),
-      )
-      group.forEach((page) => rows.push(...page))
+      ])
+      if (summaryResult.error) throw summaryResult.error
+      if (detailResult.error) throw detailResult.error
+
+      const summary = summaryResult.data || {}
+      const detail = detailResult.data || {}
+      setMtrFast({
+        summary,
+        rows: Array.isArray(detail.rows) ? detail.rows : [],
+        lineCount: Number(detail.lineCount || 0),
+        mtrCount: Number(detail.mtrCount || 0),
+        loading: false,
+      })
+    } catch (error) {
+      console.error('Failed to load MTR tracker', error)
+      setMtrFast((current) => ({ ...current, loading: false }))
     }
-
-    setMtrMaterialRows(rows)
-    return rows
-  }
-
-  async function loadMtrPageFast(force = false) {
-    if (!force && mtrMaterialRows.length) return
-    await fetchMtrRowsFast()
   }
 
   async function searchVesselSr(term) {
@@ -1916,7 +1913,7 @@ export default function App() {
       } else if (targetView === 'mtr') {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
-          loadMtrPageFast(force),
+          loadMtrPageFast(),
         ])
       } else if (targetView === 'vessel') {
         if (vesselSearch.trim().length >= 2) await searchVesselSr(vesselSearch)
@@ -1976,6 +1973,13 @@ export default function App() {
     const timer = window.setTimeout(() => searchVesselSr(term), 350)
     return () => window.clearTimeout(timer)
   }, [view, vesselSearch])
+
+
+  useEffect(() => {
+    if (view !== 'mtr') return
+    const timer = window.setTimeout(() => loadMtrPageFast(), query ? 250 : 0)
+    return () => window.clearTimeout(timer)
+  }, [view, mtrWeekFilter, mtrControlFilter, mtrStatusFilter, mtrDeliveryFilter, query])
 
 
   const noteMap = useMemo(
@@ -2481,153 +2485,60 @@ export default function App() {
 
   const allMtrRows = useMemo(
     () => view === 'mtr'
-      ? mtrMaterialRows
+      ? mtrFast.rows
       : data.material.filter((r) => r.document_type === 'MTR'),
-    [view, mtrMaterialRows, data.material],
+    [view, mtrFast.rows, data.material],
   )
 
   const mtrWeekCounts = useMemo(() => {
-    const weekSets = new Map()
-    allMtrRows.forEach((row) => {
-      const weekStart = weekStartWednesday(mtrRequestDate(row))
-      const mtrNo = String(row.document_no || '').trim()
-      if (!weekStart || !mtrNo) return
-      if (!weekSets.has(weekStart)) weekSets.set(weekStart, new Set())
-      weekSets.get(weekStart).add(mtrNo)
-    })
+    const rows = Array.isArray(mtrFast.summary?.weeklyCounts) ? mtrFast.summary.weeklyCounts : []
+    return rows.slice(0, 8).map((week) => ({
+      weekStart: week.weekStart || week.week_start,
+      weekEnd: week.weekEnd || week.week_end,
+      count: Number(week.count || 0),
+    }))
+  }, [mtrFast.summary])
 
-    const currentWeek = weekStartWednesday(new Date().toISOString().slice(0, 10))
-    return Array.from({ length: 8 }, (_, index) => {
-      const weekStart = addDaysIso(currentWeek, index * -7)
-      return {
-        weekStart,
-        weekEnd: addDaysIso(weekStart, 6),
-        count: weekSets.get(weekStart)?.size || 0,
-      }
-    })
-  }, [allMtrRows])
-
-  const weekFilteredMtrRows = useMemo(
-    () => allMtrRows.filter((row) =>
-      mtrWeekFilter === 'ALL' || weekStartWednesday(mtrRequestDate(row)) === mtrWeekFilter
-    ),
-    [allMtrRows, mtrWeekFilter],
-  )
+  const weekFilteredMtrRows = mtrFast.rows
 
   const mtrSummary = useMemo(() => {
-    const mtrMap = new Map()
-    let requestedQty = 0
-    let transferredQty = 0
-    let remainingQty = 0
-    let pendingNoStock = 0
-    let aged30 = 0
-
-    weekFilteredMtrRows.forEach((row) => {
-      const mtrNo = String(row.document_no || '').trim()
-      const requested = mtrRequestedQty(row)
-      const transferred = mtrTransferredQty(row)
-      const remaining = mtrRemainingQty(row)
-      const pending = remaining > 0 || (requested > 0 && transferred < requested)
-
-      requestedQty += requested
-      transferredQty += transferred
-      remainingQty += remaining
-
-      if (pending && !mtrStockAvailable(row)) pendingNoStock += 1
-
-      const age = mtrAgeDays(row)
-      if (pending && age >= 30) aged30 += 1
-
-      if (!mtrNo) return
-      if (!mtrMap.has(mtrNo)) {
-        mtrMap.set(mtrNo, { requested: 0, transferred: 0, remaining: 0, lines: 0 })
-      }
-      const item = mtrMap.get(mtrNo)
-      item.requested += requested
-      item.transferred += transferred
-      item.remaining += remaining
-      item.lines += 1
-    })
-
-    const fullyTransferredMtrs = new Set()
-    const partiallyTransferredMtrs = new Set()
-    const notTransferredMtrs = new Set()
-
-    for (const [mtrNo, m] of mtrMap.entries()) {
-      if (m.requested > 0 && m.remaining <= 0 && m.transferred >= m.requested) {
-        fullyTransferredMtrs.add(mtrNo)
-      } else if (m.transferred > 0 && m.remaining > 0) {
-        partiallyTransferredMtrs.add(mtrNo)
-      } else if (m.requested > 0 && m.transferred <= 0 && m.remaining > 0) {
-        notTransferredMtrs.add(mtrNo)
-      }
-    }
-
+    const row = mtrFast.summary || {}
     return {
-      totalMtrs: mtrMap.size,
-      fullyTransferred: fullyTransferredMtrs.size,
-      partiallyTransferred: partiallyTransferredMtrs.size,
-      notTransferred: notTransferredMtrs.size,
-      fullyTransferredMtrs,
-      partiallyTransferredMtrs,
-      notTransferredMtrs,
-      requestedQty,
-      transferredQty,
-      remainingQty,
-      pendingNoStock,
-      aged30,
+      totalMtrs: Number(row.totalMtrs || 0),
+      fullyTransferred: Number(row.fullyTransferred || 0),
+      partiallyTransferred: Number(row.partiallyTransferred || 0),
+      notTransferred: Number(row.notTransferred || 0),
+      fullyTransferredMtrs: new Set(),
+      partiallyTransferredMtrs: new Set(),
+      notTransferredMtrs: new Set(),
+      requestedQty: Number(row.requestedQty || 0),
+      transferredQty: Number(row.transferredQty || 0),
+      remainingQty: Number(row.remainingQty || 0),
+      pendingNoStock: Number(row.pendingNoStock || 0),
+      aged30: Number(row.aged30 || 0),
+      totalLines: Number(row.totalLines || 0),
     }
-  }, [weekFilteredMtrRows])
+  }, [mtrFast.summary])
 
-  const mtrStatusCounts = useMemo(() => {
-    const counts = new Map()
-    weekFilteredMtrRows.forEach((row) => {
-      const status = String(row.status || '').trim() || 'BLANK'
-      counts.set(status, (counts.get(status) || 0) + 1)
-    })
-    return [...counts.entries()].sort((a, b) => b[1] - a[1])
-  }, [weekFilteredMtrRows])
-
-  const mtrDeliveryCounts = useMemo(() => {
-    const counts = new Map()
-    weekFilteredMtrRows.forEach((row) => {
-      const status = mtrDeliveryStatus(row) || 'BLANK'
-      counts.set(status, (counts.get(status) || 0) + 1)
-    })
-    return [...counts.entries()].sort((a, b) => b[1] - a[1])
-  }, [weekFilteredMtrRows])
-
-  const mtrRows = useMemo(
-    () => weekFilteredMtrRows.filter((row) => {
-      if (!matches(row)) return false
-
-      const requested = mtrRequestedQty(row)
-      const transferred = mtrTransferredQty(row)
-      const remaining = mtrRemainingQty(row)
-      const pending = remaining > 0 || (requested > 0 && transferred < requested)
-      const mtrNo = String(row.document_no || '').trim()
-
-      if (mtrControlFilter === 'FULL' && !mtrSummary.fullyTransferredMtrs.has(mtrNo)) return false
-      if (mtrControlFilter === 'PARTIAL' && !mtrSummary.partiallyTransferredMtrs.has(mtrNo)) return false
-      if (mtrControlFilter === 'NOT_TRANSFERRED' && !mtrSummary.notTransferredMtrs.has(mtrNo)) return false
-      if (mtrControlFilter === 'NO_STOCK' && !(pending && !mtrStockAvailable(row))) return false
-      if (mtrControlFilter === 'AGE30' && !(pending && mtrAgeDays(row) >= 30)) return false
-
-      const erpStatus = String(row.status || '').trim() || 'BLANK'
-      if (mtrStatusFilter !== 'ALL' && erpStatus !== mtrStatusFilter) return false
-
-      const deliveryStatus = mtrDeliveryStatus(row) || 'BLANK'
-      if (mtrDeliveryFilter !== 'ALL' && deliveryStatus !== mtrDeliveryFilter) return false
-
-      return true
-    }),
-    [weekFilteredMtrRows, query, mtrControlFilter, mtrStatusFilter, mtrDeliveryFilter, mtrSummary],
+  const mtrStatusCounts = useMemo(
+    () => (Array.isArray(mtrFast.summary?.statusCounts) ? mtrFast.summary.statusCounts : [])
+      .map((entry) => [String(entry?.[0] || 'BLANK'), Number(entry?.[1] || 0)]),
+    [mtrFast.summary],
   )
 
+  const mtrDeliveryCounts = useMemo(
+    () => (Array.isArray(mtrFast.summary?.deliveryCounts) ? mtrFast.summary.deliveryCounts : [])
+      .map((entry) => [String(entry?.[0] || 'BLANK'), Number(entry?.[1] || 0)]),
+    [mtrFast.summary],
+  )
+
+  const mtrRows = mtrFast.rows
+
   const mtrVisibleCounts = useMemo(() => ({
-    mtrs: new Set(mtrRows.map((r) => r.document_no).filter(Boolean)).size,
-    lines: mtrRows.length,
-  }), [mtrRows])
+    mtrs: Number(mtrFast.mtrCount || 0),
+    lines: Number(mtrFast.lineCount || 0),
+  }), [mtrFast.mtrCount, mtrFast.lineCount])
+
   const allMrnRows = useMemo(
     () => view === 'mrn'
       ? mrnMaterialRows
@@ -6267,7 +6178,7 @@ export default function App() {
                     onClick={() => selectMtrWeek('ALL')}
                   >
                     <span>ALL WEEKS</span>
-                    <strong>{fmt(new Set(allMtrRows.map((r) => r.document_no).filter(Boolean)).size)} MTRs</strong>
+                    <strong>{fmt(mtrSummary.totalMtrs)} MTRs</strong>
                   </button>
                   {mtrWeekCounts.map((week) => (
                     <button
@@ -6338,7 +6249,7 @@ export default function App() {
                 <section className="prf-status-summary">
                   <div className="prf-status-head">
                     <div><span className="eyebrow">ERP STATUS</span><h3>Item lines by ERP status</h3></div>
-                    <span>{fmt(weekFilteredMtrRows.length)} lines</span>
+                    <span>{fmt(mtrSummary.totalLines)} lines</span>
                   </div>
                   <div className="prf-status-grid">
                     {mtrStatusCounts.slice(0, 12).map(([status, count]) => (
@@ -6358,7 +6269,7 @@ export default function App() {
                 <section className="prf-status-summary">
                   <div className="prf-status-head">
                     <div><span className="eyebrow">DELIVERY STATUS ERP</span><h3>Item lines by delivery status</h3></div>
-                    <span>{fmt(weekFilteredMtrRows.length)} lines</span>
+                    <span>{fmt(mtrSummary.totalLines)} lines</span>
                   </div>
                   <div className="prf-status-grid">
                     {mtrDeliveryCounts.slice(0, 12).map(([status, count]) => (
@@ -6388,10 +6299,11 @@ export default function App() {
 
               <div className="prpo-visible-count">
                 <strong>{fmt(mtrVisibleCounts.mtrs)} MTR{mtrVisibleCounts.mtrs === 1 ? '' : 's'}</strong>
-                <span>{fmt(mtrVisibleCounts.lines)} item line{mtrVisibleCounts.lines === 1 ? '' : 's'} shown</span>
+                <span>{fmt(mtrRows.length)} of {fmt(mtrVisibleCounts.lines)} item line{mtrVisibleCounts.lines === 1 ? '' : 's'} shown</span>
               </div>
 
-              <DataTable rows={mtrRows} columns={mtrColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} />
+              {mtrFast.loading && <div className="notice">Loading current MTR data…</div>}
+              <DataTable rows={mtrRows} columns={mtrColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={300} />
             </>
           )}
 
