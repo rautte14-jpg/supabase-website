@@ -1628,6 +1628,7 @@ export default function App() {
     setMtrFast((current) => ({ ...current, loading: true }))
     try {
       const week = mtrWeekFilter === 'ALL' ? null : mtrWeekFilter
+      const searchTerm = lower(search).trim()
       const [summaryResult, detailResult] = await Promise.all([
         supabase.rpc('mtr_tracker_summary', { p_week_start: week }),
         supabase.rpc('mtr_tracker_details', {
@@ -1635,7 +1636,7 @@ export default function App() {
           p_control: mtrControlFilter,
           p_status: mtrStatusFilter,
           p_delivery: mtrDeliveryFilter,
-          p_search: query,
+          p_search: searchTerm,
           p_limit: 300,
         }),
       ])
@@ -1977,9 +1978,9 @@ export default function App() {
 
   useEffect(() => {
     if (view !== 'mtr') return
-    const timer = window.setTimeout(() => loadMtrPageFast(), query ? 250 : 0)
+    const timer = window.setTimeout(() => loadMtrPageFast(), search.trim() ? 250 : 0)
     return () => window.clearTimeout(timer)
-  }, [view, mtrWeekFilter, mtrControlFilter, mtrStatusFilter, mtrDeliveryFilter, query])
+  }, [view, mtrWeekFilter, mtrControlFilter, mtrStatusFilter, mtrDeliveryFilter, search])
 
 
   const noteMap = useMemo(
