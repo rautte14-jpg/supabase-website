@@ -4176,7 +4176,6 @@ export default function App() {
             <MetricCard label="PRs Received This Month" value={fmt(warehouseReceiptMonth.prs)} helper={fmt(warehouseReceiptMonth.qty, 2) + ' quantity received'} />
             <MetricCard label="Received Value This Month" value={mvr(warehouseReceiptMonth.value)} helper="Receipt value recorded this month" />
             <MetricCard label="Pending Payment POs" value={fmt(inventoryPresentationPayments.total)} tone="warn" helper={mvr(inventoryPresentationPayments.totalValue) + ' pending value'} />
-            <MetricCard label="Pending MTRs" value={fmt(inventoryPresentationMaterials.mtrPending)} tone="warn" helper={fmt(inventoryPresentationMaterials.mtrNoStock) + ' with no SRD stock'} />
             <MetricCard label="High-Use Low Stock" value={fmt(inventoryHighUseLowStock.length)} helper="Top 100 consumption-value items at 1–5 on hand" />
             <MetricCard label="High-Use Out of Stock" value={fmt(inventoryHighUseOutOfStock.length)} tone="bad" helper="Top 100 consumption-value items with zero stock" />
           </div>
@@ -4317,14 +4316,13 @@ export default function App() {
               <span>TOP 100 ITEMS BY CONSUMPTION VALUE</span>
               <b>{fmt(inventoryHighUseLowStock.length + inventoryHighUseOutOfStock.length)} items require attention</b>
             </div>
-            <small>High-use inventory risk, with ageing kept as a secondary control</small>
+            <small>High-use inventory risk based on actual consumption value</small>
           </div>
           <div className="meeting-exception-metrics">
             <div><span>High-Use Low Stock</span><b>{fmt(inventoryHighUseLowStock.length)}</b></div>
             <div><span>High-Use Out of Stock</span><b>{fmt(inventoryHighUseOutOfStock.length)}</b></div>
             <div><span>YTD Consumption Value</span><b>{mvr(inventoryConsumption.reduce((sum, row) => sum + row.value, 0))}</b></div>
             <div><span>Current Inventory Value</span><b>{mvr(ageingSummary.onHandValue)}</b></div>
-            <div><span>Aged 1+ Year</span><b>{mvr(ageingSummary.agedOver365)}</b></div>
           </div>
           <div className="warehouse-receipt-table" style={{ marginTop: 18 }}>
             <div className="warehouse-receipt-row warehouse-receipt-head">
@@ -4347,7 +4345,57 @@ export default function App() {
           </div>
         </>
       ),
-    },
+    },,
+    {
+      kicker: 'MANAGEMENT ATTENTION',
+      title: 'Action Required',
+      body: (
+        <>
+          <div className="meeting-period-banner">
+            <div>
+              <span>ITEMS REQUIRING FOLLOW-UP</span>
+              <b>
+                {fmt(
+                  inventoryPresentationProcurement.urgentPendingPrs +
+                  inventoryPresentationProcurement.agedSixPlus +
+                  inventoryPresentationProcurement.receiptPendingPos +
+                  inventoryPresentationPayments.urgent +
+                  inventoryPresentationMaterials.mtrNoStock +
+                  inventoryHighUseOutOfStock.length
+                )} priority flags
+              </b>
+            </div>
+            <small>Focus the meeting on blockers that need an owner or next action</small>
+          </div>
+
+          <div className="meeting-control-grid">
+            <section>
+              <div className="meeting-control-head"><span>PROCUREMENT</span><b>Immediate Follow-Up</b></div>
+              <div className="meeting-control-row critical"><span>Urgent pending PRs</span><strong>{fmt(inventoryPresentationProcurement.urgentPendingPrs)}</strong></div>
+              <div className="meeting-control-row critical"><span>PRs aged 6+ months</span><strong>{fmt(inventoryPresentationProcurement.agedSixPlus)}</strong></div>
+              <div className="meeting-control-row"><span>POs awaiting receipt</span><strong>{fmt(inventoryPresentationProcurement.receiptPendingPos)}</strong></div>
+              <div className="meeting-control-row"><span>Urgent payment POs</span><strong>{fmt(inventoryPresentationPayments.urgent)}</strong></div>
+            </section>
+
+            <section>
+              <div className="meeting-control-head"><span>INVENTORY / MATERIALS</span><b>Immediate Follow-Up</b></div>
+              <div className="meeting-control-row critical"><span>MTRs pending with no SRD stock</span><strong>{fmt(inventoryPresentationMaterials.mtrNoStock)}</strong></div>
+              <div className="meeting-control-row"><span>MTRs pending 30+ days</span><strong>{fmt(inventoryPresentationMaterials.mtr30)}</strong></div>
+              <div className="meeting-control-row critical"><span>High-use items out of stock</span><strong>{fmt(inventoryHighUseOutOfStock.length)}</strong></div>
+              <div className="meeting-control-row"><span>High-use items low stock</span><strong>{fmt(inventoryHighUseLowStock.length)}</strong></div>
+            </section>
+          </div>
+
+          <div className="meeting-period-banner" style={{ marginTop: 18 }}>
+            <div>
+              <span>MEETING OUTCOME</span>
+              <b>Assign owner · action · target date</b>
+            </div>
+            <small>Use this slide to close the review with clear accountability</small>
+          </div>
+        </>
+      ),
+    }
   ]
   const pendingPaymentsSummary = useMemo(() => {
     const rows = data.pendingPayments || []
