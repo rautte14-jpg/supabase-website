@@ -6379,3 +6379,137 @@ tbody tr:hover {
     text-align: left;
   }
 }
+
+
+/* Inventory presentation interactive drilldowns */
+.meeting-exception-metrics > .inventory-ppt-click {
+  width: 100%;
+  min-height: 84px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 10px;
+  background: rgba(255,255,255,.05);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.meeting-exception-metrics > .inventory-ppt-click:hover {
+  border-color: rgba(147,197,253,.55);
+  background: rgba(59,130,246,.14);
+}
+.meeting-exception-metrics > .inventory-ppt-click span,
+.meeting-exception-metrics > .inventory-ppt-click b,
+.meeting-exception-metrics > .inventory-ppt-click small {
+  display: block;
+}
+.meeting-exception-metrics > .inventory-ppt-click span {
+  color: #98aac4;
+  font-size: 9px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+.meeting-exception-metrics > .inventory-ppt-click b {
+  margin-top: 5px;
+  color: #fff;
+  font-size: 22px;
+}
+.meeting-exception-metrics > .inventory-ppt-click small {
+  margin-top: 5px;
+  color: #93c5fd;
+  font-size: 9px;
+}
+.inventory-action-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.inventory-action-row:hover {
+  background: rgba(59,130,246,.10);
+}
+.inventory-ppt-detail {
+  position: absolute;
+  inset: 18px;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(4,16,35,.72);
+  backdrop-filter: blur(4px);
+}
+.inventory-ppt-detail-card {
+  width: min(1180px, 96%);
+  max-height: 82vh;
+  overflow: hidden;
+  border: 1px solid #dbe5f0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(3,15,34,.30);
+}
+.inventory-ppt-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  border-bottom: 1px solid #e5ebf2;
+}
+.inventory-ppt-detail-head span {
+  color: #2563eb;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .09em;
+}
+.inventory-ppt-detail-head h3 {
+  margin: 4px 0 0;
+  color: #16263f;
+  font-size: 18px;
+}
+.inventory-ppt-detail-head button {
+  border: 1px solid #d8e1eb;
+  border-radius: 9px;
+  background: #fff;
+  padding: 7px 11px;
+  color: #40516b;
+  cursor: pointer;
+}
+.inventory-ppt-detail-table {
+  max-height: 60vh;
+  overflow: auto;
+}
+.inventory-ppt-detail-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+.inventory-ppt-detail-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 9px 10px;
+  border-bottom: 1px solid #e5ebf2;
+  background: #f8fafc;
+  color: #60708a;
+  text-align: left;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+.inventory-ppt-detail-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #eef2f6;
+  color: #32445e;
+}
+.inventory-ppt-detail-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid #e5ebf2;
+  background: #fbfcfd;
+  color: #64748b;
+  font-size: 10px;
+}
+#inventory-presentation-shell {
+  position: relative;
+}
