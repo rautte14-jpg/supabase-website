@@ -13,6 +13,7 @@ const ROUTE_TABLES = {
   'Stock & Ageing': ['stock_items', 'weekly_snapshots'],
   'Update Centre': ['source_updates'],
   'Warehouse Presentation': ['procurement_records', 'material_records', 'sr_issue_records', 'inventory_transactions'],
+  'Inventory Presentation': ['procurement_records', 'material_records', 'pending_payment_records', 'stock_items', 'weekly_snapshots', 'inventory_transactions'],
   History: ['source_updates', 'weekly_snapshots'],
 }
 
@@ -49,7 +50,7 @@ export default function PerformanceLayer() {
 
     const scheduleCurrentRefresh = () => {
       window.clearTimeout(refreshTimer)
-      refreshTimer = window.setTimeout(refreshForCurrentRoute, 500)
+      refreshTimer = window.setTimeout(refreshForCurrentRoute, 1200)
     }
 
     const onDatabaseChange = (payload) => {
