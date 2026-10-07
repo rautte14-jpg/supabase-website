@@ -4160,7 +4160,6 @@ export default function App() {
             <MetricCard label="Received Value This Month" value={mvr(warehouseReceiptMonth.value)} helper="Receipt value recorded this month" />
             <MetricCard label="Pending Payment POs" value={fmt(pendingPaymentsSummary.total)} tone="warn" helper={mvr(pendingPaymentsSummary.totalValue) + ' pending value'} />
             <MetricCard label="Pending MTRs" value={fmt(inventoryPresentationMaterials.mtrPending)} tone="warn" helper={fmt(inventoryPresentationMaterials.mtrNoStock) + ' with no SRD stock'} />
-            <MetricCard label="Pending MRNs" value={fmt(inventoryPresentationMaterials.mrnPending)} tone="warn" helper={fmt(inventoryPresentationMaterials.mrn30) + ' pending 30+ days'} />
             <MetricCard label="High-Use Low Stock" value={fmt(inventoryHighUseLowStock.length)} helper="Top 100 consumption-value items at 1–5 on hand" />
             <MetricCard label="High-Use Out of Stock" value={fmt(inventoryHighUseOutOfStock.length)} tone="bad" helper="Top 100 consumption-value items with zero stock" />
           </div>
@@ -4271,15 +4270,15 @@ export default function App() {
     },
     {
       kicker: 'MATERIAL FLOW',
-      title: 'MTR / MRN Control',
+      title: 'MTR Control',
       body: (
         <>
           <div className="meeting-period-banner">
             <div>
               <span>WAREHOUSE MATERIAL MOVEMENT</span>
-              <b>MTR → MRN → SR Issue</b>
+              <b>PR / PO → Receipt → MTR → Stock</b>
             </div>
-            <small>Current transfer and issue-control position</small>
+            <small>Current warehouse transfer position for inventory control</small>
           </div>
           <div className="meeting-exception-metrics">
             <div><span>Total MTRs</span><b>{fmt(inventoryPresentationMaterials.mtrTotal)}</b></div>
@@ -4287,9 +4286,6 @@ export default function App() {
             <div><span>Partially Transferred</span><b>{fmt(inventoryPresentationMaterials.mtrPartial)}</b></div>
             <div><span>Pending · No SRD Stock</span><b>{fmt(inventoryPresentationMaterials.mtrNoStock)}</b></div>
             <div><span>MTR Pending 30+ Days</span><b>{fmt(inventoryPresentationMaterials.mtr30)}</b></div>
-            <div><span>Pending MRNs</span><b>{fmt(inventoryPresentationMaterials.mrnPending)}</b></div>
-            <div><span>MRN Pending 30+ Days</span><b>{fmt(inventoryPresentationMaterials.mrn30)}</b></div>
-            <div><span>MRN Without SVO / Journal</span><b>{fmt(inventoryPresentationMaterials.mrnNoJournal)}</b></div>
           </div>
         </>
       ),
@@ -6393,7 +6389,7 @@ export default function App() {
             <>
               <PageHeader
                 title="Inventory Presentation"
-                subtitle="Inventory value, ageing, high-value exposure and consumption-driven stock risk."
+                subtitle="Procurement, receipts, payments, MTR control and consumption-driven stock risk."
                 actions={
                   <>
                     <button className="secondary" onClick={toggleInventoryFullscreen}>
