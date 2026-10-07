@@ -70,6 +70,7 @@ export default function PendingPaymentsWorkspace(){
     const channel=supabase
       .channel('pending-payments-workspace-live')
       .on('postgres_changes',{event:'*',schema:'public',table:'pending_payment_records'},scheduleLoad)
+      .on('postgres_changes',{event:'*',schema:'public',table:'procurement_records'},scheduleLoad)
       .subscribe()
     return()=>{
       alive=false
