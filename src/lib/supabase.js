@@ -14,6 +14,7 @@ const supabaseKey =
 // normal App data loader instead of downloading the same large table twice.
 const inFlightGets = new Map()
 const responseCache = new Map()
+let cacheGeneration = 0
 const CACHE_TTL_MS = 120000
 const READ_ONLY_RPC_NAMES = new Set([
   'overview_material_issue_summary',
@@ -55,6 +56,7 @@ function responseFromCache(entry) {
 }
 
 export function clearSupabaseReadCache(table = '') {
+  cacheGeneration += 1
   const aliases = {
     sr_issue_records: [
       'sr_issue_records_fast',
@@ -127,9 +129,10 @@ async function fastFetch(input, init = {}) {
 
   let pending = inFlightGets.get(key)
   if (!pending) {
+    const requestGeneration = cacheGeneration
     pending = (async () => {
       const response = await fetch(input, init)
-      if (response.ok && cacheableUrl(url)) {
+      if (response.ok && cacheableUrl(url) && requestGeneration === cacheGeneration) {
         const clone = response.clone()
         const body = await clone.arrayBuffer()
         responseCache.set(key, {
