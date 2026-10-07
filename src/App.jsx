@@ -1340,6 +1340,7 @@ export default function App() {
   const [warehouseFullscreen, setWarehouseFullscreen] = useState(false)
   const [inventorySlide, setInventorySlide] = useState(0)
   const [inventoryFullscreen, setInventoryFullscreen] = useState(false)
+  const [inventoryDetail, setInventoryDetail] = useState(null)
   const [warehouseIssueWeekFilter, setWarehouseIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseIssueDetailOpen, setWarehouseIssueDetailOpen] = useState(false)
 
@@ -1394,7 +1395,7 @@ export default function App() {
     notes: ['case_notes', 'updated_at', false],
     sourceUpdates: ['source_updates', 'imported_at', false],
     snapshots: ['weekly_snapshots', 'snapshot_date', false],
-    pendingPayments: ['pending_payment_records', 'po_date', false],
+    pendingPayments: ['current_pending_payment_records', 'po_date', false],
     erpPrHeaders: ['erp_pr_headers', 'created_at', false],
   }
 
@@ -1434,7 +1435,7 @@ export default function App() {
     ] = await Promise.all([
       supabase.from('portal_home_summary').select('*').limit(1),
       supabase
-        .from('pending_payment_records')
+        .from('current_pending_payment_records')
         .select('po_no,po_date,supplier,status,priority,po_value')
         .order('po_value', { ascending: false }),
       supabase
@@ -4158,6 +4159,128 @@ export default function App() {
     }
   }, [allMtrRows, allMrnRows])
 
+  const inventoryPresentationDetail = useMemo(() => {
+    if (!inventoryDetail) return null
+
+    const uniqueBy = (rows, keyFn) => [...new Map(rows.map((row) => [keyFn(row), row])).values()]
+
+    if (inventoryDetail === 'URGENT_PR') {
+      const rows = uniqueBy(allPrLines.filter(isUrgentPendingRow), (row) => String(row.pr_no || '').trim())
+      return {
+        title: 'Urgent Pending PRs',
+        columns: ['PR', 'PO', 'Description', 'Submitted', 'Status'],
+        rows: rows.map((row) => [
+          row.pr_no || '—',
+          row.po_no || '—',
+          row.item_description || rawField(row, ['PR Description', 'Description']) || '—',
+          prSubmittedDate(row) || '—',
+          row.status || '—',
+        ]),
+      }
+    }
+
+    if (inventoryDetail === 'AGED6') {
+      const rows = uniqueBy(
+        allPrLines.filter((row) => prPoAgeing.agedSixPlusPrNos.has(String(row.pr_no || '').trim())),
+        (row) => String(row.pr_no || '').trim(),
+      )
+      return {
+        title: 'PRs Aged 6+ Months',
+        columns: ['PR', 'PO', 'Description', 'Submitted', 'Status'],
+        rows: rows.map((row) => [
+          row.pr_no || '—',
+          row.po_no || '—',
+          row.item_description || rawField(row, ['PR Description', 'Description']) || '—',
+          prSubmittedDate(row) || '—',
+          row.status || '—',
+        ]),
+      }
+    }
+
+    if (inventoryDetail === 'RECEIPT_PENDING') {
+      const rows = uniqueBy(allPrLines.filter(isReceiptNotDoneRow), (row) => String(row.po_no || '').trim())
+      return {
+        title: 'POs Awaiting Receipt',
+        columns: ['PO', 'PR', 'Item', 'Description', 'Requested', 'Received'],
+        rows: rows.map((row) => [
+          row.po_no || '—',
+          row.pr_no || '—',
+          row.item_code || '—',
+          row.item_description || '—',
+          fmt(requestedQty(row), 2),
+          fmt(receivedQty(row), 2),
+        ]),
+      }
+    }
+
+    if (inventoryDetail === 'PAYMENT' || inventoryDetail === 'PAYMENT_URGENT') {
+      const source = inventoryDetail === 'PAYMENT_URGENT'
+        ? (data.pendingPayments || []).filter((row) => isUrgent(row.priority))
+        : (data.pendingPayments || [])
+      return {
+        title: inventoryDetail === 'PAYMENT_URGENT' ? 'Urgent Pending Payment POs' : 'Current Pending Payment POs',
+        columns: ['PO', 'Supplier', 'Status', 'Priority', 'PO Value'],
+        rows: source.map((row) => [
+          row.po_no || '—',
+          row.supplier || '—',
+          row.status || '—',
+          row.priority || '—',
+          mvr(row.po_value),
+        ]),
+      }
+    }
+
+    if (inventoryDetail === 'MTR_NO_STOCK' || inventoryDetail === 'MTR_30') {
+      const rows = allMtrRows.filter((row) => {
+        const requested = mtrRequestedQty(row)
+        const transferred = mtrTransferredQty(row)
+        const remaining = mtrRemainingQty(row)
+        const pending = remaining > 0 || (requested > 0 && transferred < requested)
+        if (!pending) return false
+        if (inventoryDetail === 'MTR_NO_STOCK') return !mtrStockAvailable(row)
+        return mtrAgeDays(row) >= 30
+      })
+      return {
+        title: inventoryDetail === 'MTR_NO_STOCK' ? 'MTRs Pending with No SRD Stock' : 'MTRs Pending 30+ Days',
+        columns: ['MTR', 'Item', 'Description', 'Requested', 'Transferred', 'Remaining'],
+        rows: rows.map((row) => [
+          row.document_no || '—',
+          row.item_code || '—',
+          row.item_description || '—',
+          fmt(mtrRequestedQty(row), 2),
+          fmt(mtrTransferredQty(row), 2),
+          fmt(mtrRemainingQty(row), 2),
+        ]),
+      }
+    }
+
+    if (inventoryDetail === 'HIGH_USE_OOS' || inventoryDetail === 'HIGH_USE_LOW') {
+      const source = inventoryDetail === 'HIGH_USE_OOS' ? inventoryHighUseOutOfStock : inventoryHighUseLowStock
+      return {
+        title: inventoryDetail === 'HIGH_USE_OOS' ? 'High-Use Items Out of Stock' : 'High-Use Items Low Stock',
+        columns: ['Rank', 'Item', 'Description', 'Consumption Value', 'On Hand'],
+        rows: source.map((row) => [
+          inventoryHighUseTop100.findIndex((x) => x.item_code === row.item_code) + 1,
+          row.item_code || '—',
+          row.item_description || '—',
+          mvr(row.value),
+          fmt(row.on_hand, 2),
+        ]),
+      }
+    }
+
+    return null
+  }, [
+    inventoryDetail,
+    allPrLines,
+    prPoAgeing,
+    data.pendingPayments,
+    allMtrRows,
+    inventoryHighUseOutOfStock,
+    inventoryHighUseLowStock,
+    inventoryHighUseTop100,
+  ])
+
   const inventoryPresentationSlides = [
     {
       kicker: 'MATERIALS & PROCUREMENT SUMMARY',
@@ -4196,10 +4319,10 @@ export default function App() {
           </div>
           <div className="meeting-exception-metrics">
             <div><span>PRs Submitted This Month</span><b>{fmt(inventoryPresentationProcurement.submittedThisMonth)}</b></div>
-            <div><span>POs Receipt Not Done</span><b>{fmt(inventoryPresentationProcurement.receiptPendingPos)}</b></div>
-            <div><span>Urgent Pending PRs</span><b>{fmt(inventoryPresentationProcurement.urgentPendingPrs)}</b></div>
+            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('RECEIPT_PENDING')}><span>POs Receipt Not Done</span><b>{fmt(inventoryPresentationProcurement.receiptPendingPos)}</b><small>View list</small></button>
+            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('URGENT_PR')}><span>Urgent Pending PRs</span><b>{fmt(inventoryPresentationProcurement.urgentPendingPrs)}</b><small>View list</small></button>
             <div><span>PRs Aged 3–6 Months</span><b>{fmt(inventoryPresentationProcurement.agedThreeToSix)}</b></div>
-            <div><span>PRs Aged 6+ Months</span><b>{fmt(inventoryPresentationProcurement.agedSixPlus)}</b></div>
+            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('AGED6')}><span>PRs Aged 6+ Months</span><b>{fmt(inventoryPresentationProcurement.agedSixPlus)}</b><small>View list</small></button>
             <div><span>Oldest Open PR</span><b>{fmt(inventoryPresentationProcurement.oldestOpenDays)} days</b></div>
             <div><span>Payment Pending POs</span><b>{fmt(inventoryPresentationProcurement.paymentPendingPos)}</b></div>
           </div>
@@ -4268,8 +4391,8 @@ export default function App() {
             <small>{fmt(inventoryPresentationPayments.total)} purchase orders awaiting payment action</small>
           </div>
           <div className="meeting-exception-metrics">
-            <div><span>Pending POs</span><b>{fmt(inventoryPresentationPayments.total)}</b></div>
-            <div><span>Urgent POs</span><b>{fmt(inventoryPresentationPayments.urgent)}</b></div>
+            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('PAYMENT')}><span>Pending POs</span><b>{fmt(inventoryPresentationPayments.total)}</b><small>View list</small></button>
+            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('PAYMENT_URGENT')}><span>Urgent POs</span><b>{fmt(inventoryPresentationPayments.urgent)}</b><small>View list</small></button>
             {inventoryPresentationPayments.statusCounts.slice(0, 5).map(([status, count]) => (
               <div key={status}><span>{status}</span><b>{fmt(count)}</b></div>
             ))}
@@ -4300,8 +4423,8 @@ export default function App() {
             <div><span>Total MTRs</span><b>{fmt(inventoryPresentationMaterials.mtrTotal)}</b></div>
             <div><span>Pending MTRs</span><b>{fmt(inventoryPresentationMaterials.mtrPending)}</b></div>
             <div><span>Partially Transferred</span><b>{fmt(inventoryPresentationMaterials.mtrPartial)}</b></div>
-            <div><span>Pending · No SRD Stock</span><b>{fmt(inventoryPresentationMaterials.mtrNoStock)}</b></div>
-            <div><span>MTR Pending 30+ Days</span><b>{fmt(inventoryPresentationMaterials.mtr30)}</b></div>
+            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('MTR_NO_STOCK')}><span>Pending · No SRD Stock</span><b>{fmt(inventoryPresentationMaterials.mtrNoStock)}</b><small>View list</small></button>
+            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('MTR_30')}><span>MTR Pending 30+ Days</span><b>{fmt(inventoryPresentationMaterials.mtr30)}</b><small>View list</small></button>
           </div>
         </>
       ),
@@ -4319,8 +4442,8 @@ export default function App() {
             <small>High-use inventory risk based on actual consumption value</small>
           </div>
           <div className="meeting-exception-metrics">
-            <div><span>High-Use Low Stock</span><b>{fmt(inventoryHighUseLowStock.length)}</b></div>
-            <div><span>High-Use Out of Stock</span><b>{fmt(inventoryHighUseOutOfStock.length)}</b></div>
+            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_LOW')}><span>High-Use Low Stock</span><b>{fmt(inventoryHighUseLowStock.length)}</b><small>View list</small></button>
+            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_OOS')}><span>High-Use Out of Stock</span><b>{fmt(inventoryHighUseOutOfStock.length)}</b><small>View list</small></button>
             <div><span>YTD Consumption Value</span><b>{mvr(inventoryConsumption.reduce((sum, row) => sum + row.value, 0))}</b></div>
             <div><span>Current Inventory Value</span><b>{mvr(ageingSummary.onHandValue)}</b></div>
           </div>
@@ -4371,18 +4494,18 @@ export default function App() {
           <div className="meeting-control-grid">
             <section>
               <div className="meeting-control-head"><span>PROCUREMENT</span><b>Immediate Follow-Up</b></div>
-              <div className="meeting-control-row critical"><span>Urgent pending PRs</span><strong>{fmt(inventoryPresentationProcurement.urgentPendingPrs)}</strong></div>
-              <div className="meeting-control-row critical"><span>PRs aged 6+ months</span><strong>{fmt(inventoryPresentationProcurement.agedSixPlus)}</strong></div>
-              <div className="meeting-control-row"><span>POs awaiting receipt</span><strong>{fmt(inventoryPresentationProcurement.receiptPendingPos)}</strong></div>
-              <div className="meeting-control-row"><span>Urgent payment POs</span><strong>{fmt(inventoryPresentationPayments.urgent)}</strong></div>
+              <button className="meeting-control-row critical inventory-action-row" onClick={() => setInventoryDetail('URGENT_PR')}><span>Urgent pending PRs</span><strong>{fmt(inventoryPresentationProcurement.urgentPendingPrs)}</strong></button>
+              <button className="meeting-control-row critical inventory-action-row" onClick={() => setInventoryDetail('AGED6')}><span>PRs aged 6+ months</span><strong>{fmt(inventoryPresentationProcurement.agedSixPlus)}</strong></button>
+              <button className="meeting-control-row inventory-action-row" onClick={() => setInventoryDetail('RECEIPT_PENDING')}><span>POs awaiting receipt</span><strong>{fmt(inventoryPresentationProcurement.receiptPendingPos)}</strong></button>
+              <button className="meeting-control-row inventory-action-row" onClick={() => setInventoryDetail('PAYMENT_URGENT')}><span>Urgent payment POs</span><strong>{fmt(inventoryPresentationPayments.urgent)}</strong></button>
             </section>
 
             <section>
               <div className="meeting-control-head"><span>INVENTORY / MATERIALS</span><b>Immediate Follow-Up</b></div>
-              <div className="meeting-control-row critical"><span>MTRs pending with no SRD stock</span><strong>{fmt(inventoryPresentationMaterials.mtrNoStock)}</strong></div>
-              <div className="meeting-control-row"><span>MTRs pending 30+ days</span><strong>{fmt(inventoryPresentationMaterials.mtr30)}</strong></div>
-              <div className="meeting-control-row critical"><span>High-use items out of stock</span><strong>{fmt(inventoryHighUseOutOfStock.length)}</strong></div>
-              <div className="meeting-control-row"><span>High-use items low stock</span><strong>{fmt(inventoryHighUseLowStock.length)}</strong></div>
+              <button className="meeting-control-row critical inventory-action-row" onClick={() => setInventoryDetail('MTR_NO_STOCK')}><span>MTRs pending with no SRD stock</span><strong>{fmt(inventoryPresentationMaterials.mtrNoStock)}</strong></button>
+              <button className="meeting-control-row inventory-action-row" onClick={() => setInventoryDetail('MTR_30')}><span>MTRs pending 30+ days</span><strong>{fmt(inventoryPresentationMaterials.mtr30)}</strong></button>
+              <button className="meeting-control-row critical inventory-action-row" onClick={() => setInventoryDetail('HIGH_USE_OOS')}><span>High-use items out of stock</span><strong>{fmt(inventoryHighUseOutOfStock.length)}</strong></button>
+              <button className="meeting-control-row inventory-action-row" onClick={() => setInventoryDetail('HIGH_USE_LOW')}><span>High-use items low stock</span><strong>{fmt(inventoryHighUseLowStock.length)}</strong></button>
             </section>
           </div>
 
@@ -6520,6 +6643,39 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+
+                {inventoryPresentationDetail && (
+                  <div className="inventory-ppt-detail">
+                    <div className="inventory-ppt-detail-card">
+                      <div className="inventory-ppt-detail-head">
+                        <div>
+                          <span>SUPPORTING DETAIL</span>
+                          <h3>{inventoryPresentationDetail.title}</h3>
+                        </div>
+                        <button onClick={() => setInventoryDetail(null)}>Close</button>
+                      </div>
+                      <div className="inventory-ppt-detail-table">
+                        <table>
+                          <thead>
+                            <tr>{inventoryPresentationDetail.columns.map((column) => <th key={column}>{column}</th>)}</tr>
+                          </thead>
+                          <tbody>
+                            {inventoryPresentationDetail.rows.slice(0, 150).map((row, rowIndex) => (
+                              <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>
+                            ))}
+                            {!inventoryPresentationDetail.rows.length && (
+                              <tr><td colSpan={inventoryPresentationDetail.columns.length}>No matching records.</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="inventory-ppt-detail-foot">
+                        <span>{fmt(inventoryPresentationDetail.rows.length)} records</span>
+                        {inventoryPresentationDetail.rows.length > 150 && <small>Showing first 150 records</small>}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </section>
             </>
           )}
