@@ -88,12 +88,8 @@ export function clearSupabaseReadCache(table = '') {
     inventory_transactions: ['search_vessel_sr'],
   }
   const tables = table ? [table, ...(aliases[table] || [])] : []
-
-  for (const key of responseCache.keys()) {
-    if (!table) {
-      responseCache.delete(key)
-      continue
-    }
+  const matchesInvalidation = (key) => {
+    if (!table) return true
     const tableHit = tables.some((name) =>
       key.includes(`/rest/v1/${encodeURIComponent(name)}?`) ||
       key.includes(`/rest/v1/${name}?`)
@@ -102,7 +98,14 @@ export function clearSupabaseReadCache(table = '') {
       key.includes(`/rest/v1/rpc/${encodeURIComponent(name)}`) ||
       key.includes(`/rest/v1/rpc/${name}`)
     )
-    if (tableHit || rpcHit) responseCache.delete(key)
+    return tableHit || rpcHit
+  }
+
+  for (const key of responseCache.keys()) {
+    if (matchesInvalidation(key)) responseCache.delete(key)
+  }
+  for (const key of inFlightGets.keys()) {
+    if (matchesInvalidation(key)) inFlightGets.delete(key)
   }
 }
 
@@ -146,7 +149,9 @@ async function fastFetch(input, init = {}) {
       return response
     })()
     inFlightGets.set(key, pending)
-    pending.finally(() => inFlightGets.delete(key))
+    pending.finally(() => {
+      if (inFlightGets.get(key) === pending) inFlightGets.delete(key)
+    })
   }
 
   const response = await pending
