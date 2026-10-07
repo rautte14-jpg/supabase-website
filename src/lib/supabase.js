@@ -15,6 +15,12 @@ const supabaseKey =
 const inFlightGets = new Map()
 const responseCache = new Map()
 const CACHE_TTL_MS = 120000
+const READ_ONLY_RPC_NAMES = new Set([
+  'overview_material_issue_summary',
+  'search_vessel_sr',
+  'mtr_tracker_summary',
+  'mtr_tracker_details',
+])
 
 function requestHeaders(input, init) {
   const headers = new Headers(input instanceof Request ? input.headers : undefined)
@@ -32,6 +38,7 @@ function requestKey(input, init = {}) {
     headers.get('range') || '',
     headers.get('prefer') || '',
     headers.get('accept-profile') || '',
+    typeof init.body === 'string' ? init.body : '',
   ].join('|')
 }
 
@@ -99,14 +106,16 @@ export function clearSupabaseReadCache(table = '') {
 
 async function fastFetch(input, init = {}) {
   const method = String(init.method || (input instanceof Request ? input.method : 'GET')).toUpperCase()
-  if (method !== 'GET') {
-    // Any write can make cached reads stale. Realtime will narrow this later,
-    // but clearing here guarantees the next read cannot reuse pre-write data.
+  const url = input instanceof Request ? input.url : String(input)
+  const rpcName = url.match(/\/rest\/v1\/rpc\/([^?]+)/)?.[1] || ''
+  const isReadRpc = method === 'POST' && READ_ONLY_RPC_NAMES.has(decodeURIComponent(rpcName))
+
+  if (method !== 'GET' && !isReadRpc) {
+    // Real writes invalidate all cached reads immediately.
     clearSupabaseReadCache()
     return fetch(input, init)
   }
 
-  const url = input instanceof Request ? input.url : String(input)
   const key = requestKey(input, init)
   const now = Date.now()
 
