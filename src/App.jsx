@@ -5830,8 +5830,9 @@ export default function App() {
           {view === 'prf' && (
             <>
               <PageHeader title="PRF Tracker" subtitle="PRF / IPF requests and their movement into PR, MTR and PO." />
+              <div id="prf-workspace-nav-host" className="prfw-nav-host" />
 
-              <section className="prf-weekly-summary !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm">
+              <section id="prf-weekly-base" className="prf-weekly-summary !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm">
                 <div className="prf-status-head">
                   <div>
                     <span className="eyebrow">WEEKLY SUBMISSIONS</span>
@@ -5869,7 +5870,7 @@ export default function App() {
                 )}
               </section>
 
-              <section className="prf-status-summary !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm">
+              <section id="prf-status-base" className="prf-status-summary !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm">
                 <div className="prf-status-head">
                   <div>
                     <span className="eyebrow">STATUS SUMMARY</span>
@@ -5914,7 +5915,9 @@ export default function App() {
                   </div>
                 )}
               </section>
+              <div id="prf-attention-host" className="prfw-attention-host" />
 
+              <div id="prf-table-base">
               <DataTable
                 className="prf-data-table !rounded-xl !border !border-slate-200 !bg-white !shadow-sm [&_thead]:!bg-slate-50 [&_th]:!bg-slate-50 [&_th]:!px-3 [&_th]:!py-3 [&_th]:!text-xs [&_th]:!font-semibold [&_th]:!uppercase [&_th]:!tracking-wide [&_th]:!text-slate-500 [&_tbody_tr]:!border-b [&_tbody_tr]:!border-slate-100 [&_td]:!px-3 [&_td]:!py-3 [&_td]:!text-slate-700 [&_.mini-button]:!rounded-md [&_.mini-button]:!border [&_.mini-button]:!border-slate-200 [&_.mini-button]:!bg-slate-50 [&_.mini-button]:!px-3 [&_.mini-button]:!py-1 [&_.mini-button]:!text-xs [&_.mini-button]:!font-medium [&_.mini-button]:!text-slate-600 [&_.mini-button]:!transition-colors hover:[&_.mini-button]:!border-blue-200 hover:[&_.mini-button]:!bg-blue-50 hover:[&_.mini-button]:!text-blue-600"
                 rows={prfRows}
@@ -5938,6 +5941,7 @@ export default function App() {
                   { key: 'cancel_reject_reason', label: 'Cancel / Reject Reason' },
                 ]}
               />
+              </div>
             </>
           )}
 
@@ -6183,6 +6187,8 @@ export default function App() {
                 title="Pending Payments"
                 subtitle="Current pending payment list uploaded from Procurement."
               />
+              <div id="pending-payments-workspace-host" className="ppw-host" />
+              <div id="pending-payments-base">
 
               <div className="metric-grid prpo-metrics prpo-operational-metrics">
                 <MetricCard
@@ -6243,6 +6249,7 @@ export default function App() {
                   limit={300}
                 />
               </section>
+              </div>
             </>
           )}
 

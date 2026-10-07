@@ -77,61 +77,22 @@ export default function PrfWorkspace() {
   const [statusCards, setStatusCards] = useState([])
 
   useEffect(() => {
-    const syncRoute = () => setRouteActive(currentPageLabel() === 'PRF Tracker')
-    syncRoute()
-    const topbar = document.querySelector('.topbar-context strong')
-    const observer = topbar ? new MutationObserver(syncRoute) : null
-    observer?.observe(topbar, { childList: true, characterData: true, subtree: true })
-    const id = window.setInterval(syncRoute, 1000)
-    return () => { observer?.disconnect(); window.clearInterval(id) }
+    const navHost = document.getElementById('prf-workspace-nav-host')
+    const weeklySection = document.getElementById('prf-weekly-base')
+    const statusSection = document.getElementById('prf-status-base')
+    const attHost = document.getElementById('prf-attention-host')
+    const wrap = document.getElementById('prf-table-base')
+
+    if (!navHost || !weeklySection || !statusSection || !attHost || !wrap) return
+
+    setRouteActive(true)
+    setWeekly(weeklySection)
+    setStatus(statusSection)
+    setTableWrap(wrap)
+    setAttentionHost(attHost)
+    setStatusCards(getStatusCards(statusSection))
+    setHost(navHost)
   }, [])
-
-  useEffect(() => {
-    if (host) host.style.display = routeActive ? '' : 'none'
-    if (attentionHost) attentionHost.style.display = routeActive && active === 'attention' ? '' : 'none'
-    if (!routeActive) {
-      if (weekly) weekly.style.display = 'none'
-      if (status) status.style.display = 'none'
-      if (tableWrap) tableWrap.style.display = 'none'
-    }
-  }, [routeActive, host, attentionHost, weekly, status, tableWrap, active])
-
-  useEffect(() => {
-    let disposed = false
-    const setup = () => {
-      if (disposed || host || !routeActive) return
-      const weeklySection = findSection('WEEKLY SUBMISSIONS')
-      const statusSection = findSection('STATUS SUMMARY')
-      const table = findPrfTable()
-      if (!weeklySection || !statusSection || !table || !weeklySection.parentElement) return
-
-      const parent = weeklySection.parentElement
-      let navHost = parent.querySelector(':scope > .prfw-nav-host')
-      if (!navHost) {
-        navHost = document.createElement('div')
-        navHost.className = 'prfw-nav-host'
-        parent.insertBefore(navHost, weeklySection)
-      }
-
-      let attHost = parent.querySelector(':scope > .prfw-attention-host')
-      if (!attHost) {
-        attHost = document.createElement('div')
-        attHost.className = 'prfw-attention-host'
-        statusSection.insertAdjacentElement('afterend', attHost)
-      }
-
-      const wrap = table.closest('.table-wrap, .data-table, .overflow-x-auto') || table.parentElement
-      setWeekly(weeklySection)
-      setStatus(statusSection)
-      setTableWrap(wrap)
-      setAttentionHost(attHost)
-      setStatusCards(getStatusCards(statusSection))
-      setHost(navHost)
-    }
-    setup()
-    const id = window.setInterval(setup, 700)
-    return () => { disposed = true; window.clearInterval(id) }
-  }, [host, routeActive])
 
   useEffect(() => {
     if (!weekly || !status || !attentionHost || !tableWrap || !routeActive) return

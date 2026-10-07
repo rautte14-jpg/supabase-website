@@ -35,22 +35,14 @@ export default function PendingPaymentsWorkspace(){
   const [loading,setLoading]=useState(false)
 
   useEffect(()=>{
-    let disposed=false
-    const setup=()=>{
-      if(disposed||host) return
-      const page=findPage(); if(!page?.root) return
-      const el=document.createElement('div'); el.className='ppw-host'
-      if(page.metric?.parentElement) page.metric.parentElement.insertBefore(el,page.metric)
-      else page.root.appendChild(el)
-      const toHide=[page.metric,page.listSection].filter(Boolean)
-      toHide.forEach((x)=>x.style.display='none')
-      setHidden(toHide); setHost(el)
-    }
-    setup(); const id=setInterval(setup,500)
-    return()=>{disposed=true;clearInterval(id)}
-  },[host])
-
-  useEffect(()=>()=>{ hidden.forEach((x)=>{ try{x.style.display=''}catch{} }) },[hidden])
+    const el=document.getElementById('pending-payments-workspace-host')
+    const base=document.getElementById('pending-payments-base')
+    if(!el) return
+    if(base) base.style.display='none'
+    setHidden(base?[base]:[])
+    setHost(el)
+    return()=>{ if(base?.isConnected) base.style.display='' }
+  },[])
 
   useEffect(()=>{
     if(!host) return
