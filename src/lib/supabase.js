@@ -48,9 +48,21 @@ function responseFromCache(entry) {
 }
 
 export function clearSupabaseReadCache(table = '') {
-  const marker = table ? `/rest/v1/${encodeURIComponent(table)}?` : '/rest/v1/'
+  const aliases = {
+    sr_issue_records: ['sr_issue_records_fast'],
+    inventory_transactions: ['inventory_transactions_fast'],
+  }
+  const tables = table ? [table, ...(aliases[table] || [])] : []
+
   for (const key of responseCache.keys()) {
-    if (!table || key.includes(marker) || key.includes(`/rest/v1/${table}?`)) responseCache.delete(key)
+    if (!table) {
+      responseCache.delete(key)
+      continue
+    }
+    if (tables.some((name) =>
+      key.includes(`/rest/v1/${encodeURIComponent(name)}?`) ||
+      key.includes(`/rest/v1/${name}?`)
+    )) responseCache.delete(key)
   }
 }
 
