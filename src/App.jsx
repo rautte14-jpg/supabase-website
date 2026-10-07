@@ -3464,7 +3464,7 @@ export default function App() {
       body: (
         <>
           <div className="meeting-inventory-hero">
-            <div><span>On-hand Value</span><b>{mvr(Number(inventoryFast.stock?.current_inventory_value || 0))}</b><small>Current inventory value on hand</small></div>
+            <div><span>On-hand Value</span><b>{mvr(ageingSummary.onHandValue)}</b><small>Current inventory value on hand</small></div>
             <div><span>Over 1 Year</span><b>{mvr(ageingSummary.agedOver365)}</b><small>{meetingAgedPercent.toFixed(1)}% of on-hand value</small></div>
             <div><span>Top 100 High Value Items</span><b>{mvr(top100HighValueTotal)}</b><small>{fmt(top100HighValue.length)} highest-value items</small></div>
           </div>
@@ -4615,7 +4615,7 @@ export default function App() {
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_LOW')}><span>High-Use Low Stock</span><b>{fmt(inventoryHighUseLowStock.length)}</b><small>View list</small></button>
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_OOS')}><span>High-Use Out of Stock</span><b>{fmt(inventoryHighUseOutOfStock.length)}</b><small>View list</small></button>
             <div><span>YTD Consumption Value</span><b>{mvr(Number(inventoryFast.stock?.ytd_consumption_value || 0))}</b></div>
-            <div><span>Current Inventory Value</span><b>{mvr(ageingSummary.onHandValue)}</b></div>
+            <div><span>Current Inventory Value</span><b>{mvr(Number(inventoryFast.stock?.current_inventory_value || 0))}</b></div>
           </div>
           <div className="warehouse-receipt-table" style={{ marginTop: 18 }}>
             <div className="warehouse-receipt-row warehouse-receipt-head">
