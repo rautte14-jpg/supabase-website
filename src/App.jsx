@@ -1358,6 +1358,13 @@ export default function App() {
   const [inventorySlide, setInventorySlide] = useState(0)
   const [inventoryFullscreen, setInventoryFullscreen] = useState(false)
   const [inventoryDetail, setInventoryDetail] = useState(null)
+  const [inventoryFast, setInventoryFast] = useState({
+    mtr: null,
+    stock: null,
+    topStock: [],
+  })
+  const [inventoryMtrDetailRows, setInventoryMtrDetailRows] = useState([])
+  const [inventoryDetailLoading, setInventoryDetailLoading] = useState(false)
   const [warehouseIssueWeekFilter, setWarehouseIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseIssueDetailOpen, setWarehouseIssueDetailOpen] = useState(false)
 
@@ -1428,7 +1435,7 @@ export default function App() {
     stock: ['stock', 'snapshots'],
     updates: ['sourceUpdates'],
     warehouse: ['procurement', 'material', 'srIssues', 'transactions'],
-    inventoryPresentation: ['procurement', 'material', 'pendingPayments', 'stock', 'snapshots', 'transactions'],
+    inventoryPresentation: ['procurement', 'pendingPayments'],
     history: ['sourceUpdates', 'snapshots'],
   }
 
@@ -1562,12 +1569,73 @@ export default function App() {
     })
   }
 
+  async function loadInventoryPresentationFast() {
+    const [mtrResult, stockResult, topStockResult] = await Promise.all([
+      supabase.from('inventory_presentation_mtr_summary').select('*').limit(1),
+      supabase.from('inventory_presentation_stock_summary').select('*').limit(1),
+      supabase
+        .from('home_high_consumption_stock')
+        .select('item_code,item_description,on_hand,available,stock_value,consumption_qty,consumption_value,consumption_rank')
+        .order('consumption_rank', { ascending: true })
+        .limit(100),
+    ])
+
+    if (mtrResult.error) throw mtrResult.error
+    if (stockResult.error) throw stockResult.error
+    if (topStockResult.error) throw topStockResult.error
+
+    setInventoryFast({
+      mtr: mtrResult.data?.[0] || null,
+      stock: stockResult.data?.[0] || null,
+      topStock: topStockResult.data || [],
+    })
+  }
+
+  async function loadInventoryMtrDetails() {
+    if (inventoryMtrDetailRows.length) return inventoryMtrDetailRows
+    setInventoryDetailLoading(true)
+    try {
+      const rows = []
+      const pageSize = 1000
+      let from = 0
+      while (true) {
+        const { data: batch, error } = await supabase
+          .from('material_records')
+          .select('document_no,item_code,item_description,requested_qty,transferred_qty,remaining_qty,document_date,raw_source')
+          .eq('document_type', 'MTR')
+          .order('document_date', { ascending: false })
+          .range(from, from + pageSize - 1)
+        if (error) throw error
+        const page = batch || []
+        rows.push(...page)
+        if (page.length < pageSize) break
+        from += pageSize
+      }
+      setInventoryMtrDetailRows(rows)
+      return rows
+    } finally {
+      setInventoryDetailLoading(false)
+    }
+  }
+
+  async function openInventoryDetail(type) {
+    if (type === 'MTR_NOT_TRANSFERRED' || type === 'MTR_30') {
+      await loadInventoryMtrDetails()
+    }
+    setInventoryDetail(type)
+  }
+
   async function loadForView(targetView = view, force = false) {
     if (!session || !access) return
     setLoading(true)
     try {
       if (targetView === 'home') {
         await loadHomeSummary()
+      } else if (targetView === 'inventoryPresentation') {
+        await Promise.all([
+          loadTables(VIEW_TABLES[targetView] || [], force),
+          loadInventoryPresentationFast(),
+        ])
       } else {
         await loadTables(VIEW_TABLES[targetView] || [], force)
       }
@@ -3396,7 +3464,7 @@ export default function App() {
       body: (
         <>
           <div className="meeting-inventory-hero">
-            <div><span>On-hand Value</span><b>{mvr(ageingSummary.onHandValue)}</b><small>Current inventory value on hand</small></div>
+            <div><span>On-hand Value</span><b>{mvr(Number(inventoryFast.stock?.current_inventory_value || 0))}</b><small>Current inventory value on hand</small></div>
             <div><span>Over 1 Year</span><b>{mvr(ageingSummary.agedOver365)}</b><small>{meetingAgedPercent.toFixed(1)}% of on-hand value</small></div>
             <div><span>Top 100 High Value Items</span><b>{mvr(top100HighValueTotal)}</b><small>{fmt(top100HighValue.length)} highest-value items</small></div>
           </div>
@@ -4022,50 +4090,17 @@ export default function App() {
     },
   ]
 
-  const inventoryConsumption = useMemo(() => {
-    const yearStart = new Date().getFullYear() + '-01-01'
-    const stockMap = new Map(
-      data.stock.map((row) => [String(row.item_code || '').trim().toUpperCase(), row])
-    )
-    const map = new Map()
-
-    data.transactions.forEach((row) => {
-      const status = lower(row.status)
-      const date = parseFlexibleDate(row.physical_date)
-      if (!date || date < yearStart) return
-      if (!status.includes('sold') && !status.includes('deducted')) return
-
-      const itemCode = String(row.item_code || '').trim()
-      if (!itemCode) return
-      const key = itemCode.toUpperCase()
-      const current = map.get(key) || {
-        item_code: itemCode,
-        item_description: row.item_description || '',
-        quantity: 0,
-        value: 0,
-      }
-      current.quantity += Math.abs(Number(row.quantity || 0))
-      current.value += Math.abs(Number(row.cost || 0))
-      if (!current.item_description) current.item_description = row.item_description || ''
-      map.set(key, current)
-    })
-
-    return [...map.values()]
-      .map((row) => {
-        const stock = stockMap.get(String(row.item_code || '').trim().toUpperCase())
-        return {
-          ...row,
-          item_description: stock?.item_description || row.item_description,
-          on_hand: Number(stock?.on_hand || 0),
-          stock_value: Number(stock?.stock_value || 0),
-        }
-      })
-      .sort((a, b) => b.value - a.value)
-  }, [data.transactions, data.stock])
-
   const inventoryHighUseTop100 = useMemo(
-    () => inventoryConsumption.slice(0, 100),
-    [inventoryConsumption],
+    () => (inventoryFast.topStock || []).map((row) => ({
+      item_code: row.item_code,
+      item_description: row.item_description || '',
+      quantity: Number(row.consumption_qty || 0),
+      value: Number(row.consumption_value || 0),
+      on_hand: Number(row.on_hand || 0),
+      stock_value: Number(row.stock_value || 0),
+      consumption_rank: Number(row.consumption_rank || 0),
+    })),
+    [inventoryFast.topStock],
   )
 
   const inventoryHighUseLowStock = useMemo(
@@ -4187,87 +4222,43 @@ export default function App() {
   }, [allPrLines, prPoAgeing, pendingPaymentPoCount, todayIso])
 
   const inventoryPresentationMaterials = useMemo(() => {
-    const mtrMap = new Map()
-    allMtrRows.forEach((row) => {
-      const no = String(row.document_no || '').trim()
-      if (!no) return
-      const req = mtrRequestedQty(row)
-      const tr = mtrTransferredQty(row)
-      const rem = mtrRemainingQty(row)
-      const current = mtrMap.get(no) || { requested: 0, transferred: 0, remaining: 0, rows: [] }
-      current.requested += req
-      current.transferred += tr
-      current.remaining += rem
-      current.rows.push(row)
-      mtrMap.set(no, current)
-    })
-
-    let mtrPending = 0
-    let mtrFully = 0
-    let mtrPartial = 0
-    let mtrNotTransferred = 0
-    let mtr30 = 0
-    for (const entry of mtrMap.values()) {
-      const pending = entry.remaining > 0 || (entry.requested > 0 && entry.transferred < entry.requested)
-      if (!pending) {
-        mtrFully += 1
-        continue
-      }
-      mtrPending += 1
-      if (entry.transferred > 0) mtrPartial += 1
-      if (entry.transferred <= 0) mtrNotTransferred += 1
-      if (entry.rows.some((row) => mtrAgeDays(row) >= 30)) mtr30 += 1
-    }
-
-    const mrnPending = new Set()
-    const mrn30 = new Set()
-    const mrnNoJournal = new Set()
-    allMrnRows.forEach((row) => {
-      if (!mrnIsPending(row)) return
-      const id = mrnSourceId(row)
-      if (!id) return
-      mrnPending.add(id)
-      if (mrnAgeDays(row) >= 30) mrn30.add(id)
-      if (!mrnHasJournal(row)) mrnNoJournal.add(id)
-    })
-
+    const row = inventoryFast.mtr || {}
     return {
-      mtrTotal: mtrMap.size,
-      mtrPending,
-      mtrFully,
-      mtrPartial,
-      mtrNotTransferred,
-      mtr30,
-      mrnTotal: allMrnRows.length,
-      mrnPending: mrnPending.size,
-      mrn30: mrn30.size,
-      mrnNoJournal: mrnNoJournal.size,
+      mtrTotal: Number(row.total_mtrs || 0),
+      mtrPending: Number(row.pending_mtrs || 0),
+      mtrFully: Number(row.fully_transferred || 0),
+      mtrPartial: Number(row.partially_transferred || 0),
+      mtrNotTransferred: Number(row.not_transferred || 0),
+      mtr30: Number(row.pending_30_plus || 0),
     }
-  }, [allMtrRows, allMrnRows])
+  }, [inventoryFast.mtr])
 
   const inventoryMtrWeeklyTransfer = useMemo(() => {
-    const completedWeekStart = warehouseWeekStart
-    const previousWeekStart = addDaysIso(completedWeekStart, -7)
-
-    const summarize = (weekStart) => {
-      const rows = allMtrRows.filter((row) => {
-        const received = dateRowField(row, 'received_date', ['Received Date'])
-        return received && weekStartWednesday(received) === weekStart && mtrTransferredQty(row) > 0
-      })
-      return {
-        weekStart,
-        weekEnd: addDaysIso(weekStart, 6),
-        quantity: rows.reduce((sum, row) => sum + mtrTransferredQty(row), 0),
-        mtrs: new Set(rows.map((row) => String(row.document_no || '').trim()).filter(Boolean)).size,
-        lines: rows.length,
-      }
+    const row = inventoryFast.mtr || {}
+    const current = {
+      weekStart: row.reporting_week_start || warehouseWeekStart,
+      weekEnd: row.reporting_week_end || addDaysIso(warehouseWeekStart, 6),
+      quantity: Number(row.reporting_week_qty || 0),
+      mtrs: Number(row.reporting_week_mtrs || 0),
+      lines: Number(row.reporting_week_lines || 0),
     }
-
-    const current = summarize(completedWeekStart)
-    const previous = summarize(previousWeekStart)
-    const trend = Array.from({ length: 6 }, (_, index) =>
-      summarize(addDaysIso(completedWeekStart, index * -7))
-    ).reverse()
+    const previousWeekStart = addDaysIso(current.weekStart, -7)
+    const previous = {
+      weekStart: previousWeekStart,
+      weekEnd: addDaysIso(previousWeekStart, 6),
+      quantity: Number(row.previous_week_qty || 0),
+      mtrs: Number(row.previous_week_mtrs || 0),
+      lines: 0,
+    }
+    const trend = Array.isArray(row.six_week_trend)
+      ? row.six_week_trend.map((week) => ({
+          weekStart: week.weekStart || week.weekstart || week.week_start,
+          weekEnd: week.weekEnd || week.weekend || week.week_end,
+          quantity: Number(week.quantity || 0),
+          mtrs: Number(week.mtrs || 0),
+          lines: Number(week.lines || 0),
+        }))
+      : []
 
     return {
       current,
@@ -4276,7 +4267,7 @@ export default function App() {
       changeMtrs: current.mtrs - previous.mtrs,
       trend,
     }
-  }, [allMtrRows, warehouseWeekStart])
+  }, [inventoryFast.mtr, warehouseWeekStart])
 
   const inventoryPresentationDetail = useMemo(() => {
     if (!inventoryDetail) return null
@@ -4350,7 +4341,7 @@ export default function App() {
     }
 
     if (inventoryDetail === 'MTR_NOT_TRANSFERRED' || inventoryDetail === 'MTR_30') {
-      const rows = allMtrRows.filter((row) => {
+      const rows = inventoryMtrDetailRows.filter((row) => {
         const requested = mtrRequestedQty(row)
         const transferred = mtrTransferredQty(row)
         const remaining = mtrRemainingQty(row)
@@ -4394,7 +4385,7 @@ export default function App() {
     allPrLines,
     prPoAgeing,
     pendingPaymentReconciliation.rows,
-    allMtrRows,
+    inventoryMtrDetailRows,
     inventoryHighUseOutOfStock,
     inventoryHighUseLowStock,
     inventoryHighUseTop100,
@@ -4560,8 +4551,8 @@ export default function App() {
             <div><span>Fully Transferred</span><b>{fmt(inventoryPresentationMaterials.mtrFully)}</b></div>
             <div><span>Pending MTRs</span><b>{fmt(inventoryPresentationMaterials.mtrPending)}</b></div>
             <div><span>Partially Transferred</span><b>{fmt(inventoryPresentationMaterials.mtrPartial)}</b></div>
-            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('MTR_NOT_TRANSFERRED')}><span>Not Transferred</span><b>{fmt(inventoryPresentationMaterials.mtrNotTransferred)}</b><small>View list</small></button>
-            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('MTR_30')}><span>MTR Pending 30+ Days</span><b>{fmt(inventoryPresentationMaterials.mtr30)}</b><small>View list</small></button>
+            <button className="inventory-ppt-click" onClick={() => openInventoryDetail('MTR_NOT_TRANSFERRED')}><span>Not Transferred</span><b>{fmt(inventoryPresentationMaterials.mtrNotTransferred)}</b><small>View list</small></button>
+            <button className="inventory-ppt-click" onClick={() => openInventoryDetail('MTR_30')}><span>MTR Pending 30+ Days</span><b>{fmt(inventoryPresentationMaterials.mtr30)}</b><small>View list</small></button>
           </div>
 
           <div className="meeting-change-grid warehouse-receipt-cards" style={{ marginTop: 18 }}>
@@ -4623,7 +4614,7 @@ export default function App() {
           <div className="meeting-exception-metrics">
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_LOW')}><span>High-Use Low Stock</span><b>{fmt(inventoryHighUseLowStock.length)}</b><small>View list</small></button>
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_OOS')}><span>High-Use Out of Stock</span><b>{fmt(inventoryHighUseOutOfStock.length)}</b><small>View list</small></button>
-            <div><span>YTD Consumption Value</span><b>{mvr(inventoryConsumption.reduce((sum, row) => sum + row.value, 0))}</b></div>
+            <div><span>YTD Consumption Value</span><b>{mvr(Number(inventoryFast.stock?.ytd_consumption_value || 0))}</b></div>
             <div><span>Current Inventory Value</span><b>{mvr(ageingSummary.onHandValue)}</b></div>
           </div>
           <div className="warehouse-receipt-table" style={{ marginTop: 18 }}>
@@ -4681,8 +4672,8 @@ export default function App() {
 
             <section>
               <div className="meeting-control-head"><span>INVENTORY / MATERIALS</span><b>Immediate Follow-Up</b></div>
-              <button className="meeting-control-row critical inventory-action-row" onClick={() => setInventoryDetail('MTR_NOT_TRANSFERRED')}><span>MTRs not yet transferred</span><strong>{fmt(inventoryPresentationMaterials.mtrNotTransferred)}</strong></button>
-              <button className="meeting-control-row inventory-action-row" onClick={() => setInventoryDetail('MTR_30')}><span>MTRs pending 30+ days</span><strong>{fmt(inventoryPresentationMaterials.mtr30)}</strong></button>
+              <button className="meeting-control-row critical inventory-action-row" onClick={() => openInventoryDetail('MTR_NOT_TRANSFERRED')}><span>MTRs not yet transferred</span><strong>{fmt(inventoryPresentationMaterials.mtrNotTransferred)}</strong></button>
+              <button className="meeting-control-row inventory-action-row" onClick={() => openInventoryDetail('MTR_30')}><span>MTRs pending 30+ days</span><strong>{fmt(inventoryPresentationMaterials.mtr30)}</strong></button>
               <button className="meeting-control-row critical inventory-action-row" onClick={() => setInventoryDetail('HIGH_USE_OOS')}><span>High-use items out of stock</span><strong>{fmt(inventoryHighUseOutOfStock.length)}</strong></button>
               <button className="meeting-control-row inventory-action-row" onClick={() => setInventoryDetail('HIGH_USE_LOW')}><span>High-use items low stock</span><strong>{fmt(inventoryHighUseLowStock.length)}</strong></button>
             </section>
@@ -6834,6 +6825,7 @@ export default function App() {
                         <button onClick={() => setInventoryDetail(null)}>Close</button>
                       </div>
                       <div className="inventory-ppt-detail-table">
+                        {inventoryDetailLoading && <div className="meeting-no-exceptions">Loading current detail…</div>}
                         <table>
                           <thead>
                             <tr>{inventoryPresentationDetail.columns.map((column) => <th key={column}>{column}</th>)}</tr>
