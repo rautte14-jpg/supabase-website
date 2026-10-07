@@ -6,41 +6,33 @@ export default function SidebarCollapse(){
   const [open,setOpen]=useState(false)
 
   useEffect(()=>{
-    let disposed=false
-    const setup=()=>{
-      if(disposed) return
-      const shell=document.querySelector('.app-shell')
-      const sidebar=document.querySelector('.sidebar')
-      const topbar=document.querySelector('.topbar')
-      if(!shell||!sidebar||!topbar) return
+    const shell=document.querySelector('.app-shell')
+    const sidebar=document.querySelector('.sidebar')
+    const mount=document.getElementById('sidebar-toggle-host')
+    if(!shell||!sidebar||!mount) return
 
-      shell.classList.add('srd-drawer-layout')
-      sidebar.classList.add('srd-sidebar-drawer')
-      sidebar.classList.toggle('open',open)
-      document.body.classList.toggle('srd-sidebar-open',open)
+    shell.classList.add('srd-drawer-layout')
+    sidebar.classList.add('srd-sidebar-drawer')
+    setHost(mount)
 
-      sidebar.querySelectorAll('.nav-item').forEach((el)=>{
-        const label=(el.textContent||'').trim()
-        if(label) el.title=label
-      })
-
-      let mount=topbar.querySelector('.srd-sidebar-toggle-host')
-      if(!mount){
-        mount=document.createElement('div')
-        mount.className='srd-sidebar-toggle-host'
-        topbar.insertBefore(mount,topbar.firstChild)
-      }
-      if(!host) setHost(mount)
-    }
-
-    setup()
-    const id=window.setInterval(setup,500)
     return()=>{
-      disposed=true
-      window.clearInterval(id)
+      shell.classList.remove('srd-drawer-layout')
+      sidebar.classList.remove('srd-sidebar-drawer','open')
       document.body.classList.remove('srd-sidebar-open')
     }
-  },[open,host])
+  },[])
+
+  useEffect(()=>{
+    const sidebar=document.querySelector('.sidebar')
+    if(!sidebar) return
+    sidebar.classList.toggle('open',open)
+    document.body.classList.toggle('srd-sidebar-open',open)
+
+    sidebar.querySelectorAll('.nav-item').forEach((el)=>{
+      const label=(el.textContent||'').trim()
+      if(label) el.title=label
+    })
+  },[open])
 
   useEffect(()=>{
     if(!open) return
