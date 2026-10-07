@@ -1449,7 +1449,7 @@ export default function App() {
   const TABLE_CONFIG = {
     procurement: ['procurement_records', 'updated_at', false],
     material: ['material_records_fast', 'updated_at', false],
-    stock: ['stock_items', 'item_code', true],
+    stock: ['stock_items_fast', 'item_code', true],
     transactions: ['inventory_transactions_fast', 'physical_date', false],
     srIssues: ['sr_issue_records_fast', 'requested_receipt_date', false],
     lld: ['lld_updates', 'updated_at', false],
