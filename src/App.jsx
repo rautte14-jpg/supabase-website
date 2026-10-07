@@ -1,7 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from './lib/supabase'
 import { SOURCE_OPTIONS, detectSource, entityKey, humanSource, mapRows, normalizeSheetRows } from './importers'
+
+const PrDetailOverlayComplete = lazy(() => import('./PrDetailOverlayComplete.jsx'))
+const PrTrackerCompleteV2 = lazy(() => import('./PrTrackerCompleteV2.jsx'))
+const PrOpenPositionV2 = lazy(() => import('./PrOpenPositionV2.jsx'))
+const PrMonthlyChart = lazy(() => import('./PrMonthlyChart.jsx'))
+const PendingPaymentsWorkspace = lazy(() => import('./PendingPaymentsWorkspace.jsx'))
+const PrfWorkspace = lazy(() => import('./PrfWorkspace.jsx'))
+const MtrFastUpload = lazy(() => import('./MtrFastUpload.jsx'))
 
 const NAV = [
   ['home', 'Home', '⌂'],
@@ -7037,6 +7045,20 @@ export default function App() {
           )}
         </section>
       </main>
+
+      <Suspense fallback={null}>
+        {view === 'prpo' && (
+          <>
+            <PrDetailOverlayComplete />
+            <PrTrackerCompleteV2 />
+            <PrOpenPositionV2 />
+            <PrMonthlyChart />
+          </>
+        )}
+        {view === 'payments' && <PendingPaymentsWorkspace />}
+        {view === 'prf' && <PrfWorkspace />}
+        {view === 'updates' && <MtrFastUpload />}
+      </Suspense>
 
       <NoteModal
         state={noteState}
