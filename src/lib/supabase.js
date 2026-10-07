@@ -72,6 +72,12 @@ export function clearSupabaseReadCache(table = '') {
       'warehouse_issue_month_summary',
     ],
   }
+  const rpcAliases = {
+    procurement_records: ['overview_material_issue_summary', 'search_vessel_sr'],
+    material_records: ['overview_material_issue_summary', 'search_vessel_sr'],
+    sr_issue_records: ['overview_material_issue_summary', 'search_vessel_sr'],
+    inventory_transactions: ['search_vessel_sr'],
+  }
   const tables = table ? [table, ...(aliases[table] || [])] : []
 
   for (const key of responseCache.keys()) {
@@ -79,10 +85,15 @@ export function clearSupabaseReadCache(table = '') {
       responseCache.delete(key)
       continue
     }
-    if (tables.some((name) =>
+    const tableHit = tables.some((name) =>
       key.includes(`/rest/v1/${encodeURIComponent(name)}?`) ||
       key.includes(`/rest/v1/${name}?`)
-    )) responseCache.delete(key)
+    )
+    const rpcHit = (rpcAliases[table] || []).some((name) =>
+      key.includes(`/rest/v1/rpc/${encodeURIComponent(name)}`) ||
+      key.includes(`/rest/v1/rpc/${name}`)
+    )
+    if (tableHit || rpcHit) responseCache.delete(key)
   }
 }
 
