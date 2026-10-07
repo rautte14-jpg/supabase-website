@@ -4345,7 +4345,7 @@ export default function App() {
           </div>
         </>
       ),
-    },,
+    },
     {
       kicker: 'MANAGEMENT ATTENTION',
       title: 'Action Required',
@@ -6472,7 +6472,7 @@ export default function App() {
                       <strong>Presentation</strong>
                     </div>
                     <div className="meeting-agenda-list">
-                      {inventoryPresentationSlides.map((item, i) => (
+                      {inventoryPresentationSlides.filter(Boolean).map((item, i) => (
                         <button
                           key={item.title}
                           className={i === inventorySlide ? 'meeting-agenda-item active' : 'meeting-agenda-item'}
