@@ -74,7 +74,7 @@ export function clearSupabaseReadCache(table = '') {
   }
   const rpcAliases = {
     procurement_records: ['overview_material_issue_summary', 'search_vessel_sr'],
-    material_records: ['overview_material_issue_summary', 'search_vessel_sr'],
+    material_records: ['overview_material_issue_summary', 'search_vessel_sr', 'mtr_tracker_summary', 'mtr_tracker_details'],
     sr_issue_records: ['overview_material_issue_summary', 'search_vessel_sr'],
     inventory_transactions: ['search_vessel_sr'],
   }
