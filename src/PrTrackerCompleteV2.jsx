@@ -126,8 +126,9 @@ function currentHolder(detail, stage) {
 }
 
 function actualPoStatus(detail) {
+  if (clean(detail?.po_status_text)) return clean(detail.po_status_text)
   const rows = Array.isArray(detail?.purchase_orders) ? detail.purchase_orders : []
-  if (!rows.length) return 'No PO Yet'
+  if (!rows.length) return Number(detail?.po_count || 0) > 0 ? `PO Created (${Number(detail.po_count || 0)})` : 'No PO Yet'
   const statuses = [...new Set(rows.map((p) => clean(p?.PurchStatus)).filter(Boolean))]
   return statuses.length ? statuses.join(' / ') : `PO Created (${rows.length})`
 }
@@ -283,36 +284,80 @@ export default function PrTrackerCompleteV2() {
       setLoading(true)
       const start = `${selectedYear}-01-01T00:00:00.000Z`
       const end = `${selectedYear + 1}-01-01T00:00:00.000Z`
-      const headerRows = []
+      const out = []
       let from = 0
+
       while (active) {
-        const { data, error } = await supabase.from('erp_pr_headers')
-          .select('purch_req_id,description,created_at,created_at_raw,created_by,site,status')
-          .gte('created_at', start).lt('created_at', end).order('created_at', { ascending: false }).range(from, from + 999)
-        if (error) { console.warn('PR headers load failed', error.message); break }
-        headerRows.push(...(data || []))
+        const { data, error } = await supabase
+          .from('pr_lifecycle_fast')
+          .select('purch_req_id,description,created_at,created_at_raw,created_by,site,status,current_approver,current_workflow_status,rfq_count,po_count,receipt_count,detail_synced,line_count,requested_qty,received_qty,erp_po_count,po_status_text')
+          .gte('created_at', start)
+          .lt('created_at', end)
+          .order('created_at', { ascending: false })
+          .range(from, from + 999)
+
+        if (error) {
+          console.warn('Fast PR lifecycle load failed', error.message)
+          break
+        }
+        out.push(...(data || []))
         if (!data || data.length < 1000) break
         from += 1000
       }
+
       if (!active) return
-      const ids = headerRows.map((r) => clean(r.purch_req_id).toUpperCase()).filter(Boolean)
-      const detailMap = new Map(); const lineMap = new Map()
-      for (let i = 0; i < ids.length && active; i += 100) {
-        const chunk = ids.slice(i, i + 100)
-        const { data, error } = await supabase.from('erp_pr_details')
-          .select('purch_req_id,current_approver,rfq_count,po_count,receipt_count,purchase_orders,pr_workflow,po_workflow,product_receipts').in('purch_req_id', chunk)
-        if (!error) for (const row of data || []) detailMap.set(clean(row.purch_req_id).toUpperCase(), row)
+
+      const headerRows = []
+      const detailMap = new Map()
+      const lineMap = new Map()
+
+      for (const row of out) {
+        const pr = clean(row.purch_req_id).toUpperCase()
+        if (!pr) continue
+        headerRows.push({
+          purch_req_id: row.purch_req_id,
+          description: row.description,
+          created_at: row.created_at,
+          created_at_raw: row.created_at_raw,
+          created_by: row.created_by,
+          site: row.site,
+          status: row.status,
+        })
+        if (row.detail_synced) {
+          detailMap.set(pr, {
+            purch_req_id: row.purch_req_id,
+            current_approver: row.current_approver,
+            current_workflow_status: row.current_workflow_status,
+            rfq_count: row.rfq_count,
+            po_count: row.po_count,
+            receipt_count: row.receipt_count,
+            po_status_text: row.po_status_text,
+          })
+        }
+        if (Number(row.line_count || 0) > 0) {
+          lineMap.set(pr, [{
+            qty_requested: Number(row.requested_qty || 0),
+            qty_received: Number(row.received_qty || 0),
+            po_no: Number(row.erp_po_count || 0) > 0 ? '__AGGREGATED_PO__' : '',
+          }])
+        }
       }
-      for (let i = 0; i < ids.length && active; i += 100) {
-        const chunk = ids.slice(i, i + 100)
-        const { data, error } = await supabase.from('procurement_records').select('pr_no,po_no,qty_requested,qty_received,status,delivery_status,raw_source').eq('source_type','PR').in('pr_no', chunk)
-        if (!error) for (const row of data || []) { const pr = clean(row.pr_no).toUpperCase(); if (!lineMap.has(pr)) lineMap.set(pr, []); lineMap.get(pr).push(row) }
+
+      if (active) {
+        setHeaders(headerRows)
+        setDetails(detailMap)
+        setLines(lineMap)
+        setLoading(false)
+        setPage(1)
       }
-      if (active) { setHeaders(headerRows); setDetails(detailMap); setLines(lineMap); setLoading(false); setPage(1) }
     }
+
     load()
-    timerRef.current = window.setInterval(load, 60000)
-    return () => { active = false; if (timerRef.current) window.clearInterval(timerRef.current) }
+    timerRef.current = window.setInterval(load, 120000)
+    return () => {
+      active = false
+      if (timerRef.current) window.clearInterval(timerRef.current)
+    }
   }, [selectedYear])
 
   useEffect(() => { updateLabels(selectedYear, headers.length) }, [selectedYear, headers.length])

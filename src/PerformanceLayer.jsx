@@ -5,7 +5,7 @@ const ROUTE_TABLES = {
   Home: ['pending_payment_records', 'stock_items', 'source_updates', 'sr_issue_records', 'weekly_snapshots', 'procurement_records'],
   Overview: ['procurement_records', 'material_records', 'sr_issue_records', 'source_updates', 'weekly_snapshots', 'pending_payment_records'],
   'PRF Tracker': ['procurement_records', 'lld_updates', 'case_notes'],
-  'PR & PO Tracker': ['procurement_records', 'lld_updates', 'case_notes', 'erp_pr_headers'],
+  'PR & PO Tracker': ['procurement_records', 'lld_updates', 'case_notes', 'erp_pr_headers', 'erp_pr_details'],
   'Pending Payments': ['pending_payment_records'],
   'MTR Tracker': ['material_records', 'case_notes'],
   'MRN & Issues': ['material_records', 'sr_issue_records', 'inventory_transactions', 'case_notes'],

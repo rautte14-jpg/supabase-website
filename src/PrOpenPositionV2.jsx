@@ -143,57 +143,71 @@ export default function PrOpenPositionV2() {
   useEffect(() => {
     if (!host) return
     let active = true
+
     async function load() {
       setLoading(true)
       const start = `${YEAR}-01-01T00:00:00.000Z`
       const end = `${YEAR + 1}-01-01T00:00:00.000Z`
-      const headerRows = []
-      let from = 0
-      while (active) {
-        const { data, error } = await supabase.from('erp_pr_headers')
-          .select('purch_req_id,description,created_at,created_at_raw,created_by,status,site')
-          .gte('created_at', start).lt('created_at', end)
-          .order('created_at', { ascending: false })
-          .range(from, from + 999)
-        if (error) break
-        headerRows.push(...(data || []))
-        if (!data || data.length < 1000) break
-        from += 1000
-      }
 
-      const detailMap = new Map()
-      from = 0
-      while (active) {
-        const { data, error } = await supabase.from('erp_pr_details')
-          .select('purch_req_id,current_approver,current_workflow_status,rfq_count,po_count,receipt_count,purchase_orders,detail_synced_at')
-          .range(from, from + 999)
-        if (error) break
-        for (const row of data || []) detailMap.set(clean(row.purch_req_id).toUpperCase(), row)
-        if (!data || data.length < 1000) break
-        from += 1000
-      }
-
-      const ids = headerRows.map((h) => clean(h.purch_req_id).toUpperCase()).filter(Boolean)
-      const lineRows = []
-      for (let i = 0; active && i < ids.length; i += 100) {
-        const chunk = ids.slice(i, i + 100)
-        const { data } = await supabase.from('procurement_records')
+      const [lifecycleResult, urgentResult] = await Promise.all([
+        supabase
+          .from('pr_lifecycle_fast')
+          .select('purch_req_id,description,created_at,created_at_raw,created_by,status,site,current_approver,current_workflow_status,rfq_count,po_count,receipt_count,detail_synced')
+          .gte('created_at', start)
+          .lt('created_at', end)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('procurement_records')
           .select('pr_no,po_no,priority,item_code,item_description,qty_requested,qty_received,unit,status,delivery_status,raw_source')
-          .eq('source_type', 'PR')
-          .in('pr_no', chunk)
-        lineRows.push(...(data || []))
+          .eq('source_type','PR')
+          .or('priority.ilike.%urgent%,priority.ilike.%critical%,priority.ilike.%high%')
+          .limit(400),
+      ])
+
+      if (!active) return
+      if (lifecycleResult.error) {
+        console.warn('PR open-position lifecycle load failed', lifecycleResult.error.message)
+        setLoading(false)
+        return
       }
 
-      if (active) {
-        setHeaders(headerRows)
-        setDetails(detailMap)
-        setLines(lineRows)
-        setLoading(false)
+      const headerRows = []
+      const detailMap = new Map()
+      for (const row of lifecycleResult.data || []) {
+        const pr = clean(row.purch_req_id).toUpperCase()
+        headerRows.push({
+          purch_req_id: row.purch_req_id,
+          description: row.description,
+          created_at: row.created_at,
+          created_at_raw: row.created_at_raw,
+          created_by: row.created_by,
+          status: row.status,
+          site: row.site,
+        })
+        if (row.detail_synced) {
+          detailMap.set(pr, {
+            purch_req_id: row.purch_req_id,
+            current_approver: row.current_approver,
+            current_workflow_status: row.current_workflow_status,
+            rfq_count: row.rfq_count,
+            po_count: row.po_count,
+            receipt_count: row.receipt_count,
+          })
+        }
       }
+
+      setHeaders(headerRows)
+      setDetails(detailMap)
+      setLines(urgentResult.error ? [] : (urgentResult.data || []))
+      setLoading(false)
     }
+
     load()
-    const id = window.setInterval(load, 60000)
-    return () => { active = false; window.clearInterval(id) }
+    const id = window.setInterval(load, 120000)
+    return () => {
+      active = false
+      window.clearInterval(id)
+    }
   }, [host])
 
   const model = useMemo(() => {
