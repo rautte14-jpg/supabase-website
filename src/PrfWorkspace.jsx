@@ -82,7 +82,7 @@ export default function PrfWorkspace() {
     const topbar = document.querySelector('.topbar-context strong')
     const observer = topbar ? new MutationObserver(syncRoute) : null
     observer?.observe(topbar, { childList: true, characterData: true, subtree: true })
-    const id = window.setInterval(syncRoute, 120)
+    const id = window.setInterval(syncRoute, 1000)
     return () => { observer?.disconnect(); window.clearInterval(id) }
   }, [])
 
@@ -129,7 +129,7 @@ export default function PrfWorkspace() {
       setHost(navHost)
     }
     setup()
-    const id = window.setInterval(setup, 300)
+    const id = window.setInterval(setup, 700)
     return () => { disposed = true; window.clearInterval(id) }
   }, [host, routeActive])
 
@@ -148,8 +148,20 @@ export default function PrfWorkspace() {
     if (!status || !routeActive) return
     const refresh = () => setStatusCards(getStatusCards(status))
     refresh()
-    const id = window.setInterval(refresh, 1000)
-    return () => window.clearInterval(id)
+
+    let timer = null
+    const observer = new MutationObserver(() => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(refresh, 80)
+    })
+    observer.observe(status, { childList: true, subtree: true, characterData: true })
+
+    const fallback = window.setInterval(refresh, 10000)
+    return () => {
+      observer.disconnect()
+      window.clearTimeout(timer)
+      window.clearInterval(fallback)
+    }
   }, [status, routeActive])
 
   const totalAttention = useMemo(
