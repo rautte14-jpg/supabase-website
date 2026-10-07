@@ -54,6 +54,7 @@ export function clearSupabaseReadCache(table = '') {
       'warehouse_issue_enriched_fast',
       'warehouse_issue_weekly_summary',
       'warehouse_issue_month_summary',
+      'sr_issue_overall_summary',
     ],
     material_records: [
       'material_records_fast',
