@@ -62,7 +62,7 @@ export function clearSupabaseReadCache(table = '') {
       'warehouse_mrn_weekly_summary',
       'warehouse_mrn_month_summary',
     ],
-    stock_items: ['inventory_presentation_stock_summary', 'home_high_consumption_stock'],
+    stock_items: ['stock_items_fast', 'inventory_presentation_stock_summary', 'home_high_consumption_stock'],
     inventory_transactions: [
       'inventory_transactions_fast',
       'inventory_presentation_stock_summary',
