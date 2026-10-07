@@ -6,7 +6,6 @@ import PerformanceLayer from './PerformanceLayer.jsx'
 import PurchaseRequestsRename from './PurchaseRequestsRename.jsx'
 import MtrNavPlacement from './MtrNavPlacement.jsx'
 import SidebarCollapse from './SidebarCollapse.jsx'
-import RouteEnhancers from './RouteEnhancers.jsx'
 import EddockExperience from './EddockExperience.jsx'
 import './styles.css'
 import './tailwind.css'
@@ -23,7 +22,6 @@ createRoot(document.getElementById('root')).render(
     <PurchaseRequestsRename />
     <MtrNavPlacement />
     <SidebarCollapse />
-    <RouteEnhancers />
     <EddockExperience />
   </StrictMode>,
 )
