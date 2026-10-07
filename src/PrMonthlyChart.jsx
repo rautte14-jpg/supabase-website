@@ -42,9 +42,11 @@ function statusTone(status) {
 export default function PrMonthlyChart() {
   const [host, setHost] = useState(null)
   const [year, setYear] = useState(CURRENT_YEAR)
-  const [rows, setRows] = useState([])
+  const [counts, setCounts] = useState(Array(12).fill(0))
   const [loading, setLoading] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(null)
+  const [selectedRows, setSelectedRows] = useState([])
+  const [monthLoading, setMonthLoading] = useState(false)
 
   useEffect(() => {
     let disposed = false
@@ -80,46 +82,62 @@ export default function PrMonthlyChart() {
     let active = true
     async function load() {
       setLoading(true)
-      const start = `${year}-01-01T00:00:00.000Z`
-      const end = `${year + 1}-01-01T00:00:00.000Z`
-      const out = []
-      let from = 0
-      while (active) {
-        const { data, error } = await supabase
-          .from('erp_pr_headers')
-          .select('purch_req_id,description,created_at,created_at_raw,created_by,status,site')
-          .gte('created_at', start)
-          .lt('created_at', end)
-          .order('created_at', { ascending: true })
-          .range(from, from + 999)
-        if (error) {
-          console.warn('Monthly PR chart load failed', error.message)
-          break
-        }
-        out.push(...(data || []))
-        if (!data || data.length < 1000) break
-        from += 1000
-      }
-      if (active) {
-        setRows(out)
+      const { data, error } = await supabase
+        .from('pr_monthly_summary')
+        .select('month,pr_count')
+        .eq('year', year)
+        .order('month', { ascending: true })
+
+      if (!active) return
+      if (error) {
+        console.warn('Monthly PR summary load failed', error.message)
         setLoading(false)
-        setSelectedMonth(null)
+        return
       }
+
+      const next = Array(12).fill(0)
+      for (const row of data || []) {
+        const index = Number(row.month || 0) - 1
+        if (index >= 0 && index < 12) next[index] = Number(row.pr_count || 0)
+      }
+      setCounts(next)
+      setLoading(false)
+      setSelectedMonth(null)
+      setSelectedRows([])
     }
     load()
     return () => { active = false }
   }, [year])
 
-  const model = useMemo(() => {
-    const counts = Array(12).fill(0)
-    const byMonth = Array.from({ length: 12 }, () => [])
-    for (const row of rows) {
-      const d = parseDate(row.created_at || row.created_at_raw)
-      if (!d || d.getFullYear() !== year) continue
-      const m = d.getMonth()
-      counts[m] += 1
-      byMonth[m].push({ ...row, _date: d })
+  useEffect(() => {
+    if (selectedMonth === null) {
+      setSelectedRows([])
+      return
     }
+
+    let active = true
+    async function loadMonth() {
+      setMonthLoading(true)
+      const start = new Date(Date.UTC(year, selectedMonth, 1)).toISOString()
+      const end = new Date(Date.UTC(year, selectedMonth + 1, 1)).toISOString()
+      const { data, error } = await supabase
+        .from('erp_pr_headers')
+        .select('purch_req_id,description,created_at,created_at_raw,created_by,status,site')
+        .gte('created_at', start)
+        .lt('created_at', end)
+        .order('created_at', { ascending: false })
+        .limit(400)
+
+      if (!active) return
+      if (error) console.warn('Monthly PR detail load failed', error.message)
+      setSelectedRows((data || []).map((row) => ({ ...row, _date: parseDate(row.created_at || row.created_at_raw) })))
+      setMonthLoading(false)
+    }
+    loadMonth()
+    return () => { active = false }
+  }, [year, selectedMonth])
+
+  const model = useMemo(() => {
     const max = Math.max(1, ...counts)
     const now = new Date()
     const currentMonth = now.getMonth()
@@ -134,12 +152,11 @@ export default function PrMonthlyChart() {
         if (count > best) { best = count; highestIndex = index }
       })
     }
-    return { counts, byMonth, max, currentMonth, visibleMonths, ytdTotal, average, highestIndex }
-  }, [rows, year])
+    return { counts, max, currentMonth, visibleMonths, ytdTotal, average, highestIndex }
+  }, [counts, year])
 
   if (!host) return null
 
-  const selectedRows = selectedMonth === null ? [] : model.byMonth[selectedMonth]
   const isFutureMonth = (index) => year > CURRENT_YEAR || (year === CURRENT_YEAR && index > model.currentMonth)
   const highestText = model.highestIndex === null ? '—' : `${MONTHS[model.highestIndex]} · ${model.counts[model.highestIndex].toLocaleString()} PRs`
 
@@ -189,14 +206,14 @@ export default function PrMonthlyChart() {
       </div>
 
       <div className="prm-foot">
-        <span>{loading ? 'Refreshing…' : `${rows.length.toLocaleString()} PRs in ${year}`}</span>
+        <span>{loading ? 'Refreshing…' : `${model.ytdTotal.toLocaleString()} PRs in ${year}`}</span>
         <span>Click a month to show its PR list</span>
       </div>
 
       {selectedMonth !== null && (
         <div className="prm-list">
           <div className="prm-list-head">
-            <div><strong>{MONTHS[selectedMonth]} {year}</strong><span>{selectedRows.length.toLocaleString()} PRs submitted</span></div>
+            <div><strong>{MONTHS[selectedMonth]} {year}</strong><span>{monthLoading ? 'Loading…' : selectedRows.length.toLocaleString() + ' PRs submitted'}</span></div>
             <button type="button" onClick={() => setSelectedMonth(null)}>Clear month</button>
           </div>
           <div className="prm-table-wrap">
