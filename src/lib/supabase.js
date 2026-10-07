@@ -58,6 +58,8 @@ function responseFromCache(entry) {
 export function clearSupabaseReadCache(table = '') {
   cacheGeneration += 1
   const aliases = {
+    procurement_records: ['current_pending_payment_records'],
+    pending_payment_records: ['current_pending_payment_records'],
     sr_issue_records: [
       'sr_issue_records_fast',
       'warehouse_issue_enriched_fast',
