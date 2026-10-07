@@ -59,7 +59,7 @@ export default function PendingPaymentsWorkspace(){
     async function load(){
       if(!alive) return
       setLoading(true)
-      const {data,error}=await supabase.from('pending_payment_records').select('po_no,po_date,supplier,status,priority,po_value').order('po_date',{ascending:false})
+      const {data,error}=await supabase.from('current_pending_payment_records').select('po_no,po_date,supplier,status,priority,po_value').order('po_date',{ascending:false})
       if(alive){ if(!error) setRows(data||[]); setLoading(false) }
     }
     const scheduleLoad=()=>{
