@@ -49,23 +49,9 @@ export default function PrMonthlyChart() {
   const [monthLoading, setMonthLoading] = useState(false)
 
   useEffect(() => {
-    let disposed = false
-    const find = () => {
-      if (disposed || host) return
-      const section = findActivitySection()
-      if (!section) return
-      let el = section.querySelector(':scope > .pr-month-chart-host')
-      if (!el) {
-        el = document.createElement('div')
-        el.className = 'pr-month-chart-host'
-        section.appendChild(el)
-      }
-      setHost(el)
-    }
-    find()
-    const id = window.setInterval(find, 500)
-    return () => { disposed = true; window.clearInterval(id) }
-  }, [host])
+    const el = document.getElementById('prpo-monthly-host')
+    if (el) setHost(el)
+  }, [])
 
   useEffect(() => {
     if (!host) return

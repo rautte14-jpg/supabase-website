@@ -4,7 +4,6 @@ import { flushSync } from 'react-dom'
 const PrDetailOverlayComplete = lazy(() => import('./PrDetailOverlayComplete.jsx'))
 const PrTrackerCompleteV2 = lazy(() => import('./PrTrackerCompleteV2.jsx'))
 const PrOpenPositionV2 = lazy(() => import('./PrOpenPositionV2.jsx'))
-const PrPoSectionTabs = lazy(() => import('./PrPoSectionTabs.jsx'))
 const PrMonthlyChart = lazy(() => import('./PrMonthlyChart.jsx'))
 const PendingPaymentsWorkspace = lazy(() => import('./PendingPaymentsWorkspace.jsx'))
 const PrfWorkspace = lazy(() => import('./PrfWorkspace.jsx'))
@@ -143,7 +142,6 @@ export default function RouteEnhancers() {
           <PrTrackerCompleteV2 />
           {prSecondaryReady && <>
             <PrOpenPositionV2 />
-            <PrPoSectionTabs />
             <PrMonthlyChart />
           </>}
         </>}

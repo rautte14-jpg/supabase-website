@@ -241,34 +241,9 @@ export default function PrTrackerCompleteV2() {
   const timerRef = useRef(null)
 
   useEffect(() => {
-    let disposed = false
-    const find = () => {
-      if (disposed || host) return
-      const eyebrow = [...document.querySelectorAll('.eyebrow, body *')].find((el) =>
-        el.children.length === 0 && clean(el.textContent).toUpperCase().includes('01 · PR SUBMISSION ACTIVITY')
-      )
-      const section = eyebrow?.closest('section')
-      if (!section) return
-
-      const table = section.querySelector('table')
-      const wrapper = table
-        ? (table.closest('.data-table, .table-wrap, .overflow-x-auto') || table.parentElement)
-        : null
-
-      let el = section.querySelector(':scope > .prv2-host')
-      if (!el) {
-        el = document.createElement('div')
-        el.className = 'prv2-host'
-        if (wrapper?.parentElement === section) section.insertBefore(el, wrapper)
-        else section.appendChild(el)
-      }
-      if (wrapper) wrapper.style.display = 'none'
-      setHost(el)
-    }
-    find()
-    const id = window.setInterval(find, 600)
-    return () => { disposed = true; window.clearInterval(id) }
-  }, [host])
+    const el = document.getElementById('prpo-lifecycle-host')
+    if (el) setHost(el)
+  }, [])
 
   useEffect(() => {
     if (!host) return

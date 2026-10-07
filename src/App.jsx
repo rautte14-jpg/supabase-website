@@ -5992,6 +5992,8 @@ export default function App() {
                   {prPoWeekFilter !== 'ALL' && <button onClick={() => selectPrPoWeek('ALL')}>Clear submission filter</button>}
                 </div>
 
+                <div id="prpo-lifecycle-host" className="prv2-host" />
+
                 <div className="pr-submission-detail-head">
                   <div>
                     <span className="eyebrow">PRs · SUBMITTED DATE</span>
@@ -6007,9 +6009,11 @@ export default function App() {
                   </div>
                 </div>
                 <DataTable rows={prSubmissionRows} columns={prSubmissionColumns} limit={250} />
+                <div id="prpo-monthly-host" className="pr-month-chart-host" />
               </section>
 
-              <section className="prpo-section-card">
+              <div id="prpo-open-position-host" className="opv2-host" />
+              <section className="prpo-section-card" id="prpo-open-position-base">
                 <div className="prpo-section-title">
                   <div>
                     <span className="eyebrow">02 · CURRENT OPEN POSITION</span>

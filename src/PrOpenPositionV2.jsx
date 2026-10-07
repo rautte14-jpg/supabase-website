@@ -121,24 +121,15 @@ export default function PrOpenPositionV2() {
   const [selection, setSelection] = useState(null)
 
   useEffect(() => {
-    let disposed = false
-    const find = () => {
-      if (disposed || host) return
-      const eyebrow = [...document.querySelectorAll('.eyebrow, body *')].find((el) =>
-        el.children.length === 0 && clean(el.textContent).toUpperCase().includes('02 · CURRENT OPEN POSITION')
-      )
-      const section = eyebrow?.closest('section')
-      if (!section?.parentElement) return
-      const el = document.createElement('div')
-      el.className = 'opv2-host'
-      section.parentElement.insertBefore(el, section)
-      section.style.display = 'none'
-      setHost(el)
+    const el = document.getElementById('prpo-open-position-host')
+    const base = document.getElementById('prpo-open-position-base')
+    if (!el) return
+    if (base) base.style.display = 'none'
+    setHost(el)
+    return () => {
+      if (base?.isConnected) base.style.display = ''
     }
-    find()
-    const id = window.setInterval(find, 600)
-    return () => { disposed = true; window.clearInterval(id) }
-  }, [host])
+  }, [])
 
   useEffect(() => {
     if (!host) return
