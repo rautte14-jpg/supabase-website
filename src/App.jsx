@@ -1395,7 +1395,7 @@ export default function App() {
     notes: ['case_notes', 'updated_at', false],
     sourceUpdates: ['source_updates', 'imported_at', false],
     snapshots: ['weekly_snapshots', 'snapshot_date', false],
-    pendingPayments: ['current_pending_payment_records', 'po_date', false],
+    pendingPayments: ['pending_payment_records', 'po_date', false],
     erpPrHeaders: ['erp_pr_headers', 'created_at', false],
   }
 
@@ -4061,8 +4061,86 @@ export default function App() {
     [inventoryHighUseTop100],
   )
 
+  const pendingPaymentReconciliation = useMemo(() => {
+    const receiptByPo = new Map()
+
+    allPrLines.forEach((row) => {
+      const po = String(row.po_no || '').trim().toUpperCase()
+      if (!po || receivedQty(row) <= 0) return
+      const date = receivedDate(row)
+      const current = receiptByPo.get(po)
+      if (!current) {
+        receiptByPo.set(po, { hasReceipt: true, firstReceipt: date || '', lastReceipt: date || '' })
+      } else {
+        if (date && (!current.firstReceipt || date < current.firstReceipt)) current.firstReceipt = date
+        if (date && (!current.lastReceipt || date > current.lastReceipt)) current.lastReceipt = date
+      }
+    })
+
+    const classified = (data.pendingPayments || []).map((row) => {
+      const po = String(row.po_no || '').trim().toUpperCase()
+      const status = lower(row.status)
+      const receipt = receiptByPo.get(po)
+      const clearedByReceipt =
+        status === 'advance received' ||
+        (['advance pending', 'credit'].includes(status) && Boolean(receipt?.hasReceipt))
+
+      return {
+        ...row,
+        clearedByReceipt,
+        clearedDate: receipt?.firstReceipt || '',
+      }
+    })
+
+    const currentRows = classified.filter((row) => !row.clearedByReceipt)
+    const currentWeekStart = weekStartWednesday(todayIso)
+    const previousWeekStart = addDaysIso(currentWeekStart, -7)
+    const previousWeekEnd = addDaysIso(currentWeekStart, -1)
+
+    const clearedThisWeek = classified.filter((row) =>
+      row.clearedByReceipt &&
+      row.clearedDate &&
+      row.clearedDate >= currentWeekStart &&
+      row.clearedDate <= todayIso
+    )
+
+    const clearedLastWeek = classified.filter((row) =>
+      row.clearedByReceipt &&
+      row.clearedDate &&
+      row.clearedDate >= previousWeekStart &&
+      row.clearedDate <= previousWeekEnd
+    )
+
+    const newPendingThisWeek = currentRows.filter((row) => {
+      const date = parseFlexibleDate(row.po_date)
+      return date && date >= currentWeekStart && date <= todayIso
+    })
+
+    const lastWeekCount = Math.max(0, currentRows.length + clearedThisWeek.length - newPendingThisWeek.length)
+    const currentValue = currentRows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
+    const clearedThisWeekValue = clearedThisWeek.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
+    const newPendingThisWeekValue = newPendingThisWeek.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
+    const lastWeekValue = Math.max(0, currentValue + clearedThisWeekValue - newPendingThisWeekValue)
+
+    return {
+      rows: currentRows,
+      currentCount: currentRows.length,
+      currentValue,
+      lastWeekCount,
+      lastWeekValue,
+      countChange: currentRows.length - lastWeekCount,
+      valueChange: currentValue - lastWeekValue,
+      clearedThisWeek,
+      clearedThisWeekValue,
+      clearedLastWeek,
+      currentWeekStart,
+      previousWeekStart,
+      previousWeekEnd,
+    }
+  }, [data.pendingPayments, allPrLines, todayIso])
+
   const inventoryPresentationPayments = useMemo(() => {
-    const rows = data.pendingPayments || []
+    const rows = pendingPaymentReconciliation.rows
     const totalValue = rows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
     const urgent = rows.filter((row) => isUrgent(row.priority)).length
     const statusCounts = new Map()
@@ -4076,7 +4154,7 @@ export default function App() {
       urgent,
       statusCounts: [...statusCounts.entries()].sort((a, b) => b[1] - a[1]),
     }
-  }, [data.pendingPayments])
+  }, [pendingPaymentReconciliation.rows])
 
   const inventoryPresentationProcurement = useMemo(() => {
     const monthStart = todayIso.slice(0, 7) + '-01'
@@ -4215,8 +4293,8 @@ export default function App() {
 
     if (inventoryDetail === 'PAYMENT' || inventoryDetail === 'PAYMENT_URGENT') {
       const source = inventoryDetail === 'PAYMENT_URGENT'
-        ? (data.pendingPayments || []).filter((row) => isUrgent(row.priority))
-        : (data.pendingPayments || [])
+        ? pendingPaymentReconciliation.rows.filter((row) => isUrgent(row.priority))
+        : pendingPaymentReconciliation.rows
       return {
         title: inventoryDetail === 'PAYMENT_URGENT' ? 'Urgent Pending Payment POs' : 'Current Pending Payment POs',
         columns: ['PO', 'Supplier', 'Status', 'Priority', 'PO Value'],
@@ -4274,7 +4352,7 @@ export default function App() {
     inventoryDetail,
     allPrLines,
     prPoAgeing,
-    data.pendingPayments,
+    pendingPaymentReconciliation.rows,
     allMtrRows,
     inventoryHighUseOutOfStock,
     inventoryHighUseLowStock,
@@ -4397,12 +4475,29 @@ export default function App() {
               <div key={status}><span>{status}</span><b>{fmt(count)}</b></div>
             ))}
           </div>
+          <div className="meeting-change-grid warehouse-receipt-cards" style={{ marginTop: 18 }}>
+            <div className="meeting-change-card">
+              <span>Last Week Pending</span>
+              <b>{fmt(pendingPaymentReconciliation.lastWeekCount)}</b>
+              <div><small>{mvr(pendingPaymentReconciliation.lastWeekValue)}</small><strong>Previous week baseline</strong></div>
+            </div>
+            <div className="meeting-change-card">
+              <span>This Week Pending</span>
+              <b>{fmt(pendingPaymentReconciliation.currentCount)}</b>
+              <div><small>{mvr(pendingPaymentReconciliation.currentValue)}</small><strong>{pendingPaymentReconciliation.countChange <= 0 ? 'Down ' : 'Up '}{fmt(Math.abs(pendingPaymentReconciliation.countChange))} POs</strong></div>
+            </div>
+            <div className="meeting-change-card">
+              <span>Cleared by Receipt This Week</span>
+              <b>{fmt(pendingPaymentReconciliation.clearedThisWeek.length)}</b>
+              <div><small>{mvr(pendingPaymentReconciliation.clearedThisWeekValue)}</small><strong>Advance / Credit received</strong></div>
+            </div>
+          </div>
           <div className="meeting-period-banner" style={{ marginTop: 18 }}>
             <div>
               <span>MANAGEMENT FOCUS</span>
               <b>{fmt(inventoryPresentationPayments.urgent)} urgent payment POs</b>
             </div>
-            <small>Prioritize payment blockers affecting delivery and receipt completion</small>
+            <small>Credit and advance cases are removed from pending once receipt is recorded</small>
           </div>
         </>
       ),
@@ -4521,7 +4616,7 @@ export default function App() {
     }
   ]
   const pendingPaymentsSummary = useMemo(() => {
-    const rows = data.pendingPayments || []
+    const rows = pendingPaymentReconciliation.rows
     const totalValue = rows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
     const urgent = rows.filter((row) => isUrgent(row.priority)).length
     const statusCounts = new Map()
@@ -4535,14 +4630,14 @@ export default function App() {
       urgent,
       statusCounts: [...statusCounts.entries()].sort((a, b) => b[1] - a[1]),
     }
-  }, [data.pendingPayments])
+  }, [pendingPaymentReconciliation.rows])
 
   const pendingPaymentDetailRows = useMemo(() => {
-    const rows = data.pendingPayments || []
+    const rows = pendingPaymentReconciliation.rows
     if (pendingPaymentDetailFilter === 'ALL') return rows
     if (pendingPaymentDetailFilter === 'URGENT') return rows.filter((row) => isUrgent(row.priority))
     return rows.filter((row) => String(row.status || '').trim() === pendingPaymentDetailFilter)
-  }, [data.pendingPayments, pendingPaymentDetailFilter])
+  }, [pendingPaymentReconciliation.rows, pendingPaymentDetailFilter])
 
   const pendingPaymentDetailTitle =
     pendingPaymentDetailFilter === 'ALL'
@@ -4601,7 +4696,7 @@ export default function App() {
     const issueRows = srIssuesEnriched.filter((row) => inRange(parseFlexibleDate(row.requested_receipt_date)))
     const issueQty = issueRows.reduce((sum, row) => sum + Math.abs(Number(row.quantity || 0)), 0)
 
-    const pendingPaymentValue = (data.pendingPayments || []).reduce((sum, row) => sum + Number(row.po_value || 0), 0)
+    const pendingPaymentValue = pendingPaymentReconciliation.rows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
 
     return {
       rangeStart,
@@ -4615,7 +4710,7 @@ export default function App() {
       pendingMrns: pendingMrnNos.size,
       issueRecords: issueRows.length,
       issueQty,
-      pendingPaymentPos: (data.pendingPayments || []).length,
+      pendingPaymentPos: pendingPaymentReconciliation.rows.length,
       pendingPaymentValue,
       stockQty: Number(ageingSnapshots.at(-1)?.metrics?.onHandQty || 0),
       stockValue: Number(ageingSnapshots.at(-1)?.metrics?.onHandValue || 0),
@@ -4628,7 +4723,7 @@ export default function App() {
     allMtrRows,
     allMrnRows,
     srIssuesEnriched,
-    data.pendingPayments,
+    pendingPaymentReconciliation.rows,
     ageingSnapshots,
   ])
 
