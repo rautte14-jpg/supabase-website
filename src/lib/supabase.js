@@ -50,7 +50,13 @@ function responseFromCache(entry) {
 export function clearSupabaseReadCache(table = '') {
   const aliases = {
     sr_issue_records: ['sr_issue_records_fast'],
-    inventory_transactions: ['inventory_transactions_fast'],
+    material_records: ['inventory_presentation_mtr_summary'],
+    stock_items: ['inventory_presentation_stock_summary', 'home_high_consumption_stock'],
+    inventory_transactions: [
+      'inventory_transactions_fast',
+      'inventory_presentation_stock_summary',
+      'home_high_consumption_stock',
+    ],
   }
   const tables = table ? [table, ...(aliases[table] || [])] : []
 
