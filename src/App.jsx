@@ -4186,15 +4186,19 @@ export default function App() {
     })
 
     let mtrPending = 0
+    let mtrFully = 0
     let mtrPartial = 0
-    let mtrNoStock = 0
+    let mtrNotTransferred = 0
     let mtr30 = 0
     for (const entry of mtrMap.values()) {
       const pending = entry.remaining > 0 || (entry.requested > 0 && entry.transferred < entry.requested)
-      if (!pending) continue
+      if (!pending) {
+        mtrFully += 1
+        continue
+      }
       mtrPending += 1
       if (entry.transferred > 0) mtrPartial += 1
-      if (entry.rows.some((row) => !mtrStockAvailable(row))) mtrNoStock += 1
+      if (entry.transferred <= 0) mtrNotTransferred += 1
       if (entry.rows.some((row) => mtrAgeDays(row) >= 30)) mtr30 += 1
     }
 
@@ -4213,8 +4217,9 @@ export default function App() {
     return {
       mtrTotal: mtrMap.size,
       mtrPending,
+      mtrFully,
       mtrPartial,
-      mtrNoStock,
+      mtrNotTransferred,
       mtr30,
       mrnTotal: allMrnRows.length,
       mrnPending: mrnPending.size,
@@ -4294,18 +4299,18 @@ export default function App() {
       }
     }
 
-    if (inventoryDetail === 'MTR_NO_STOCK' || inventoryDetail === 'MTR_30') {
+    if (inventoryDetail === 'MTR_NOT_TRANSFERRED' || inventoryDetail === 'MTR_30') {
       const rows = allMtrRows.filter((row) => {
         const requested = mtrRequestedQty(row)
         const transferred = mtrTransferredQty(row)
         const remaining = mtrRemainingQty(row)
         const pending = remaining > 0 || (requested > 0 && transferred < requested)
         if (!pending) return false
-        if (inventoryDetail === 'MTR_NO_STOCK') return !mtrStockAvailable(row)
+        if (inventoryDetail === 'MTR_NOT_TRANSFERRED') return transferred <= 0
         return mtrAgeDays(row) >= 30
       })
       return {
-        title: inventoryDetail === 'MTR_NO_STOCK' ? 'MTRs Pending with No SRD Stock' : 'MTRs Pending 30+ Days',
+        title: inventoryDetail === 'MTR_NOT_TRANSFERRED' ? 'MTRs Not Yet Transferred' : 'MTRs Pending 30+ Days',
         columns: ['MTR', 'Item', 'Description', 'Requested', 'Transferred', 'Remaining'],
         rows: rows.map((row) => [
           row.document_no || '—',
@@ -4495,16 +4500,17 @@ export default function App() {
         <>
           <div className="meeting-period-banner">
             <div>
-              <span>WAREHOUSE MATERIAL MOVEMENT</span>
-              <b>PR / PO → Receipt → MTR → Stock</b>
+              <span>INTER-DIVISION MATERIAL TRANSFER</span>
+              <b>Other Division Stock → MTR → Transfer → SRD Inventory</b>
             </div>
-            <small>Current warehouse transfer position for inventory control</small>
+            <small>MTRs are requests to transfer materials from other MTCC divisions into SRD inventory when procurement is not raised</small>
           </div>
           <div className="meeting-exception-metrics">
             <div><span>Total MTRs</span><b>{fmt(inventoryPresentationMaterials.mtrTotal)}</b></div>
+            <div><span>Fully Transferred</span><b>{fmt(inventoryPresentationMaterials.mtrFully)}</b></div>
             <div><span>Pending MTRs</span><b>{fmt(inventoryPresentationMaterials.mtrPending)}</b></div>
             <div><span>Partially Transferred</span><b>{fmt(inventoryPresentationMaterials.mtrPartial)}</b></div>
-            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('MTR_NO_STOCK')}><span>Pending · No SRD Stock</span><b>{fmt(inventoryPresentationMaterials.mtrNoStock)}</b><small>View list</small></button>
+            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('MTR_NOT_TRANSFERRED')}><span>Not Transferred</span><b>{fmt(inventoryPresentationMaterials.mtrNotTransferred)}</b><small>View list</small></button>
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('MTR_30')}><span>MTR Pending 30+ Days</span><b>{fmt(inventoryPresentationMaterials.mtr30)}</b><small>View list</small></button>
           </div>
         </>
@@ -4564,7 +4570,7 @@ export default function App() {
                   inventoryPresentationProcurement.agedSixPlus +
                   inventoryPresentationProcurement.receiptPendingPos +
                   inventoryPresentationPayments.urgent +
-                  inventoryPresentationMaterials.mtrNoStock +
+                  inventoryPresentationMaterials.mtrNotTransferred +
                   inventoryHighUseOutOfStock.length
                 )} priority flags
               </b>
@@ -4583,7 +4589,7 @@ export default function App() {
 
             <section>
               <div className="meeting-control-head"><span>INVENTORY / MATERIALS</span><b>Immediate Follow-Up</b></div>
-              <button className="meeting-control-row critical inventory-action-row" onClick={() => setInventoryDetail('MTR_NO_STOCK')}><span>MTRs pending with no SRD stock</span><strong>{fmt(inventoryPresentationMaterials.mtrNoStock)}</strong></button>
+              <button className="meeting-control-row critical inventory-action-row" onClick={() => setInventoryDetail('MTR_NOT_TRANSFERRED')}><span>MTRs not yet transferred</span><strong>{fmt(inventoryPresentationMaterials.mtrNotTransferred)}</strong></button>
               <button className="meeting-control-row inventory-action-row" onClick={() => setInventoryDetail('MTR_30')}><span>MTRs pending 30+ days</span><strong>{fmt(inventoryPresentationMaterials.mtr30)}</strong></button>
               <button className="meeting-control-row critical inventory-action-row" onClick={() => setInventoryDetail('HIGH_USE_OOS')}><span>High-use items out of stock</span><strong>{fmt(inventoryHighUseOutOfStock.length)}</strong></button>
               <button className="meeting-control-row inventory-action-row" onClick={() => setInventoryDetail('HIGH_USE_LOW')}><span>High-use items low stock</span><strong>{fmt(inventoryHighUseLowStock.length)}</strong></button>
