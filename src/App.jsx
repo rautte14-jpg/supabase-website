@@ -1464,7 +1464,7 @@ export default function App() {
     home: [],
     overview: ['procurement', 'sourceUpdates', 'snapshots', 'pendingPayments'],
     prf: ['procurement', 'lld', 'notes'],
-    prpo: ['procurement', 'lld', 'notes', 'erpPrHeaders'],
+    prpo: ['procurement', 'lld', 'notes'],
     payments: ['pendingPayments'],
     mtr: ['notes'],
     mrn: ['notes'],

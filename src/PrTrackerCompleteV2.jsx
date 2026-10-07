@@ -244,17 +244,25 @@ export default function PrTrackerCompleteV2() {
     let disposed = false
     const find = () => {
       if (disposed || host) return
-      const table = [...document.querySelectorAll('table')].find((t) => {
-        const heads = [...t.querySelectorAll('thead th')].map((x) => lower(x.textContent))
-        return heads.includes('pr number') && heads.includes('requested by') && heads.includes('erp status')
-      })
-      if (!table) return
-      const wrapper = table.closest('.data-table, .table-wrap, .overflow-x-auto') || table.parentElement
-      if (!wrapper?.parentElement) return
-      const el = document.createElement('div')
-      el.className = 'prv2-host'
-      wrapper.parentElement.insertBefore(el, wrapper)
-      wrapper.style.display = 'none'
+      const eyebrow = [...document.querySelectorAll('.eyebrow, body *')].find((el) =>
+        el.children.length === 0 && clean(el.textContent).toUpperCase().includes('01 · PR SUBMISSION ACTIVITY')
+      )
+      const section = eyebrow?.closest('section')
+      if (!section) return
+
+      const table = section.querySelector('table')
+      const wrapper = table
+        ? (table.closest('.data-table, .table-wrap, .overflow-x-auto') || table.parentElement)
+        : null
+
+      let el = section.querySelector(':scope > .prv2-host')
+      if (!el) {
+        el = document.createElement('div')
+        el.className = 'prv2-host'
+        if (wrapper?.parentElement === section) section.insertBefore(el, wrapper)
+        else section.appendChild(el)
+      }
+      if (wrapper) wrapper.style.display = 'none'
       setHost(el)
     }
     find()
