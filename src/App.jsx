@@ -1320,6 +1320,13 @@ export default function App() {
   })
   const [noteState, setNoteState] = useState(null)
   const [vesselSearch, setVesselSearch] = useState('')
+  const [vesselFast, setVesselFast] = useState({
+    procurement: [],
+    material: [],
+    transactions: [],
+    issues: [],
+    loading: false,
+  })
   const [slide, setSlide] = useState(0)
   const [prfStatusFilter, setPrfStatusFilter] = useState('ALL')
   const [prfWeekFilter, setPrfWeekFilter] = useState('ALL')
@@ -1340,7 +1347,15 @@ export default function App() {
     return today.slice(0, 7) + '-01'
   })
   const [overviewTo, setOverviewTo] = useState(() => new Date().toISOString().slice(0, 10))
+  const [overviewFast, setOverviewFast] = useState({
+    mtrs: 0,
+    mrns: 0,
+    pendingMrns: 0,
+    issueRecords: 0,
+    issueQty: 0,
+  })
   const [mtrWeekFilter, setMtrWeekFilter] = useState('ALL')
+  const [mtrMaterialRows, setMtrMaterialRows] = useState([])
   const [mtrControlFilter, setMtrControlFilter] = useState('ALL')
   const [mtrStatusFilter, setMtrStatusFilter] = useState('ALL')
   const [mtrDeliveryFilter, setMtrDeliveryFilter] = useState('ALL')
@@ -1441,13 +1456,13 @@ export default function App() {
 
   const VIEW_TABLES = {
     home: [],
-    overview: ['procurement', 'material', 'srIssues', 'sourceUpdates', 'snapshots', 'pendingPayments'],
+    overview: ['procurement', 'sourceUpdates', 'snapshots', 'pendingPayments'],
     prf: ['procurement', 'lld', 'notes'],
     prpo: ['procurement', 'lld', 'notes', 'erpPrHeaders'],
     payments: ['pendingPayments'],
-    mtr: ['material', 'notes'],
+    mtr: ['notes'],
     mrn: ['notes'],
-    vessel: ['procurement', 'material', 'transactions', 'srIssues', 'lld'],
+    vessel: [],
     stock: ['stock', 'snapshots'],
     updates: ['sourceUpdates'],
     warehouse: ['procurement'],
@@ -1583,6 +1598,91 @@ export default function App() {
       for (const [key] of results) next[key] = true
       return next
     })
+  }
+
+  async function loadOverviewFast(from = overviewFrom, to = overviewTo) {
+    const rangeStart = from <= to ? from : to
+    const rangeEnd = from <= to ? to : from
+    const { data: rows, error } = await supabase.rpc('overview_material_issue_summary', {
+      p_from: rangeStart,
+      p_to: rangeEnd,
+    })
+    if (error) throw error
+    const row = rows?.[0] || {}
+    setOverviewFast({
+      mtrs: Number(row.mtrs || 0),
+      mrns: Number(row.mrns || 0),
+      pendingMrns: Number(row.pending_mrns || 0),
+      issueRecords: Number(row.issue_records || 0),
+      issueQty: Number(row.issue_qty || 0),
+    })
+  }
+
+  async function fetchMtrRowsFast() {
+    const pageSize = 1000
+    const first = await supabase
+      .from('material_records_fast')
+      .select('*', { count: 'exact' })
+      .eq('document_type', 'MTR')
+      .order('updated_at', { ascending: false })
+      .range(0, pageSize - 1)
+    if (first.error) throw first.error
+
+    const rows = [...(first.data || [])]
+    const total = Number(first.count || rows.length)
+    const ranges = []
+    for (let from = pageSize; from < total; from += pageSize) {
+      ranges.push([from, Math.min(from + pageSize - 1, total - 1)])
+    }
+
+    for (let i = 0; i < ranges.length; i += 6) {
+      const group = await Promise.all(
+        ranges.slice(i, i + 6).map(async ([from, to]) => {
+          const result = await supabase
+            .from('material_records_fast')
+            .select('*')
+            .eq('document_type', 'MTR')
+            .order('updated_at', { ascending: false })
+            .range(from, to)
+          if (result.error) throw result.error
+          return result.data || []
+        }),
+      )
+      group.forEach((page) => rows.push(...page))
+    }
+
+    setMtrMaterialRows(rows)
+    return rows
+  }
+
+  async function loadMtrPageFast(force = false) {
+    if (!force && mtrMaterialRows.length) return
+    await fetchMtrRowsFast()
+  }
+
+  async function searchVesselSr(term) {
+    const clean = String(term || '').trim()
+    if (clean.length < 2) {
+      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false })
+      return
+    }
+
+    setVesselFast((current) => ({ ...current, loading: true }))
+    try {
+      const { data: result, error } = await supabase.rpc('search_vessel_sr', { p_term: clean })
+      if (error) throw error
+      const payload = result || {}
+      setVesselFast({
+        procurement: Array.isArray(payload.procurement) ? payload.procurement : [],
+        material: Array.isArray(payload.material) ? payload.material : [],
+        transactions: Array.isArray(payload.transactions) ? payload.transactions : [],
+        issues: Array.isArray(payload.issues) ? payload.issues : [],
+        loading: false,
+      })
+    } catch (error) {
+      console.error('Vessel / SR search failed', error)
+      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false })
+    }
   }
 
   async function fetchMrnMaterialRowsFast() {
@@ -1808,6 +1908,18 @@ export default function App() {
     try {
       if (targetView === 'home') {
         await loadHomeSummary()
+      } else if (targetView === 'overview') {
+        await Promise.all([
+          loadTables(VIEW_TABLES[targetView] || [], force),
+          loadOverviewFast(overviewFrom, overviewTo),
+        ])
+      } else if (targetView === 'mtr') {
+        await Promise.all([
+          loadTables(VIEW_TABLES[targetView] || [], force),
+          loadMtrPageFast(force),
+        ])
+      } else if (targetView === 'vessel') {
+        if (vesselSearch.trim().length >= 2) await searchVesselSr(vesselSearch)
       } else if (targetView === 'mrn') {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
@@ -1852,6 +1964,18 @@ export default function App() {
     if (!access) return
     loadForView(view)
   }, [access?.email, view])
+
+
+  useEffect(() => {
+    if (view !== 'vessel') return
+    const term = vesselSearch.trim()
+    if (term.length < 2) {
+      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false })
+      return
+    }
+    const timer = window.setTimeout(() => searchVesselSr(term), 350)
+    return () => window.clearTimeout(timer)
+  }, [view, vesselSearch])
 
 
   const noteMap = useMemo(
@@ -2356,8 +2480,10 @@ export default function App() {
   }), [prpoRows])
 
   const allMtrRows = useMemo(
-    () => data.material.filter((r) => r.document_type === 'MTR'),
-    [data.material],
+    () => view === 'mtr'
+      ? mtrMaterialRows
+      : data.material.filter((r) => r.document_type === 'MTR'),
+    [view, mtrMaterialRows, data.material],
   )
 
   const mtrWeekCounts = useMemo(() => {
@@ -3313,9 +3439,9 @@ export default function App() {
   }
 
   const vesselTerm = lower(vesselSearch).trim()
-  const vesselProc = procurementData.filter((r) => !vesselTerm || [r.vessel, r.asset, r.sr_wo, r.prf_no, r.pr_no, r.po_no].some((v) => lower(v).includes(vesselTerm)))
-  const vesselMat = data.material.filter((r) => !vesselTerm || [r.vessel, r.asset, r.sr_wo, r.document_no].some((v) => lower(v).includes(vesselTerm)))
-  const vesselTx = data.transactions.filter((r) => !vesselTerm || [r.vessel, r.sr_wo, r.delivery_name, r.sales_order].some((v) => lower(v).includes(vesselTerm)))
+  const vesselProc = vesselFast.procurement
+  const vesselMat = vesselFast.material
+  const vesselTx = vesselFast.transactions
 
   const meetingPrfStatuses = (() => {
     const statusMap = new Map(prfStatusCounts)
@@ -4778,24 +4904,11 @@ export default function App() {
       }
     })
 
-    const mtrNos = new Set(
-      allMtrRows
-        .filter((row) => inRange(mtrRequestDate(row)))
-        .map((row) => String(row.document_no || '').trim())
-        .filter(Boolean),
-    )
-
-    const mrnRowsPeriod = allMrnRows.filter((row) => inRange(mrnCreatedDate(row)))
-    const mrnNos = new Set(mrnRowsPeriod.map((row) => String(row.document_no || '').trim()).filter(Boolean))
-    const pendingMrnNos = new Set(
-      mrnRowsPeriod
-        .filter((row) => mrnIsPending(row))
-        .map((row) => String(row.document_no || '').trim())
-        .filter(Boolean),
-    )
-
-    const issueRows = srIssuesEnriched.filter((row) => inRange(parseFlexibleDate(row.requested_receipt_date)))
-    const issueQty = issueRows.reduce((sum, row) => sum + Math.abs(Number(row.quantity || 0)), 0)
+    const mtrCount = Number(overviewFast.mtrs || 0)
+    const mrnCount = Number(overviewFast.mrns || 0)
+    const pendingMrnCount = Number(overviewFast.pendingMrns || 0)
+    const issueRecordCount = Number(overviewFast.issueRecords || 0)
+    const issueQty = Number(overviewFast.issueQty || 0)
 
     const pendingPaymentValue = pendingPaymentReconciliation.rows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
 
@@ -4806,10 +4919,10 @@ export default function App() {
       receivedPrs: receivedPrNos.size,
       receivedQty: receivedQtyTotal,
       receivedValue: receivedValueTotal,
-      mtrs: mtrNos.size,
-      mrns: mrnNos.size,
-      pendingMrns: pendingMrnNos.size,
-      issueRecords: issueRows.length,
+      mtrs: mtrCount,
+      mrns: mrnCount,
+      pendingMrns: pendingMrnCount,
+      issueRecords: issueRecordCount,
       issueQty,
       pendingPaymentPos: pendingPaymentReconciliation.rows.length,
       pendingPaymentValue,
@@ -4821,9 +4934,7 @@ export default function App() {
     overviewFrom,
     overviewTo,
     allPrLines,
-    allMtrRows,
-    allMrnRows,
-    srIssuesEnriched,
+    overviewFast,
     pendingPaymentReconciliation.rows,
     ageingSnapshots,
   ])
@@ -4834,11 +4945,18 @@ export default function App() {
       ? formatShortDate(overviewPeriod.rangeStart)
       : formatShortDate(overviewPeriod.rangeStart) + ' – ' + formatShortDate(overviewPeriod.rangeEnd)
 
-  function applyOverviewDateRange() {
+  async function applyOverviewDateRange() {
     const from = overviewFromDraft || todayIso
     const to = overviewToDraft || todayIso
-    setOverviewFrom(from <= to ? from : to)
-    setOverviewTo(from <= to ? to : from)
+    const nextFrom = from <= to ? from : to
+    const nextTo = from <= to ? to : from
+    setOverviewFrom(nextFrom)
+    setOverviewTo(nextTo)
+    try {
+      await loadOverviewFast(nextFrom, nextTo)
+    } catch (error) {
+      console.error('Failed to load overview period summary', error)
+    }
   }
 
 
@@ -6553,7 +6671,9 @@ export default function App() {
                 <input value={vesselSearch} onChange={(e) => setVesselSearch(e.target.value)} placeholder="Type vessel, asset, SR, WO or reference…" />
               </div>
               {!vesselTerm ? (
-                <EmptyState title="Search for a vessel or SR" text="This view joins PRF/PR/PO, MTR/MRN and ERP movement." />
+                <EmptyState title="Search for a vessel or SR" text="Type at least 2 characters. Results are fetched directly from the database without loading the full warehouse dataset." />
+              ) : vesselFast.loading ? (
+                <EmptyState title="Searching…" text="Loading matching procurement, material and ERP movement records." />
               ) : (
                 <div className="joined-grid">
                   <section className="panel wide">
