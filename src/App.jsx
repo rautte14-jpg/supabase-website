@@ -4228,6 +4228,39 @@ export default function App() {
     }
   }, [allMtrRows, allMrnRows])
 
+  const inventoryMtrWeeklyTransfer = useMemo(() => {
+    const completedWeekStart = warehouseWeekStart
+    const previousWeekStart = addDaysIso(completedWeekStart, -7)
+
+    const summarize = (weekStart) => {
+      const rows = allMtrRows.filter((row) => {
+        const received = dateRowField(row, 'received_date', ['Received Date'])
+        return received && weekStartWednesday(received) === weekStart && mtrTransferredQty(row) > 0
+      })
+      return {
+        weekStart,
+        weekEnd: addDaysIso(weekStart, 6),
+        quantity: rows.reduce((sum, row) => sum + mtrTransferredQty(row), 0),
+        mtrs: new Set(rows.map((row) => String(row.document_no || '').trim()).filter(Boolean)).size,
+        lines: rows.length,
+      }
+    }
+
+    const current = summarize(completedWeekStart)
+    const previous = summarize(previousWeekStart)
+    const trend = Array.from({ length: 6 }, (_, index) =>
+      summarize(addDaysIso(completedWeekStart, index * -7))
+    ).reverse()
+
+    return {
+      current,
+      previous,
+      changeQty: current.quantity - previous.quantity,
+      changeMtrs: current.mtrs - previous.mtrs,
+      trend,
+    }
+  }, [allMtrRows, warehouseWeekStart])
+
   const inventoryPresentationDetail = useMemo(() => {
     if (!inventoryDetail) return null
 
@@ -4512,6 +4545,48 @@ export default function App() {
             <div><span>Partially Transferred</span><b>{fmt(inventoryPresentationMaterials.mtrPartial)}</b></div>
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('MTR_NOT_TRANSFERRED')}><span>Not Transferred</span><b>{fmt(inventoryPresentationMaterials.mtrNotTransferred)}</b><small>View list</small></button>
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('MTR_30')}><span>MTR Pending 30+ Days</span><b>{fmt(inventoryPresentationMaterials.mtr30)}</b><small>View list</small></button>
+          </div>
+
+          <div className="meeting-change-grid warehouse-receipt-cards" style={{ marginTop: 18 }}>
+            <div className="meeting-change-card">
+              <span>Transferred Qty · Last Week</span>
+              <b>{fmt(inventoryMtrWeeklyTransfer.previous.quantity, 2)}</b>
+              <div>
+                <small>{formatShortDate(inventoryMtrWeeklyTransfer.previous.weekStart)} – {formatShortDate(inventoryMtrWeeklyTransfer.previous.weekEnd)}</small>
+                <strong>{fmt(inventoryMtrWeeklyTransfer.previous.mtrs)} MTRs</strong>
+              </div>
+            </div>
+            <div className="meeting-change-card">
+              <span>Transferred Qty · Reporting Week</span>
+              <b>{fmt(inventoryMtrWeeklyTransfer.current.quantity, 2)}</b>
+              <div>
+                <small>{formatShortDate(inventoryMtrWeeklyTransfer.current.weekStart)} – {formatShortDate(inventoryMtrWeeklyTransfer.current.weekEnd)}</small>
+                <strong>{inventoryMtrWeeklyTransfer.changeQty >= 0 ? '+' : '−'}{fmt(Math.abs(inventoryMtrWeeklyTransfer.changeQty), 2)} qty</strong>
+              </div>
+            </div>
+            <div className="meeting-change-card">
+              <span>MTRs Received · Reporting Week</span>
+              <b>{fmt(inventoryMtrWeeklyTransfer.current.mtrs)}</b>
+              <div>
+                <small>{fmt(inventoryMtrWeeklyTransfer.current.lines)} transferred item lines</small>
+                <strong>{inventoryMtrWeeklyTransfer.changeMtrs >= 0 ? '+' : '−'}{fmt(Math.abs(inventoryMtrWeeklyTransfer.changeMtrs))} MTRs</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="mtr-weekly-trend">
+            <div className="meeting-control-head"><span>6-WEEK TRANSFER TREND</span><b>Transferred quantity by received week</b></div>
+            {inventoryMtrWeeklyTransfer.trend.map((week) => {
+              const maxQty = Math.max(...inventoryMtrWeeklyTransfer.trend.map((item) => item.quantity), 1)
+              return (
+                <div className="mtr-weekly-trend-row" key={week.weekStart}>
+                  <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
+                  <div><i style={{ width: Math.max(2, (week.quantity / maxQty) * 100) + '%' }} /></div>
+                  <strong>{fmt(week.quantity, 2)}</strong>
+                  <small>{fmt(week.mtrs)} MTRs</small>
+                </div>
+              )
+            })}
           </div>
         </>
       ),
