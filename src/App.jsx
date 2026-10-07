@@ -2884,6 +2884,87 @@ export default function App() {
     [mrnIssueFast.rows, srIssueFilter, query],
   )
 
+  const stockOnHandValue = (row) =>
+    hasRawField(row, ['On-hand value', 'On Hand Value'])
+      ? rawNumber(row, ['On-hand value', 'On Hand Value'])
+      : Number(row.stock_value || 0)
+
+  const top100HighValue = useMemo(
+    () => [...data.stock]
+      .filter((row) => stockOnHandValue(row) > 0)
+      .sort((a, b) => stockOnHandValue(b) - stockOnHandValue(a))
+      .slice(0, 100),
+    [data.stock],
+  )
+
+  const top100HighValueCodes = useMemo(
+    () => new Set(top100HighValue.map((row) => String(row.item_code || ''))),
+    [top100HighValue],
+  )
+
+  const top100HighValueTotal = useMemo(
+    () => top100HighValue.reduce((sum, row) => sum + stockOnHandValue(row), 0),
+    [top100HighValue],
+  )
+
+  const stockRows = useMemo(() => {
+    const filtered = data.stock.filter((row) => {
+      if (!matches(row)) return false
+      if (stockAgeFilter === 'ALL') return true
+      if (stockAgeFilter === 'HIGH100') return top100HighValueCodes.has(String(row.item_code || ''))
+
+      const hasBucket = (bucket) =>
+        rawNumber(row, [bucket + ':Quantity']) > 0 ||
+        rawNumber(row, [bucket + ':Amount']) > 0
+
+      if (stockAgeFilter === 'P1') return hasBucket('P1')
+      if (stockAgeFilter === 'P2') return hasBucket('P2')
+      if (stockAgeFilter === 'P3') return hasBucket('P3')
+      if (stockAgeFilter === 'P4') return hasBucket('P4')
+      if (stockAgeFilter === 'P5') return hasBucket('P5')
+      if (stockAgeFilter === 'AGED365') {
+        return hasBucket('P2') || hasBucket('P3') || hasBucket('P4') || hasBucket('P5')
+      }
+
+      return true
+    })
+
+    if (stockAgeFilter === 'HIGH100') {
+      return filtered.sort((a, b) => stockOnHandValue(b) - stockOnHandValue(a))
+    }
+
+    return filtered
+  }, [data.stock, query, stockAgeFilter, top100HighValueCodes])
+
+  const ageingSummary = useMemo(() => {
+    const totals = {
+      onHandQty: 0,
+      onHandValue: 0,
+      inventoryValueQty: 0,
+      inventoryValue: 0,
+      p1: 0,
+      p2: 0,
+      p3: 0,
+      p4: 0,
+      p5: 0,
+    }
+
+    data.stock.forEach((row) => {
+      totals.onHandQty += rawNumber(row, ['On-hand quantity', 'On Hand Quantity']) || Number(row.on_hand || 0)
+      totals.onHandValue += rawNumber(row, ['On-hand value', 'On Hand Value'])
+      totals.inventoryValueQty += rawNumber(row, ['Inventory value quantity', 'Inventory Value Quantity'])
+      totals.inventoryValue += rawNumber(row, ['Inventory value', 'Inventory Value'])
+      totals.p1 += rawNumber(row, ['P1:Amount'])
+      totals.p2 += rawNumber(row, ['P2:Amount'])
+      totals.p3 += rawNumber(row, ['P3:Amount'])
+      totals.p4 += rawNumber(row, ['P4:Amount'])
+      totals.p5 += rawNumber(row, ['P5:Amount'])
+    })
+
+    totals.agedOver365 = totals.p2 + totals.p3 + totals.p4 + totals.p5
+    return totals
+  }, [data.stock])
+
   const ageingSnapshots = useMemo(
     () => data.snapshots
       .filter((s) => s.metrics?.kind === 'AGEING')
