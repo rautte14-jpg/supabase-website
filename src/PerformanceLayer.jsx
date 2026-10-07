@@ -2,23 +2,23 @@ import { useEffect } from 'react'
 import { clearSupabaseReadCache, supabase } from './lib/supabase'
 
 const ROUTE_TABLES = {
-  Home: ['pending_payment_records', 'stock_items', 'source_updates', 'sr_issue_records', 'weekly_snapshots', 'procurement_records'],
-  Overview: ['procurement_records', 'material_records', 'sr_issue_records', 'source_updates', 'weekly_snapshots', 'pending_payment_records'],
-  'PRF Tracker': ['procurement_records', 'lld_updates', 'case_notes'],
-  'PR & PO Tracker': ['procurement_records', 'lld_updates', 'case_notes', 'erp_pr_headers', 'erp_pr_details'],
-  'Pending Payments': ['pending_payment_records'],
-  'MTR Tracker': ['material_records', 'case_notes'],
-  'MRN & Issues': ['material_records', 'sr_issue_records', 'inventory_transactions', 'case_notes'],
-  'Vessel / SR View': ['procurement_records', 'material_records', 'inventory_transactions', 'sr_issue_records', 'lld_updates'],
-  'Stock & Ageing': ['stock_items', 'weekly_snapshots'],
-  'Update Centre': ['source_updates'],
-  'Warehouse Presentation': ['procurement_records', 'material_records', 'sr_issue_records', 'inventory_transactions'],
-  'Inventory Presentation': ['procurement_records', 'material_records', 'pending_payment_records', 'stock_items', 'weekly_snapshots', 'inventory_transactions'],
-  History: ['source_updates', 'weekly_snapshots'],
+  home: ['pending_payment_records', 'stock_items', 'source_updates', 'sr_issue_records', 'weekly_snapshots', 'procurement_records'],
+  overview: ['procurement_records', 'material_records', 'sr_issue_records', 'source_updates', 'weekly_snapshots', 'pending_payment_records'],
+  prf: ['procurement_records', 'lld_updates', 'case_notes'],
+  prpo: ['procurement_records', 'lld_updates', 'case_notes', 'erp_pr_headers', 'erp_pr_details'],
+  payments: ['pending_payment_records', 'procurement_records'],
+  mtr: ['material_records', 'case_notes'],
+  mrn: ['material_records', 'sr_issue_records', 'inventory_transactions', 'case_notes'],
+  vessel: ['procurement_records', 'material_records', 'inventory_transactions', 'sr_issue_records', 'lld_updates'],
+  stock: ['stock_items', 'weekly_snapshots'],
+  updates: ['source_updates'],
+  warehouse: ['procurement_records', 'material_records', 'sr_issue_records', 'inventory_transactions'],
+  inventoryPresentation: ['procurement_records', 'material_records', 'pending_payment_records', 'stock_items', 'weekly_snapshots', 'inventory_transactions'],
+  history: ['source_updates', 'weekly_snapshots'],
 }
 
 function currentRoute() {
-  return String(document.querySelector('.topbar-context strong')?.textContent || '').trim()
+  return String(document.querySelector('.app-shell')?.dataset?.view || '').trim()
 }
 
 function clickRefresh() {
