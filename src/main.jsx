@@ -4,7 +4,6 @@ import App from './App.jsx'
 import AppCrashBoundary from './AppCrashBoundary.jsx'
 import PerformanceLayer from './PerformanceLayer.jsx'
 import SidebarCollapse from './SidebarCollapse.jsx'
-import EddockExperience from './EddockExperience.jsx'
 import './styles.css'
 import './tailwind.css'
 import './eddock-ui.css'
@@ -18,6 +17,5 @@ createRoot(document.getElementById('root')).render(
     </AppCrashBoundary>
     <PerformanceLayer />
     <SidebarCollapse />
-    <EddockExperience />
   </StrictMode>,
 )
