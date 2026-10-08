@@ -1973,6 +1973,15 @@ export default function App() {
 
 
   useEffect(() => {
+    const label = NAV.find(([key]) => key === view)?.[1] || ''
+    document.body.dataset.eddockRoute = label
+    return () => {
+      if (document.body.dataset.eddockRoute === label) delete document.body.dataset.eddockRoute
+    }
+  }, [view])
+
+
+  useEffect(() => {
     if (view !== 'vessel') return
     const term = vesselSearch.trim()
     if (term.length < 2) {
@@ -5021,10 +5030,10 @@ export default function App() {
     <div className="app-shell bg-slate-50" data-view={view}>
       <aside className="sidebar !bg-[#0B1F3A] !border-r !border-white/10 !shadow-none">
         <div className="brand !border-white/10">
-          <div className="brand-box !rounded-xl !bg-white/10 !text-white !shadow-none ring-1 ring-white/10">SRD</div>
+          <div className="brand-box !rounded-xl !bg-white/10 !text-white !shadow-none ring-1 ring-white/10">ED</div>
           <div>
-            <strong>SRD Warehouse</strong>
-            <span>System</span>
+            <strong>EDDOCK</strong>
+            <span>Materials & Operations</span>
           </div>
         </div>
 
@@ -6685,7 +6694,35 @@ export default function App() {
                 <input value={vesselSearch} onChange={(e) => setVesselSearch(e.target.value)} placeholder="Type vessel, asset, SR, WO or reference…" />
               </div>
               {!vesselTerm ? (
-                <EmptyState title="Search for a vessel or SR" text="Type at least 2 characters. Results are fetched directly from the database without loading the full warehouse dataset." />
+                <>
+                  <div className="eddock-vessel-guide">
+                    <div className="eddock-vessel-guide-head">
+                      <span>UNIFIED TRACE</span>
+                      <strong>Find the complete material trail in one search</strong>
+                      <small>Search across procurement, transfer, MRN and ERP issue activity.</small>
+                    </div>
+                    <div className="eddock-vessel-guide-grid">
+                      {[
+                        ['Vessel', 'Track all material activity for one vessel'],
+                        ['Service Request', 'Trace procurement and issue activity by SR'],
+                        ['Work Order', 'Follow materials linked to a work order'],
+                        ['Asset / Reference', 'Search using an asset or source reference'],
+                      ].map(([title, text]) => (
+                        <button
+                          type="button"
+                          key={title}
+                          onClick={() => document.querySelector('.vessel-search input')?.focus()}
+                        >
+                          <b>{title}</b>
+                          <span>{text}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="vessel-empty-state">
+                    <EmptyState title="Search for a vessel or SR" text="Type at least 2 characters. Results are fetched directly from the database without loading the full warehouse dataset." />
+                  </div>
+                </>
               ) : vesselFast.loading ? (
                 <EmptyState title="Searching…" text="Loading matching procurement, material and ERP movement records." />
               ) : (
