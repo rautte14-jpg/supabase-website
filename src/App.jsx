@@ -1389,6 +1389,15 @@ export default function App() {
     loading: false,
   })
   const [prfFastRows, setPrfFastRows] = useState([])
+  const [prfFastMeta, setPrfFastMeta] = useState({
+    overallTotal: 0,
+    selectedTotal: 0,
+    filteredTotal: 0,
+    overallStatusCounts: [],
+    selectedStatusCounts: [],
+    weekCounts: [],
+    loading: false,
+  })
   const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseReceiptDetail, setWarehouseReceiptDetail] = useState('NONE')
   const [warehouseFullscreen, setWarehouseFullscreen] = useState(false)
@@ -1916,28 +1925,37 @@ export default function App() {
     setInventoryDetail(type)
   }
 
-  async function loadPrfPageFast() {
-    const rows = []
-    const pageSize = 1000
-    let from = 0
-
-    while (true) {
-      const { data: batch, error } = await supabase
-        .from('procurement_records')
-        .select('*')
-        .eq('source_type', 'PRF')
-        .order('updated_at', { ascending: false })
-        .range(from, from + pageSize - 1)
-
+  async function loadPrfPageFast(
+    week = prfWeekFilter,
+    status = prfStatusFilter,
+    searchTerm = search,
+  ) {
+    setPrfFastMeta((current) => ({ ...current, loading: true }))
+    try {
+      const { data: result, error } = await supabase.rpc('prf_tracker_data', {
+        p_week_start: week === 'ALL' ? null : week,
+        p_status: status,
+        p_search: String(searchTerm || '').trim(),
+        p_limit: 300,
+      })
       if (error) throw error
-      const page = batch || []
-      rows.push(...page)
-      if (page.length < pageSize) break
-      from += pageSize
-    }
 
-    setPrfFastRows(rows)
-    return rows
+      const payload = result || {}
+      setPrfFastRows(Array.isArray(payload.rows) ? payload.rows : [])
+      setPrfFastMeta({
+        overallTotal: Number(payload.overallTotal || 0),
+        selectedTotal: Number(payload.selectedTotal || 0),
+        filteredTotal: Number(payload.filteredTotal || 0),
+        overallStatusCounts: Array.isArray(payload.overallStatusCounts) ? payload.overallStatusCounts : [],
+        selectedStatusCounts: Array.isArray(payload.selectedStatusCounts) ? payload.selectedStatusCounts : [],
+        weekCounts: Array.isArray(payload.weekCounts) ? payload.weekCounts : [],
+        loading: false,
+      })
+      return payload
+    } catch (error) {
+      setPrfFastMeta((current) => ({ ...current, loading: false }))
+      throw error
+    }
   }
 
   async function loadStockPageFast(filter = stockAgeFilter, searchTerm = search) {
@@ -2100,6 +2118,16 @@ export default function App() {
     )
     return () => window.clearTimeout(timer)
   }, [view, stockAgeFilter, search])
+
+
+  useEffect(() => {
+    if (view !== 'prf') return
+    const timer = window.setTimeout(
+      () => loadPrfPageFast(prfWeekFilter, prfStatusFilter, search),
+      search.trim() ? 250 : 0,
+    )
+    return () => window.clearTimeout(timer)
+  }, [view, prfWeekFilter, prfStatusFilter, search])
 
 
   const noteMap = useMemo(
@@ -2323,24 +2351,38 @@ export default function App() {
   )
 
   const overallPrfStatusCounts = useMemo(() => {
+    if (view === 'prf') {
+      return prfFastMeta.overallStatusCounts.map((entry) => [String(entry?.[0] || 'NOT ATTENDED'), Number(entry?.[1] || 0)])
+    }
     const counts = new Map()
     allPrfRows.forEach((row) => {
       const status = prfStatusLabel(row.status)
       counts.set(status, (counts.get(status) || 0) + 1)
     })
     return [...counts.entries()].sort((a, b) => b[1] - a[1])
-  }, [allPrfRows])
+  }, [view, prfFastMeta.overallStatusCounts, allPrfRows])
 
   const prfStatusCounts = useMemo(() => {
+    if (view === 'prf') {
+      return prfFastMeta.selectedStatusCounts.map((entry) => [String(entry?.[0] || 'NOT ATTENDED'), Number(entry?.[1] || 0)])
+    }
     const counts = new Map()
     weekFilteredPrfRows.forEach((row) => {
       const status = prfStatusLabel(row.status)
       counts.set(status, (counts.get(status) || 0) + 1)
     })
     return [...counts.entries()].sort((a, b) => b[1] - a[1])
-  }, [weekFilteredPrfRows])
+  }, [view, prfFastMeta.selectedStatusCounts, weekFilteredPrfRows])
 
   const prfWeekCounts = useMemo(() => {
+    if (view === 'prf') {
+      return prfFastMeta.weekCounts.map((week) => ({
+        weekStart: week.weekStart || week.week_start,
+        weekEnd: week.weekEnd || week.week_end,
+        count: Number(week.count || 0),
+      }))
+    }
+
     const counts = new Map()
     allPrfRows.forEach((row) => {
       const weekStart = weekStartWednesday(row.pr_date)
@@ -2356,15 +2398,18 @@ export default function App() {
         count: counts.get(weekStart) || 0,
       }
     })
-  }, [allPrfRows])
+  }, [view, prfFastMeta.weekCounts, allPrfRows])
 
   const prfRows = useMemo(
-    () => weekFilteredPrfRows.filter((r) =>
-      matches(r) &&
-      (prfStatusFilter === 'ALL' || prfStatusLabel(r.status) === prfStatusFilter)
-    ),
-    [weekFilteredPrfRows, query, prfStatusFilter],
+    () => view === 'prf'
+      ? allPrfRows
+      : weekFilteredPrfRows.filter((r) =>
+          matches(r) &&
+          (prfStatusFilter === 'ALL' || prfStatusLabel(r.status) === prfStatusFilter)
+        ),
+    [view, allPrfRows, weekFilteredPrfRows, query, prfStatusFilter],
   )
+
   const allPrPoRows = useMemo(
     () => procurementData.filter((r) => ['PR', 'PO'].includes(r.source_type) && isUsefulPrPoRow(r)),
     [procurementData],
@@ -5995,7 +6040,7 @@ export default function App() {
                     onClick={() => selectPrfWeek('ALL')}
                   >
                     <span className="!text-[10px] !font-semibold !uppercase !tracking-wider !text-blue-600">ALL PRFs</span>
-                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{fmt(allPrfRows.filter((r) => r.pr_date).length)}</strong>
+                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{fmt(prfFastMeta.overallTotal)}</strong>
                   </button>
 
                   {prfWeekCounts.map((week) => (
@@ -6030,7 +6075,7 @@ export default function App() {
                     </h3>
                   </div>
                   <span>
-                    {fmt(weekFilteredPrfRows.length)}
+                    {fmt(prfFastMeta.selectedTotal)}
                     {prfWeekFilter === 'ALL' ? ' total PRFs' : ' PRFs in selected week'}
                   </span>
                 </div>
@@ -6041,7 +6086,7 @@ export default function App() {
                     onClick={() => setPrfStatusFilter('ALL')}
                   >
                     <span className="!text-[10px] !font-semibold !uppercase !tracking-wider !text-blue-600">{prfWeekFilter === 'ALL' ? 'ALL PRFs' : 'ALL IN WEEK'}</span>
-                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{fmt(weekFilteredPrfRows.length)}</strong>
+                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{fmt(prfFastMeta.selectedTotal)}</strong>
                   </button>
 
                   {prfStatusCounts.map(([status, count]) => (
@@ -6066,6 +6111,10 @@ export default function App() {
               <div id="prf-attention-host" className="prfw-attention-host" />
 
               <div id="prf-table-base">
+              <div className="prpo-visible-count">
+                <strong>{prfFastMeta.loading ? 'Loading…' : fmt(prfRows.length) + ' shown'}</strong>
+                <span>{fmt(prfFastMeta.filteredTotal)} matching PRF{prfFastMeta.filteredTotal === 1 ? '' : 's'}</span>
+              </div>
               <DataTable
                 className="prf-data-table !rounded-xl !border !border-slate-200 !bg-white !shadow-sm [&_thead]:!bg-slate-50 [&_th]:!bg-slate-50 [&_th]:!px-3 [&_th]:!py-3 [&_th]:!text-xs [&_th]:!font-semibold [&_th]:!uppercase [&_th]:!tracking-wide [&_th]:!text-slate-500 [&_tbody_tr]:!border-b [&_tbody_tr]:!border-slate-100 [&_td]:!px-3 [&_td]:!py-3 [&_td]:!text-slate-700 [&_.mini-button]:!rounded-md [&_.mini-button]:!border [&_.mini-button]:!border-slate-200 [&_.mini-button]:!bg-slate-50 [&_.mini-button]:!px-3 [&_.mini-button]:!py-1 [&_.mini-button]:!text-xs [&_.mini-button]:!font-medium [&_.mini-button]:!text-slate-600 [&_.mini-button]:!transition-colors hover:[&_.mini-button]:!border-blue-200 hover:[&_.mini-button]:!bg-blue-50 hover:[&_.mini-button]:!text-blue-600"
                 rows={prfRows}
