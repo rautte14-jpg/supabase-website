@@ -32,6 +32,7 @@ export default function PendingPaymentsWorkspace(){
   const [active,setActive]=useState('overview')
   const [filter,setFilter]=useState('ALL')
   const [loading,setLoading]=useState(false)
+  const [summary,setSummary]=useState(null)
 
   useEffect(()=>{
     const el=document.getElementById('pending-payments-workspace-host')
@@ -44,12 +45,19 @@ export default function PendingPaymentsWorkspace(){
     async function load(){
       if(!alive) return
       setLoading(true)
-      const {data,error}=await supabase
-        .from('current_pending_payment_records')
-        .select('po_no,po_date,supplier,status,priority,po_value')
-        .order('po_date',{ascending:false})
+      const [rowsResult,summaryResult]=await Promise.all([
+        supabase
+          .from('current_pending_payment_records')
+          .select('po_no,po_date,supplier,status,priority,po_value')
+          .order('po_date',{ascending:false}),
+        supabase
+          .from('pending_payment_reconciliation_summary')
+          .select('*')
+          .limit(1),
+      ])
       if(alive){
-        if(!error) setRows(data||[])
+        if(!rowsResult.error) setRows(rowsResult.data||[])
+        if(!summaryResult.error) setSummary(summaryResult.data?.[0]||null)
         setLoading(false)
       }
     }
@@ -101,6 +109,16 @@ export default function PendingPaymentsWorkspace(){
 
   if(!host) return null
   return createPortal(<div className="ppw-shell">
+    {summary && <div className="ppw-weekly-movement">
+      <div><span>LAST WEEK PENDING</span><strong>{Number(summary.last_week_count||0).toLocaleString()}</strong><small>{money(summary.last_week_value)}</small></div>
+      <div><span>THIS WEEK PENDING</span><strong>{Number(summary.current_count||0).toLocaleString()}</strong><small>{money(summary.current_value)}</small></div>
+      <div className={Number(summary.current_count||0)<=Number(summary.last_week_count||0)?'good':'bad'}>
+        <span>WEEKLY CHANGE</span>
+        <strong>{Number(summary.current_count||0)-Number(summary.last_week_count||0)>0?'+':''}{Number(summary.current_count||0)-Number(summary.last_week_count||0)}</strong>
+        <small>{money(Number(summary.current_value||0)-Number(summary.last_week_value||0))}</small>
+      </div>
+      <div className="good"><span>CLEARED SINCE LAST WEEK</span><strong>{Number(summary.cleared_count||0).toLocaleString()}</strong><small>{money(summary.cleared_value)}</small></div>
+    </div>}
     <div className="ppw-tabs"><Tab id="overview" active={active} setActive={setActive}>Overview</Tab><Tab id="ageing" active={active} setActive={setActive}>Ageing</Tab><Tab id="supplier" active={active} setActive={setActive}>Supplier View</Tab><Tab id="urgent" active={active} setActive={setActive}>Urgent / Hold</Tab></div>
 
     {active==='overview' && <>
@@ -124,7 +142,7 @@ export default function PendingPaymentsWorkspace(){
     {active==='urgent' && <><div className="ppw-focus"><Stat label="Urgent" value={model.urgentRows.length} helper="Priority follow-up" tone="red" active={filter==='URGENT'} onClick={()=>setFilter(filter==='URGENT'?'ALL':'URGENT')}/><Stat label="Advance Pending" value={model.advance.length} helper="Finance / advance follow-up" tone="amber" active={filter==='ADVANCE'} onClick={()=>setFilter(filter==='ADVANCE'?'ALL':'ADVANCE')}/><Stat label="Credit on Hold" value={model.creditHold.length} helper="Resolve hold status" tone="red" active={filter==='HOLD'} onClick={()=>setFilter(filter==='HOLD'?'ALL':'HOLD')}/></div><PaymentTable rows={urgentVisible} loading={loading} title={urgentTitle} /></>}
 
     <style>{`
-      .ppw-shell{margin-top:14px}.ppw-tabs{display:grid;grid-template-columns:repeat(4,1fr);background:#fff;border:1px solid #dbe5f0;border-radius:12px;overflow:hidden;margin-bottom:14px}.ppw-tab{height:50px;border:0;border-right:1px solid #e2e8f0;background:#fff;font-size:12px;font-weight:750;color:#475569;cursor:pointer}.ppw-tab:last-child{border-right:0}.ppw-tab.active{background:#eff6ff;color:#1d4ed8;box-shadow:inset 0 -3px 0 #2563eb}.ppw-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}.ppw-stat{text-align:left;background:#fff;border:1px solid #e2e8f0;border-top:3px solid #cbd5e1;border-radius:12px;padding:13px;min-height:104px;cursor:pointer}.ppw-stat.amber{border-top-color:#f59e0b}.ppw-stat.red{border-top-color:#ef4444}.ppw-stat.active{background:#eff6ff;border-color:#93c5fd;box-shadow:0 0 0 1px #bfdbfe}.ppw-stat span{display:block;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748b}.ppw-stat strong{display:block;font-size:21px;margin:10px 0 6px;color:#0f172a}.ppw-stat small{font-size:10px;color:#64748b}.ppw-card,.ppw-table-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden}.ppw-head{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 16px;border-bottom:1px solid #e2e8f0}.ppw-head span{font-size:9px;font-weight:800;letter-spacing:.1em;color:#2563eb}.ppw-head h3{font-size:15px;margin:4px 0 0}.ppw-head small{color:#64748b}.ppw-age-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px}.ppw-age-grid button{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;text-align:left;cursor:pointer}.ppw-age-grid span{font-size:10px;color:#64748b}.ppw-age-grid strong{display:block;font-size:19px;margin:8px 0}.ppw-age-grid em{font-style:normal;font-size:11px;color:#334155}.ppw-bars{padding:0 14px 16px}.ppw-bars>div{display:grid;grid-template-columns:100px 1fr 150px;align-items:center;gap:10px;margin:9px 0;font-size:10px}.ppw-bars>div>div{height:10px;background:#eef2f7;border-radius:999px;overflow:hidden}.ppw-bars i{display:block;height:100%;background:#3b82f6;border-radius:999px}.ppw-supplier-wrap,.ppw-table-wrap{overflow:auto;max-height:560px}.ppw-supplier-wrap table,.ppw-table-wrap table{width:100%;border-collapse:collapse;font-size:10px}.ppw-supplier-wrap th,.ppw-table-wrap th{position:sticky;top:0;background:#f8fafc;text-align:left;padding:9px 10px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:9px;text-transform:uppercase}.ppw-supplier-wrap td,.ppw-table-wrap td{padding:9px 10px;border-bottom:1px solid #f1f5f9;color:#334155}.ppw-focus{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}.ppw-pill{display:inline-flex;padding:3px 7px;border-radius:999px;background:#f1f5f9;font-size:9px;font-weight:800}.ppw-age.bad{background:#fee2e2;color:#b91c1c}.ppw-age.warn{background:#fef3c7;color:#92400e}@media(max-width:1000px){.ppw-stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.ppw-tabs,.ppw-stats,.ppw-focus,.ppw-age-grid{grid-template-columns:1fr}.ppw-tab{border-right:0;border-bottom:1px solid #e2e8f0}.ppw-bars>div{grid-template-columns:80px 1fr}}
+      .ppw-shell{margin-top:14px}.ppw-weekly-movement{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}.ppw-weekly-movement>div{background:#fff;border:1px solid #e2e8f0;border-top:3px solid #94a3b8;border-radius:12px;padding:12px 13px}.ppw-weekly-movement>div.good{border-top-color:#22c55e}.ppw-weekly-movement>div.bad{border-top-color:#ef4444}.ppw-weekly-movement span{display:block;font-size:9px;font-weight:800;letter-spacing:.07em;color:#64748b}.ppw-weekly-movement strong{display:block;margin:8px 0 4px;font-size:22px;color:#0f172a}.ppw-weekly-movement small{font-size:10px;color:#475569}.ppw-tabs{display:grid;grid-template-columns:repeat(4,1fr);background:#fff;border:1px solid #dbe5f0;border-radius:12px;overflow:hidden;margin-bottom:14px}.ppw-tab{height:50px;border:0;border-right:1px solid #e2e8f0;background:#fff;font-size:12px;font-weight:750;color:#475569;cursor:pointer}.ppw-tab:last-child{border-right:0}.ppw-tab.active{background:#eff6ff;color:#1d4ed8;box-shadow:inset 0 -3px 0 #2563eb}.ppw-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}.ppw-stat{text-align:left;background:#fff;border:1px solid #e2e8f0;border-top:3px solid #cbd5e1;border-radius:12px;padding:13px;min-height:104px;cursor:pointer}.ppw-stat.amber{border-top-color:#f59e0b}.ppw-stat.red{border-top-color:#ef4444}.ppw-stat.active{background:#eff6ff;border-color:#93c5fd;box-shadow:0 0 0 1px #bfdbfe}.ppw-stat span{display:block;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748b}.ppw-stat strong{display:block;font-size:21px;margin:10px 0 6px;color:#0f172a}.ppw-stat small{font-size:10px;color:#64748b}.ppw-card,.ppw-table-card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden}.ppw-head{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 16px;border-bottom:1px solid #e2e8f0}.ppw-head span{font-size:9px;font-weight:800;letter-spacing:.1em;color:#2563eb}.ppw-head h3{font-size:15px;margin:4px 0 0}.ppw-head small{color:#64748b}.ppw-age-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px}.ppw-age-grid button{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;text-align:left;cursor:pointer}.ppw-age-grid span{font-size:10px;color:#64748b}.ppw-age-grid strong{display:block;font-size:19px;margin:8px 0}.ppw-age-grid em{font-style:normal;font-size:11px;color:#334155}.ppw-bars{padding:0 14px 16px}.ppw-bars>div{display:grid;grid-template-columns:100px 1fr 150px;align-items:center;gap:10px;margin:9px 0;font-size:10px}.ppw-bars>div>div{height:10px;background:#eef2f7;border-radius:999px;overflow:hidden}.ppw-bars i{display:block;height:100%;background:#3b82f6;border-radius:999px}.ppw-supplier-wrap,.ppw-table-wrap{overflow:auto;max-height:560px}.ppw-supplier-wrap table,.ppw-table-wrap table{width:100%;border-collapse:collapse;font-size:10px}.ppw-supplier-wrap th,.ppw-table-wrap th{position:sticky;top:0;background:#f8fafc;text-align:left;padding:9px 10px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:9px;text-transform:uppercase}.ppw-supplier-wrap td,.ppw-table-wrap td{padding:9px 10px;border-bottom:1px solid #f1f5f9;color:#334155}.ppw-focus{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}.ppw-pill{display:inline-flex;padding:3px 7px;border-radius:999px;background:#f1f5f9;font-size:9px;font-weight:800}.ppw-age.bad{background:#fee2e2;color:#b91c1c}.ppw-age.warn{background:#fef3c7;color:#92400e}@media(max-width:1000px){.ppw-stats,.ppw-weekly-movement{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.ppw-tabs,.ppw-stats,.ppw-focus,.ppw-age-grid,.ppw-weekly-movement{grid-template-columns:1fr}.ppw-tab{border-right:0;border-bottom:1px solid #e2e8f0}.ppw-bars>div{grid-template-columns:80px 1fr}}
     `}</style>
   </div>,host)
 }
