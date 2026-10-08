@@ -6061,7 +6061,13 @@ export default function App() {
           {view === 'prf' && (
             <>
               <PageHeader title="PRF Tracker" subtitle="PRF / IPF requests and their movement into PR, MTR and PO." />
-              <div id="prf-workspace-nav-host" className="prfw-nav-host" />
+              <Suspense fallback={null}>
+                <PrfWorkspace
+                  statusCounts={prfStatusCounts}
+                  selectedStatus={prfStatusFilter}
+                  onSelectStatus={setPrfStatusFilter}
+                />
+              </Suspense>
 
               <section id="prf-weekly-base" className="prf-weekly-summary !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm">
                 <div className="prf-status-head">
@@ -6146,8 +6152,6 @@ export default function App() {
                   </div>
                 )}
               </section>
-              <div id="prf-attention-host" className="prfw-attention-host" />
-
               <div id="prf-table-base">
               <div className="prpo-visible-count">
                 <strong>{prfFastMeta.loading ? 'Loading…' : fmt(prfRows.length) + ' shown'}</strong>
@@ -7256,13 +7260,6 @@ export default function App() {
             <PrOpenPositionV2 />
             <PrMonthlyChart />
           </>
-        )}
-        {view === 'prf' && (
-          <PrfWorkspace
-            statusCounts={prfStatusCounts}
-            selectedStatus={prfStatusFilter}
-            onSelectStatus={setPrfStatusFilter}
-          />
         )}
         {view === 'updates' && <MtrFastUpload />}
       </Suspense>
