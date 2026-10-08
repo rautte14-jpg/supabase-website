@@ -7256,7 +7256,13 @@ export default function App() {
           </>
         )}
         {view === 'payments' && <PendingPaymentsWorkspace />}
-        {view === 'prf' && <PrfWorkspace />}
+        {view === 'prf' && (
+          <PrfWorkspace
+            statusCounts={prfStatusCounts}
+            selectedStatus={prfStatusFilter}
+            onSelectStatus={setPrfStatusFilter}
+          />
+        )}
         {view === 'updates' && <MtrFastUpload />}
       </Suspense>
 
