@@ -18,15 +18,7 @@ const ROUTE_TABLES = {
 }
 
 function currentRoute() {
-  return String(document.querySelector('.app-shell')?.dataset?.view || '').trim()
-}
-
-function clickRefresh() {
-  const buttons = [...document.querySelectorAll('.topbar .top-actions button')]
-  const refresh = buttons.find((button) => /refresh/i.test(button.textContent || ''))
-  if (!refresh || refresh.disabled || /refreshing/i.test(refresh.textContent || '')) return false
-  refresh.click()
-  return true
+  return String(window.__SRD_ACTIVE_VIEW__ || '').trim()
 }
 
 export default function PerformanceLayer() {
@@ -43,9 +35,8 @@ export default function PerformanceLayer() {
       const route = currentRoute()
       const dependencies = ROUTE_TABLES[route] || []
       if (!dependencies.some((table) => dirtyTables.has(table))) return
-      if (clickRefresh()) {
-        window.setTimeout(() => dependencies.forEach((table) => dirtyTables.delete(table)), 2500)
-      }
+      window.dispatchEvent(new Event('srd:refresh-current-view'))
+      window.setTimeout(() => dependencies.forEach((table) => dirtyTables.delete(table)), 2500)
     }
 
     const scheduleCurrentRefresh = () => {
