@@ -1382,6 +1382,12 @@ export default function App() {
   const [srIssueFilter, setSrIssueFilter] = useState('ALL')
   const [srIssueWeekFilter, setSrIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [stockAgeFilter, setStockAgeFilter] = useState('ALL')
+  const [stockFast, setStockFast] = useState({
+    summary: null,
+    rows: [],
+    total: 0,
+    loading: false,
+  })
   const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseReceiptDetail, setWarehouseReceiptDetail] = useState('NONE')
   const [warehouseFullscreen, setWarehouseFullscreen] = useState(false)
@@ -1478,7 +1484,7 @@ export default function App() {
     mtr: ['notes'],
     mrn: ['notes'],
     vessel: [],
-    stock: ['stock', 'snapshots'],
+    stock: ['snapshots'],
     updates: ['sourceUpdates'],
     warehouse: ['procurement'],
     inventoryPresentation: ['procurement', 'pendingPayments'],
@@ -1909,6 +1915,34 @@ export default function App() {
     setInventoryDetail(type)
   }
 
+  async function loadStockPageFast(filter = stockAgeFilter, searchTerm = search) {
+    setStockFast((current) => ({ ...current, loading: true }))
+    try {
+      const [summaryResult, detailResult] = await Promise.all([
+        supabase.from('stock_ageing_summary').select('*').limit(1),
+        supabase.rpc('stock_ageing_details', {
+          p_filter: filter,
+          p_search: String(searchTerm || '').trim(),
+          p_limit: 300,
+        }),
+      ])
+
+      if (summaryResult.error) throw summaryResult.error
+      if (detailResult.error) throw detailResult.error
+
+      const detail = detailResult.data || {}
+      setStockFast({
+        summary: summaryResult.data?.[0] || null,
+        rows: Array.isArray(detail.rows) ? detail.rows : [],
+        total: Number(detail.total || 0),
+        loading: false,
+      })
+    } catch (error) {
+      console.error('Failed to load Stock & Ageing', error)
+      setStockFast((current) => ({ ...current, loading: false }))
+    }
+  }
+
   async function loadForView(targetView = view, force = false) {
     if (!session || !access) return
     setLoading(true)
@@ -2021,6 +2055,16 @@ export default function App() {
     const timer = window.setTimeout(() => loadMtrPageFast(), search.trim() ? 250 : 0)
     return () => window.clearTimeout(timer)
   }, [view, mtrWeekFilter, mtrControlFilter, mtrStatusFilter, mtrDeliveryFilter, search])
+
+
+  useEffect(() => {
+    if (view !== 'stock') return
+    const timer = window.setTimeout(
+      () => loadStockPageFast(stockAgeFilter, search),
+      search.trim() ? 250 : 0,
+    )
+    return () => window.clearTimeout(timer)
+  }, [view, stockAgeFilter, search])
 
 
   const noteMap = useMemo(
@@ -2930,11 +2974,13 @@ export default function App() {
       : Number(row.stock_value || 0)
 
   const top100HighValue = useMemo(
-    () => [...data.stock]
-      .filter((row) => stockOnHandValue(row) > 0)
-      .sort((a, b) => stockOnHandValue(b) - stockOnHandValue(a))
-      .slice(0, 100),
-    [data.stock],
+    () => view === 'stock'
+      ? stockFast.rows.filter(() => stockAgeFilter === 'HIGH100')
+      : [...data.stock]
+          .filter((row) => stockOnHandValue(row) > 0)
+          .sort((a, b) => stockOnHandValue(b) - stockOnHandValue(a))
+          .slice(0, 100),
+    [view, stockFast.rows, stockAgeFilter, data.stock],
   )
 
   const top100HighValueCodes = useMemo(
@@ -2942,39 +2988,13 @@ export default function App() {
     [top100HighValue],
   )
 
-  const top100HighValueTotal = useMemo(
-    () => top100HighValue.reduce((sum, row) => sum + stockOnHandValue(row), 0),
-    [top100HighValue],
-  )
+  const top100HighValueTotal = view === 'stock'
+    ? Number(stockFast.summary?.high100_value || 0)
+    : top100HighValue.reduce((sum, row) => sum + stockOnHandValue(row), 0)
 
-  const stockRows = useMemo(() => {
-    const filtered = data.stock.filter((row) => {
-      if (!matches(row)) return false
-      if (stockAgeFilter === 'ALL') return true
-      if (stockAgeFilter === 'HIGH100') return top100HighValueCodes.has(String(row.item_code || ''))
-
-      const hasBucket = (bucket) =>
-        rawNumber(row, [bucket + ':Quantity']) > 0 ||
-        rawNumber(row, [bucket + ':Amount']) > 0
-
-      if (stockAgeFilter === 'P1') return hasBucket('P1')
-      if (stockAgeFilter === 'P2') return hasBucket('P2')
-      if (stockAgeFilter === 'P3') return hasBucket('P3')
-      if (stockAgeFilter === 'P4') return hasBucket('P4')
-      if (stockAgeFilter === 'P5') return hasBucket('P5')
-      if (stockAgeFilter === 'AGED365') {
-        return hasBucket('P2') || hasBucket('P3') || hasBucket('P4') || hasBucket('P5')
-      }
-
-      return true
-    })
-
-    if (stockAgeFilter === 'HIGH100') {
-      return filtered.sort((a, b) => stockOnHandValue(b) - stockOnHandValue(a))
-    }
-
-    return filtered
-  }, [data.stock, query, stockAgeFilter, top100HighValueCodes])
+  const stockRows = view === 'stock'
+    ? stockFast.rows
+    : data.stock.filter(matches)
 
   const ageingSummary = useMemo(() => {
     const totals = {
@@ -3004,6 +3024,25 @@ export default function App() {
     totals.agedOver365 = totals.p2 + totals.p3 + totals.p4 + totals.p5
     return totals
   }, [data.stock])
+
+  const stockAgeingSummary = useMemo(() => {
+    if (view !== 'stock') return ageingSummary
+    const row = stockFast.summary || {}
+    return {
+      onHandQty: Number(row.on_hand_qty || 0),
+      onHandValue: Number(row.on_hand_value || 0),
+      inventoryValueQty: Number(row.inventory_value_qty || 0),
+      inventoryValue: Number(row.inventory_value || 0),
+      p1: Number(row.p1 || 0),
+      p2: Number(row.p2 || 0),
+      p3: Number(row.p3 || 0),
+      p4: Number(row.p4 || 0),
+      p5: Number(row.p5 || 0),
+      agedOver365: Number(row.aged_over_365 || 0),
+      itemCount: Number(row.item_count || 0),
+      high100Count: Number(row.high100_count || 0),
+    }
+  }, [view, stockFast.summary, ageingSummary])
 
   const ageingSnapshots = useMemo(
     () => data.snapshots
@@ -6807,15 +6846,15 @@ export default function App() {
               />
 
               <div className="metric-grid stock-ageing-metrics">
-                <MetricCard label="Items" value={fmt(data.stock.length)} helper="Unique item IDs loaded" />
-                <MetricCard label="On-hand quantity" value={fmt(ageingSummary.onHandQty, 2)} helper="Physical on-hand quantity" />
-                <MetricCard label="On-hand value" value={mvr(ageingSummary.onHandValue)} helper="Value of current on-hand stock" />
-                <MetricCard label="Top 100 High Value Items" value={fmt(top100HighValue.length) + ' Items'} helper={'Combined on-hand value: ' + mvr(top100HighValueTotal)} tone="warn" active={stockAgeFilter === 'HIGH100'} onClick={() => setStockAgeFilter(stockAgeFilter === 'HIGH100' ? 'ALL' : 'HIGH100')} />
-                <MetricCard label="P2 — 1 to 3 Years" value={mvr(ageingSummary.p2)} helper="Stock aged 366–1095 days" active={stockAgeFilter === 'P2'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P2' ? 'ALL' : 'P2')} />
-                <MetricCard label="P3 — 3 to 4 Years" value={mvr(ageingSummary.p3)} helper="Stock aged 1096–1460 days" active={stockAgeFilter === 'P3'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P3' ? 'ALL' : 'P3')} />
-                <MetricCard label="P4 — 4 to 5 Years" value={mvr(ageingSummary.p4)} helper="Stock aged 1461–1825 days" active={stockAgeFilter === 'P4'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P4' ? 'ALL' : 'P4')} />
-                <MetricCard label="P5 — Over 5 Years" value={mvr(ageingSummary.p5)} helper="Stock aged more than 1825 days" tone="bad" active={stockAgeFilter === 'P5'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P5' ? 'ALL' : 'P5')} />
-                <MetricCard label="Stock Value Over 1 Year" value={mvr(ageingSummary.agedOver365)} helper="Combined value of stock aged more than 365 days" tone="warn" active={stockAgeFilter === 'AGED365'} onClick={() => setStockAgeFilter(stockAgeFilter === 'AGED365' ? 'ALL' : 'AGED365')} />
+                <MetricCard label="Items" value={fmt(stockAgeingSummary.itemCount)} helper="Unique item IDs loaded" />
+                <MetricCard label="On-hand quantity" value={fmt(stockAgeingSummary.onHandQty, 2)} helper="Physical on-hand quantity" />
+                <MetricCard label="On-hand value" value={mvr(stockAgeingSummary.onHandValue)} helper="Value of current on-hand stock" />
+                <MetricCard label="Top 100 High Value Items" value={fmt(stockAgeingSummary.high100Count) + ' Items'} helper={'Combined on-hand value: ' + mvr(top100HighValueTotal)} tone="warn" active={stockAgeFilter === 'HIGH100'} onClick={() => setStockAgeFilter(stockAgeFilter === 'HIGH100' ? 'ALL' : 'HIGH100')} />
+                <MetricCard label="P2 — 1 to 3 Years" value={mvr(stockAgeingSummary.p2)} helper="Stock aged 366–1095 days" active={stockAgeFilter === 'P2'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P2' ? 'ALL' : 'P2')} />
+                <MetricCard label="P3 — 3 to 4 Years" value={mvr(stockAgeingSummary.p3)} helper="Stock aged 1096–1460 days" active={stockAgeFilter === 'P3'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P3' ? 'ALL' : 'P3')} />
+                <MetricCard label="P4 — 4 to 5 Years" value={mvr(stockAgeingSummary.p4)} helper="Stock aged 1461–1825 days" active={stockAgeFilter === 'P4'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P4' ? 'ALL' : 'P4')} />
+                <MetricCard label="P5 — Over 5 Years" value={mvr(stockAgeingSummary.p5)} helper="Stock aged more than 1825 days" tone="bad" active={stockAgeFilter === 'P5'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P5' ? 'ALL' : 'P5')} />
+                <MetricCard label="Stock Value Over 1 Year" value={mvr(stockAgeingSummary.agedOver365)} helper="Combined value of stock aged more than 365 days" tone="warn" active={stockAgeFilter === 'AGED365'} onClick={() => setStockAgeFilter(stockAgeFilter === 'AGED365' ? 'ALL' : 'AGED365')} />
               </div>
 
               {ageingComparison.current && (
@@ -6857,6 +6896,11 @@ export default function App() {
                   <button onClick={() => setStockAgeFilter('ALL')}>Clear ageing filter</button>
                 </div>
               )}
+
+              <div className="prpo-visible-count">
+                <strong>{stockFast.loading ? 'Loading…' : fmt(stockRows.length) + ' shown'}</strong>
+                <span>{fmt(stockFast.total)} matching stock item{stockFast.total === 1 ? '' : 's'}</span>
+              </div>
 
               <DataTable
                 rows={stockRows}
