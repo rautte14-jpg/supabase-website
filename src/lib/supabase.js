@@ -21,6 +21,7 @@ const READ_ONLY_RPC_NAMES = new Set([
   'search_vessel_sr',
   'mtr_tracker_summary',
   'mtr_tracker_details',
+  'stock_ageing_details',
 ])
 
 function requestHeaders(input, init) {
@@ -75,7 +76,7 @@ export function clearSupabaseReadCache(table = '') {
       'warehouse_mrn_weekly_summary',
       'warehouse_mrn_month_summary',
     ],
-    stock_items: ['stock_items_fast', 'inventory_presentation_stock_summary', 'home_high_consumption_stock'],
+    stock_items: ['stock_items_fast', 'stock_ageing_fast', 'stock_ageing_summary', 'inventory_presentation_stock_summary', 'home_high_consumption_stock'],
     inventory_transactions: [
       'inventory_transactions_fast',
       'inventory_presentation_stock_summary',
@@ -88,6 +89,7 @@ export function clearSupabaseReadCache(table = '') {
   const rpcAliases = {
     procurement_records: ['overview_material_issue_summary', 'search_vessel_sr'],
     material_records: ['overview_material_issue_summary', 'search_vessel_sr', 'mtr_tracker_summary', 'mtr_tracker_details'],
+    stock_items: ['stock_ageing_details'],
     sr_issue_records: ['overview_material_issue_summary', 'search_vessel_sr'],
     inventory_transactions: ['search_vessel_sr'],
   }
