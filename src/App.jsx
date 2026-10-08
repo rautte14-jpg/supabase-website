@@ -1408,8 +1408,12 @@ export default function App() {
     mtr: null,
     stock: null,
     topStock: [],
+    procurement: null,
+    payments: null,
+    currentPayments: [],
   })
   const [inventoryMtrDetailRows, setInventoryMtrDetailRows] = useState([])
+  const [inventoryProcurementDetailRows, setInventoryProcurementDetailRows] = useState([])
   const [inventoryDetailLoading, setInventoryDetailLoading] = useState(false)
   const [warehouseIssueWeekFilter, setWarehouseIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseIssueDetailOpen, setWarehouseIssueDetailOpen] = useState(false)
@@ -1497,7 +1501,7 @@ export default function App() {
     stock: ['snapshots'],
     updates: ['sourceUpdates'],
     warehouse: ['procurement'],
-    inventoryPresentation: ['procurement', 'pendingPayments'],
+    inventoryPresentation: [],
     history: ['sourceUpdates', 'snapshots'],
   }
 
@@ -1870,7 +1874,7 @@ export default function App() {
   }
 
   async function loadInventoryPresentationFast() {
-    const [mtrResult, stockResult, topStockResult] = await Promise.all([
+    const [mtrResult, stockResult, topStockResult, procurementResult, paymentSummaryResult, currentPaymentsResult] = await Promise.all([
       supabase.from('inventory_presentation_mtr_summary').select('*').limit(1),
       supabase.from('inventory_presentation_stock_summary').select('*').limit(1),
       supabase
@@ -1878,16 +1882,28 @@ export default function App() {
         .select('item_code,item_description,on_hand,available,stock_value,consumption_qty,consumption_value,consumption_rank')
         .order('consumption_rank', { ascending: true })
         .limit(100),
+      supabase.from('inventory_procurement_summary').select('*').limit(1),
+      supabase.from('pending_payment_reconciliation_summary').select('*').limit(1),
+      supabase
+        .from('current_pending_payment_records')
+        .select('po_no,po_date,supplier,status,priority,po_value')
+        .order('po_value', { ascending: false }),
     ])
 
     if (mtrResult.error) throw mtrResult.error
     if (stockResult.error) throw stockResult.error
     if (topStockResult.error) throw topStockResult.error
+    if (procurementResult.error) throw procurementResult.error
+    if (paymentSummaryResult.error) throw paymentSummaryResult.error
+    if (currentPaymentsResult.error) throw currentPaymentsResult.error
 
     setInventoryFast({
       mtr: mtrResult.data?.[0] || null,
       stock: stockResult.data?.[0] || null,
       topStock: topStockResult.data || [],
+      procurement: procurementResult.data?.[0] || null,
+      payments: paymentSummaryResult.data?.[0] || null,
+      currentPayments: currentPaymentsResult.data || [],
     })
   }
 
@@ -1918,9 +1934,27 @@ export default function App() {
     }
   }
 
+  async function loadInventoryProcurementDetails(type) {
+    setInventoryDetailLoading(true)
+    try {
+      const { data: rows, error } = await supabase.rpc('inventory_procurement_details', {
+        p_type: type,
+        p_limit: 200,
+      })
+      if (error) throw error
+      setInventoryProcurementDetailRows(Array.isArray(rows) ? rows : [])
+      return rows || []
+    } finally {
+      setInventoryDetailLoading(false)
+    }
+  }
+
   async function openInventoryDetail(type) {
     if (type === 'MTR_NOT_TRANSFERRED' || type === 'MTR_30') {
       await loadInventoryMtrDetails()
+    }
+    if (type === 'URGENT_PR' || type === 'AGED6' || type === 'RECEIPT_PENDING') {
+      await loadInventoryProcurementDetails(type)
     }
     setInventoryDetail(type)
   }
