@@ -4465,8 +4465,29 @@ export default function App() {
   )
 
   const pendingPaymentReconciliation = useMemo(() => {
-    const receiptByPo = new Map()
+    if (view === 'inventoryPresentation' && inventoryFast.payments) {
+      const row = inventoryFast.payments
+      const currentCount = Number(row.current_count || 0)
+      const lastWeekCount = Number(row.last_week_count || 0)
+      const currentValue = Number(row.current_value || 0)
+      const lastWeekValue = Number(row.last_week_value || 0)
+      return {
+        rows: inventoryFast.currentPayments || [],
+        currentCount,
+        currentValue,
+        lastWeekCount,
+        lastWeekValue,
+        countChange: currentCount - lastWeekCount,
+        valueChange: currentValue - lastWeekValue,
+        clearedCount: Number(row.cleared_count || 0),
+        clearedThisWeekValue: Number(row.cleared_value || 0),
+        currentWeekStart: weekStartWednesday(todayIso),
+        previousWeekStart: addDaysIso(weekStartWednesday(todayIso), -7),
+        previousWeekEnd: addDaysIso(weekStartWednesday(todayIso), -1),
+      }
+    }
 
+    const receiptByPo = new Map()
     allPrLines.forEach((row) => {
       const po = String(row.po_no || '').trim().toUpperCase()
       if (!po || receivedQty(row) <= 0) return
@@ -4487,29 +4508,15 @@ export default function App() {
       const clearedByReceipt =
         status === 'advance received' ||
         (['advance pending', 'credit'].includes(status) && Boolean(receipt?.hasReceipt))
-
-      return {
-        ...row,
-        clearedByReceipt,
-        clearedDate: receipt?.firstReceipt || '',
-      }
+      return { ...row, clearedByReceipt, clearedDate: receipt?.firstReceipt || '' }
     })
 
     const currentRows = classified.filter((row) => !row.clearedByReceipt)
-    const currentWeekStart = weekStartWednesday(todayIso)
-    const previousWeekStart = addDaysIso(currentWeekStart, -7)
-    const previousWeekEnd = addDaysIso(currentWeekStart, -1)
-
-    // The uploaded Pending Payment file is the prior-week baseline.
-    // Reconcile that baseline against the latest receipt data to get this week's live position.
     const baselineRows = classified
     const clearedSinceBaseline = classified.filter((row) => row.clearedByReceipt)
-
     const lastWeekCount = baselineRows.length
     const lastWeekValue = baselineRows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
     const currentValue = currentRows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
-    const clearedThisWeek = clearedSinceBaseline
-    const clearedThisWeekValue = clearedSinceBaseline.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
 
     return {
       rows: currentRows,
@@ -4519,58 +4526,75 @@ export default function App() {
       lastWeekValue,
       countChange: currentRows.length - lastWeekCount,
       valueChange: currentValue - lastWeekValue,
-      clearedThisWeek,
-      clearedThisWeekValue,
-      clearedLastWeek: [],
-      currentWeekStart,
-      previousWeekStart,
-      previousWeekEnd,
+      clearedCount: clearedSinceBaseline.length,
+      clearedThisWeekValue: clearedSinceBaseline.reduce((sum, row) => sum + Number(row.po_value || 0), 0),
+      currentWeekStart: weekStartWednesday(todayIso),
+      previousWeekStart: addDaysIso(weekStartWednesday(todayIso), -7),
+      previousWeekEnd: addDaysIso(weekStartWednesday(todayIso), -1),
     }
-  }, [data.pendingPayments, allPrLines, todayIso])
+  }, [view, inventoryFast.payments, inventoryFast.currentPayments, data.pendingPayments, allPrLines, todayIso])
 
   const inventoryPresentationPayments = useMemo(() => {
-    const rows = pendingPaymentReconciliation.rows
-    const totalValue = rows.reduce((sum, row) => sum + Number(row.po_value || 0), 0)
-    const urgent = rows.filter((row) => isUrgent(row.priority)).length
-    const statusCounts = new Map()
-    rows.forEach((row) => {
-      const status = String(row.status || '').trim() || 'BLANK'
-      statusCounts.set(status, (statusCounts.get(status) || 0) + 1)
-    })
+    const row = inventoryFast.payments || {}
     return {
-      total: rows.length,
-      totalValue,
-      urgent,
-      statusCounts: [...statusCounts.entries()].sort((a, b) => b[1] - a[1]),
+      total: Number(row.current_count || 0),
+      totalValue: Number(row.current_value || 0),
+      urgent: Number(row.urgent_count || 0),
+      statusCounts: Array.isArray(row.status_counts)
+        ? row.status_counts.map((entry) => [String(entry?.[0] || 'BLANK'), Number(entry?.[1] || 0)])
+        : [],
     }
-  }, [pendingPaymentReconciliation.rows])
+  }, [inventoryFast.payments])
 
   const inventoryPresentationProcurement = useMemo(() => {
-    const monthStart = todayIso.slice(0, 7) + '-01'
-    const submittedPrs = new Set()
-    const receiptPendingPos = new Set()
-    const urgentPendingPrs = new Set()
-
-    allPrLines.forEach((row) => {
-      const prNo = String(row.pr_no || '').trim()
-      const poNo = String(row.po_no || '').trim()
-      const submitted = prSubmittedDate(row)
-
-      if (prNo && submitted && submitted >= monthStart && submitted <= todayIso) submittedPrs.add(prNo)
-      if (poNo && isReceiptNotDoneRow(row)) receiptPendingPos.add(poNo)
-      if (prNo && isUrgentPendingRow(row)) urgentPendingPrs.add(prNo)
-    })
-
+    const row = inventoryFast.procurement || {}
     return {
-      submittedThisMonth: submittedPrs.size,
-      receiptPendingPos: receiptPendingPos.size,
-      urgentPendingPrs: urgentPendingPrs.size,
-      agedThreeToSix: prPoAgeing.agedThreeToSix,
-      agedSixPlus: prPoAgeing.agedSixPlus,
-      oldestOpenDays: prPoAgeing.oldestOpenDays,
-      paymentPendingPos: pendingPaymentPoCount,
+      submittedThisMonth: Number(row.submitted_this_month || 0),
+      receiptPendingPos: Number(row.receipt_pending_pos || 0),
+      urgentPendingPrs: Number(row.urgent_pending_prs || 0),
+      agedThreeToSix: Number(row.aged_three_to_six || 0),
+      agedSixPlus: Number(row.aged_six_plus || 0),
+      oldestOpenDays: Number(row.oldest_open_days || 0),
+      paymentPendingPos: Number(row.payment_pending_pos || 0),
     }
-  }, [allPrLines, prPoAgeing, pendingPaymentPoCount, todayIso])
+  }, [inventoryFast.procurement])
+
+  const inventoryReceiptCurrent = useMemo(() => {
+    const row = inventoryFast.procurement || {}
+    return {
+      prs: Number(row.current_receipt_prs || 0),
+      lines: Number(row.current_receipt_lines || 0),
+      qty: Number(row.current_receipt_qty || 0),
+      value: Number(row.current_receipt_value || 0),
+    }
+  }, [inventoryFast.procurement])
+
+  const inventoryReceiptPrevious = useMemo(() => {
+    const row = inventoryFast.procurement || {}
+    return {
+      prs: Number(row.previous_receipt_prs || 0),
+      lines: Number(row.previous_receipt_lines || 0),
+      qty: Number(row.previous_receipt_qty || 0),
+      value: Number(row.previous_receipt_value || 0),
+    }
+  }, [inventoryFast.procurement])
+
+  const inventoryReceiptMonth = useMemo(() => {
+    const row = inventoryFast.procurement || {}
+    return {
+      prs: Number(row.month_received_prs || 0),
+      qty: Number(row.month_received_qty || 0),
+      value: Number(row.month_received_value || 0),
+    }
+  }, [inventoryFast.procurement])
+
+  const inventoryReceiptCompletion = useMemo(() => {
+    const row = inventoryFast.procurement || {}
+    return {
+      full: Number(row.fully_received_prs || 0),
+      partial: Number(row.part_received_prs || 0),
+    }
+  }, [inventoryFast.procurement])
 
   const inventoryPresentationMaterials = useMemo(() => {
     const row = inventoryFast.mtr || {}
@@ -4625,51 +4649,32 @@ export default function App() {
 
     const uniqueBy = (rows, keyFn) => [...new Map(rows.map((row) => [keyFn(row), row])).values()]
 
-    if (inventoryDetail === 'URGENT_PR') {
-      const rows = uniqueBy(allPrLines.filter(isUrgentPendingRow), (row) => String(row.pr_no || '').trim())
+    if (inventoryDetail === 'URGENT_PR' || inventoryDetail === 'AGED6' || inventoryDetail === 'RECEIPT_PENDING') {
+      const rows = inventoryProcurementDetailRows
+      if (inventoryDetail === 'RECEIPT_PENDING') {
+        return {
+          title: 'POs Awaiting Receipt',
+          columns: ['PO', 'PR', 'Item', 'Description', 'Requested', 'Received'],
+          rows: rows.map((row) => [
+            row.po_no || '—',
+            row.pr_no || '—',
+            row.item_code || '—',
+            row.item_description || '—',
+            fmt(row.requested_calc, 2),
+            fmt(row.received_calc, 2),
+          ]),
+        }
+      }
+
       return {
-        title: 'Urgent Pending PRs',
+        title: inventoryDetail === 'URGENT_PR' ? 'Urgent Pending PRs' : 'PRs Aged 6+ Months',
         columns: ['PR', 'PO', 'Description', 'Submitted', 'Status'],
         rows: rows.map((row) => [
           row.pr_no || '—',
           row.po_no || '—',
-          row.item_description || rawField(row, ['PR Description', 'Description']) || '—',
-          prSubmittedDate(row) || '—',
-          row.status || '—',
-        ]),
-      }
-    }
-
-    if (inventoryDetail === 'AGED6') {
-      const rows = uniqueBy(
-        allPrLines.filter((row) => prPoAgeing.agedSixPlusPrNos.has(String(row.pr_no || '').trim())),
-        (row) => String(row.pr_no || '').trim(),
-      )
-      return {
-        title: 'PRs Aged 6+ Months',
-        columns: ['PR', 'PO', 'Description', 'Submitted', 'Status'],
-        rows: rows.map((row) => [
-          row.pr_no || '—',
-          row.po_no || '—',
-          row.item_description || rawField(row, ['PR Description', 'Description']) || '—',
-          prSubmittedDate(row) || '—',
-          row.status || '—',
-        ]),
-      }
-    }
-
-    if (inventoryDetail === 'RECEIPT_PENDING') {
-      const rows = uniqueBy(allPrLines.filter(isReceiptNotDoneRow), (row) => String(row.po_no || '').trim())
-      return {
-        title: 'POs Awaiting Receipt',
-        columns: ['PO', 'PR', 'Item', 'Description', 'Requested', 'Received'],
-        rows: rows.map((row) => [
-          row.po_no || '—',
-          row.pr_no || '—',
-          row.item_code || '—',
           row.item_description || '—',
-          fmt(requestedQty(row), 2),
-          fmt(receivedQty(row), 2),
+          row.submitted_date_calc || '—',
+          row.status || row.delivery_status || '—',
         ]),
       }
     }
@@ -4733,8 +4738,7 @@ export default function App() {
     return null
   }, [
     inventoryDetail,
-    allPrLines,
-    prPoAgeing,
+    inventoryProcurementDetailRows,
     pendingPaymentReconciliation.rows,
     inventoryMtrDetailRows,
     inventoryHighUseOutOfStock,
@@ -4757,8 +4761,8 @@ export default function App() {
           </div>
           <div className="meeting-metrics">
             <MetricCard label="PRs Submitted This Month" value={fmt(inventoryPresentationProcurement.submittedThisMonth)} helper="Distinct purchase requisitions submitted" />
-            <MetricCard label="PRs Received This Month" value={fmt(warehouseReceiptMonth.prs)} helper={fmt(warehouseReceiptMonth.qty, 2) + ' quantity received'} />
-            <MetricCard label="Received Value This Month" value={mvr(warehouseReceiptMonth.value)} helper="Receipt value recorded this month" />
+            <MetricCard label="PRs Received This Month" value={fmt(inventoryReceiptMonth.prs)} helper={fmt(inventoryReceiptMonth.qty, 2) + ' quantity received'} />
+            <MetricCard label="Received Value This Month" value={mvr(inventoryReceiptMonth.value)} helper="Receipt value recorded this month" />
             <MetricCard label="Pending Payment POs" value={fmt(inventoryPresentationPayments.total)} tone="warn" helper={mvr(inventoryPresentationPayments.totalValue) + ' pending value'} />
             <MetricCard label="High-Use Low Stock" value={fmt(inventoryHighUseLowStock.length)} helper="Top 100 consumption-value items at 1–5 on hand" />
             <MetricCard label="High-Use Out of Stock" value={fmt(inventoryHighUseOutOfStock.length)} tone="bad" helper="Top 100 consumption-value items with zero stock" />
@@ -4812,27 +4816,27 @@ export default function App() {
           <div className="meeting-change-grid warehouse-receipt-cards">
             <div className="meeting-change-card">
               <span>PRs received</span>
-              <b>{fmt(warehouseReceiptCurrent.prs)}</b>
-              <div><small>Previous: {fmt(warehouseReceiptPrevious.prs)}</small><strong>{deltaText(warehouseReceiptCurrent.prs, warehouseReceiptPrevious.prs)}</strong></div>
+              <b>{fmt(inventoryReceiptCurrent.prs)}</b>
+              <div><small>Previous: {fmt(inventoryReceiptPrevious.prs)}</small><strong>{deltaText(inventoryReceiptCurrent.prs, inventoryReceiptPrevious.prs)}</strong></div>
             </div>
             <div className="meeting-change-card">
               <span>Received quantity</span>
-              <b>{fmt(warehouseReceiptCurrent.qty, 2)}</b>
-              <div><small>Previous: {fmt(warehouseReceiptPrevious.qty, 2)}</small><strong>{deltaText(warehouseReceiptCurrent.qty, warehouseReceiptPrevious.qty)}</strong></div>
+              <b>{fmt(inventoryReceiptCurrent.qty, 2)}</b>
+              <div><small>Previous: {fmt(inventoryReceiptPrevious.qty, 2)}</small><strong>{deltaText(inventoryReceiptCurrent.qty, inventoryReceiptPrevious.qty)}</strong></div>
             </div>
             <div className="meeting-change-card">
               <span>Received value</span>
-              <b>{mvr(warehouseReceiptCurrent.value)}</b>
-              <div><small>Previous: {mvr(warehouseReceiptPrevious.value)}</small><strong>{deltaText(warehouseReceiptCurrent.value, warehouseReceiptPrevious.value)}</strong></div>
+              <b>{mvr(inventoryReceiptCurrent.value)}</b>
+              <div><small>Previous: {mvr(inventoryReceiptPrevious.value)}</small><strong>{deltaText(inventoryReceiptCurrent.value, inventoryReceiptPrevious.value)}</strong></div>
             </div>
             <div className="meeting-change-card">
               <span>Fully received PRs</span>
-              <b>{fmt(warehouseFullyReceivedPrNos.size)}</b>
+              <b>{fmt(inventoryReceiptCompletion.full)}</b>
               <div><small>Completed receipt position</small></div>
             </div>
             <div className="meeting-change-card">
               <span>Part received PRs</span>
-              <b>{fmt(warehousePartReceivedPrNos.size)}</b>
+              <b>{fmt(inventoryReceiptCompletion.partial)}</b>
               <div><small>PRs still carrying balance</small></div>
             </div>
           </div>
@@ -4871,7 +4875,7 @@ export default function App() {
             </div>
             <div className="meeting-change-card">
               <span>Cleared Since Last Week</span>
-              <b>{fmt(pendingPaymentReconciliation.clearedThisWeek.length)}</b>
+              <b>{fmt(pendingPaymentReconciliation.clearedCount)}</b>
               <div><small>{mvr(pendingPaymentReconciliation.clearedThisWeekValue)}</small><strong>Advance / Credit receipts cleared</strong></div>
             </div>
           </div>
