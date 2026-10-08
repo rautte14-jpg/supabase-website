@@ -6422,7 +6422,9 @@ export default function App() {
                 title="Pending Payments"
                 subtitle="Current reconciled payment position from Procurement and latest receipts."
               />
-              <div id="pending-payments-workspace-host" className="ppw-host" />
+              <Suspense fallback={<div className="notice">Loading pending payments…</div>}>
+                <PendingPaymentsWorkspace />
+              </Suspense>
             </>
           )}
 
@@ -7255,7 +7257,6 @@ export default function App() {
             <PrMonthlyChart />
           </>
         )}
-        {view === 'payments' && <PendingPaymentsWorkspace />}
         {view === 'prf' && (
           <PrfWorkspace
             statusCounts={prfStatusCounts}
