@@ -27,32 +27,59 @@ export default function PerformanceLayer() {
     window.__SRD_PERFORMANCE_LAYER_ACTIVE__ = true
 
     let disposed = false
-    let refreshTimer = null
+    let quietTimer = null
+    let lastChangeAt = 0
     const dirtyTables = new Set()
+    const QUIET_MS = 1200
 
     const refreshForCurrentRoute = () => {
       if (disposed || document.hidden) return
       const route = currentRoute()
       const dependencies = ROUTE_TABLES[route] || []
       if (!dependencies.some((table) => dirtyTables.has(table))) return
+
+      // Clear again at the end of an import burst so a read made while rows were
+      // still being written cannot survive in cache as the final result.
+      dependencies
+        .filter((table) => dirtyTables.has(table))
+        .forEach((table) => clearSupabaseReadCache(table))
+
       window.dispatchEvent(new Event('srd:refresh-current-view'))
       window.setTimeout(() => dependencies.forEach((table) => dirtyTables.delete(table)), 2500)
     }
 
-    const scheduleCurrentRefresh = () => {
-      window.clearTimeout(refreshTimer)
-      refreshTimer = window.setTimeout(refreshForCurrentRoute, 1200)
+    const checkQuietPeriod = () => {
+      quietTimer = null
+      if (disposed) return
+      const remaining = QUIET_MS - (Date.now() - lastChangeAt)
+      if (remaining > 0) {
+        quietTimer = window.setTimeout(checkQuietPeriod, remaining)
+        return
+      }
+      refreshForCurrentRoute()
+    }
+
+    const scheduleQuietRefresh = () => {
+      lastChangeAt = Date.now()
+      if (!quietTimer) quietTimer = window.setTimeout(checkQuietPeriod, QUIET_MS)
     }
 
     const onDatabaseChange = (payload) => {
       const table = payload?.table
       if (!table) {
         clearSupabaseReadCache()
+        scheduleQuietRefresh()
         return
       }
-      clearSupabaseReadCache(table)
-      dirtyTables.add(table)
-      scheduleCurrentRefresh()
+
+      // In large imports thousands of row events can arrive. Invalidate once at
+      // the start of the burst, then do one final invalidation + refresh after
+      // the database has been quiet for a moment.
+      if (!dirtyTables.has(table)) {
+        dirtyTables.add(table)
+        clearSupabaseReadCache(table)
+      }
+      scheduleQuietRefresh()
     }
 
     const channel = supabase
@@ -68,7 +95,7 @@ export default function PerformanceLayer() {
     return () => {
       disposed = true
       window.__SRD_PERFORMANCE_LAYER_ACTIVE__ = false
-      window.clearTimeout(refreshTimer)
+      window.clearTimeout(quietTimer)
       document.removeEventListener('visibilitychange', onVisibility)
       supabase.removeChannel(channel)
     }
