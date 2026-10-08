@@ -1388,6 +1388,7 @@ export default function App() {
     total: 0,
     loading: false,
   })
+  const [prfFastRows, setPrfFastRows] = useState([])
   const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseReceiptDetail, setWarehouseReceiptDetail] = useState('NONE')
   const [warehouseFullscreen, setWarehouseFullscreen] = useState(false)
@@ -1478,7 +1479,7 @@ export default function App() {
   const VIEW_TABLES = {
     home: [],
     overview: ['procurement', 'sourceUpdates', 'snapshots', 'pendingPayments'],
-    prf: ['procurement', 'lld', 'notes'],
+    prf: ['lld', 'notes'],
     prpo: ['procurement', 'lld', 'notes'],
     payments: ['pendingPayments'],
     mtr: ['notes'],
@@ -1915,6 +1916,30 @@ export default function App() {
     setInventoryDetail(type)
   }
 
+  async function loadPrfPageFast() {
+    const rows = []
+    const pageSize = 1000
+    let from = 0
+
+    while (true) {
+      const { data: batch, error } = await supabase
+        .from('procurement_records')
+        .select('*')
+        .eq('source_type', 'PRF')
+        .order('updated_at', { ascending: false })
+        .range(from, from + pageSize - 1)
+
+      if (error) throw error
+      const page = batch || []
+      rows.push(...page)
+      if (page.length < pageSize) break
+      from += pageSize
+    }
+
+    setPrfFastRows(rows)
+    return rows
+  }
+
   async function loadStockPageFast(filter = stockAgeFilter, searchTerm = search) {
     setStockFast((current) => ({ ...current, loading: true }))
     try {
@@ -1949,6 +1974,11 @@ export default function App() {
     try {
       if (targetView === 'home') {
         await loadHomeSummary()
+      } else if (targetView === 'prf') {
+        await Promise.all([
+          loadTables(VIEW_TABLES[targetView] || [], force),
+          loadPrfPageFast(),
+        ])
       } else if (targetView === 'overview') {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
@@ -2268,8 +2298,21 @@ export default function App() {
     (row?.raw_source && lower(Object.values(row.raw_source).join(' ')).includes(query))
 
   const allPrfRows = useMemo(
-    () => procurementData.filter((r) => r.source_type === 'PRF'),
-    [procurementData],
+    () => view === 'prf'
+      ? prfFastRows.map((row) => {
+          const reference = row.po_no || row.pr_no || row.prf_no
+          const update = reference ? lldMap.get(String(reference).toUpperCase()) : null
+          if (!update) return row
+          return {
+            ...row,
+            payment_status: update.payment_status || row.payment_status,
+            delivery_status: update.delivery_status || row.delivery_status,
+            expected_delivery: update.eta || row.expected_delivery,
+            lld_update: update.update_text || '',
+          }
+        })
+      : procurementData.filter((r) => r.source_type === 'PRF'),
+    [view, prfFastRows, procurementData, lldMap],
   )
 
   const weekFilteredPrfRows = useMemo(
