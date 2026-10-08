@@ -5,57 +5,6 @@ const ACTIVE_KEY = 'srd-prf-active-tab'
 const clean = (v) => String(v ?? '').trim()
 const upper = (v) => clean(v).toUpperCase()
 
-function currentPageLabel() {
-  return clean(document.querySelector('.topbar-context strong')?.textContent)
-}
-
-function findSection(text) {
-  const leaf = [...document.querySelectorAll('body *')].find((el) =>
-    el.children.length === 0 && upper(el.textContent).includes(text),
-  )
-  return leaf?.closest('section') || null
-}
-
-function findPrfTable() {
-  return [...document.querySelectorAll('table')].find((table) => {
-    const heads = [...table.querySelectorAll('thead th')].map((th) => upper(th.textContent))
-    return heads.some((h) => h.includes('PRF / IPF')) && heads.some((h) => h === 'STATUS')
-  }) || null
-}
-
-function getStatusCards(section) {
-  if (!section) return []
-
-  const wanted = [
-    ['NOT ATTENDED', 'Needs initial action', 'red'],
-    ['ITEM CREATION', 'Item master / creation is pending', 'amber'],
-    ['BUDGET ENTRY', 'Budget entry is still pending', 'violet'],
-    ['HOLD', 'PRFs currently placed on hold', 'slate'],
-    ['CANCEL/REJECT', 'Cancelled or rejected requests', 'rose'],
-  ]
-
-  const buttons = [...section.querySelectorAll('button.prf-status-card')]
-
-  return wanted.map(([label, helper, tone]) => {
-    const target = buttons.find((button) => {
-      const labelNode = button.querySelector('span')
-      return upper(labelNode?.textContent) === label
-    }) || null
-
-    if (!target) return { label, helper, tone, value: 0, target: null }
-
-    const strong = target.querySelector('strong')
-    const parsed = Number(clean(strong?.textContent).replace(/,/g, ''))
-    return {
-      label,
-      helper,
-      tone,
-      value: Number.isFinite(parsed) ? parsed : 0,
-      target,
-    }
-  })
-}
-
 function TabButton({ value, active, icon, children, onClick }) {
   return (
     <button type="button" className={`prfw-tab ${active === value ? 'active' : ''}`} onClick={() => onClick(value)}>
@@ -70,7 +19,6 @@ export default function PrfWorkspace({ statusCounts = [], selectedStatus = 'ALL'
   const [status, setStatus] = useState(null)
   const [tableWrap, setTableWrap] = useState(null)
   const [attentionHost, setAttentionHost] = useState(null)
-  const [routeActive, setRouteActive] = useState(() => currentPageLabel() === 'PRF Tracker')
   const [active, setActive] = useState(() => {
     try { return sessionStorage.getItem(ACTIVE_KEY) || 'activity' } catch { return 'activity' }
   })
@@ -84,7 +32,6 @@ export default function PrfWorkspace({ statusCounts = [], selectedStatus = 'ALL'
 
     if (!navHost || !weeklySection || !statusSection || !attHost || !wrap) return
 
-    setRouteActive(true)
     setWeekly(weeklySection)
     setStatus(statusSection)
     setTableWrap(wrap)
@@ -93,7 +40,7 @@ export default function PrfWorkspace({ statusCounts = [], selectedStatus = 'ALL'
   }, [])
 
   useEffect(() => {
-    if (!weekly || !status || !attentionHost || !tableWrap || !routeActive) return
+    if (!weekly || !status || !attentionHost || !tableWrap) return
     const safe = ['activity', 'status', 'attention'].includes(active) ? active : 'activity'
     weekly.style.display = safe === 'activity' ? '' : 'none'
     status.style.display = safe === 'status' ? '' : 'none'
@@ -101,7 +48,7 @@ export default function PrfWorkspace({ statusCounts = [], selectedStatus = 'ALL'
     tableWrap.style.display = ''
     if (host) host.style.display = ''
     try { sessionStorage.setItem(ACTIVE_KEY, safe) } catch {}
-  }, [active, weekly, status, attentionHost, tableWrap, host, routeActive])
+  }, [active, weekly, status, attentionHost, tableWrap, host])
 
   const statusCards = useMemo(() => {
     const counts = new Map(
@@ -133,7 +80,7 @@ export default function PrfWorkspace({ statusCounts = [], selectedStatus = 'ALL'
     if (onSelectStatus) onSelectStatus(card.label)
   }
 
-  if (!host || !routeActive) return null
+  if (!host) return null
 
   return createPortal(<>
     <div className="prfw-tabs" role="tablist" aria-label="PRF tracker sections">
