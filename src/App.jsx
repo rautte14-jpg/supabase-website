@@ -1276,6 +1276,7 @@ export default function App() {
   const [recoveringPassword, setRecoveringPassword] = useState(false)
   const [access, setAccess] = useState(null)
   const [view, setView] = useState('home')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState({
@@ -1979,6 +1980,19 @@ export default function App() {
       if (document.body.dataset.eddockRoute === label) delete document.body.dataset.eddockRoute
     }
   }, [view])
+
+
+  useEffect(() => {
+    document.body.classList.toggle('srd-sidebar-open', sidebarOpen)
+    const onKey = (event) => {
+      if (event.key === 'Escape') setSidebarOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.classList.remove('srd-sidebar-open')
+    }
+  }, [sidebarOpen])
 
 
   useEffect(() => {
@@ -5027,8 +5041,8 @@ export default function App() {
   if (access === false) return <AccessDenied email={session.user.email} />
 
   return (
-    <div className="app-shell bg-slate-50" data-view={view}>
-      <aside className="sidebar !bg-[#0B1F3A] !border-r !border-white/10 !shadow-none">
+    <div className="app-shell srd-drawer-layout bg-slate-50" data-view={view}>
+      <aside className={'sidebar srd-sidebar-drawer !bg-[#0B1F3A] !border-r !border-white/10 !shadow-none' + (sidebarOpen ? ' open' : '')}>
         <div className="brand !border-white/10">
           <div className="brand-box !rounded-xl !bg-white/10 !text-white !shadow-none ring-1 ring-white/10">ED</div>
           <div>
@@ -5053,7 +5067,7 @@ export default function App() {
                         ? '!bg-white/10 !text-white before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-blue-400'
                         : '!text-slate-300 hover:!bg-white/[0.06] hover:!text-white')
                     }
-                    onClick={() => setView(key)}
+                    onClick={() => { setView(key); setSidebarOpen(false) }}
                   >
                     <span className="!grid !h-5 !w-5 !place-items-center !bg-transparent !text-current">
                       <LineIcon name={key} className="h-[18px] w-[18px]" />
@@ -5073,9 +5087,29 @@ export default function App() {
         </div>
       </aside>
 
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="srd-sidebar-backdrop"
+          aria-label="Close menu"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       <main className="workspace">
         <header className="topbar !min-h-[68px] !border-b !border-slate-200 !bg-white/95 !px-7 !shadow-sm backdrop-blur !items-center">
-          <div id="sidebar-toggle-host" className="srd-sidebar-toggle-host" />
+          <div className="srd-sidebar-toggle-host">
+            <button
+              type="button"
+              className="srd-sidebar-toggle"
+              onClick={() => setSidebarOpen((value) => !value)}
+              title={sidebarOpen ? 'Close menu' : 'Open menu'}
+              aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={sidebarOpen}
+            >
+              <span></span><span></span><span></span>
+            </button>
+          </div>
           <div className="topbar-context !border-slate-200">
             <span>SRD Warehouse</span>
             <strong>{NAV.find(([key]) => key === view)?.[1] || 'Workspace'}</strong>
