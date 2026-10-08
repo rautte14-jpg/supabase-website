@@ -1976,10 +1976,19 @@ export default function App() {
   useEffect(() => {
     const label = NAV.find(([key]) => key === view)?.[1] || ''
     document.body.dataset.eddockRoute = label
+    window.__SRD_ACTIVE_VIEW__ = view
     return () => {
       if (document.body.dataset.eddockRoute === label) delete document.body.dataset.eddockRoute
+      if (window.__SRD_ACTIVE_VIEW__ === view) delete window.__SRD_ACTIVE_VIEW__
     }
   }, [view])
+
+  useEffect(() => {
+    if (!access) return
+    const refresh = () => loadForView(view, true)
+    window.addEventListener('srd:refresh-current-view', refresh)
+    return () => window.removeEventListener('srd:refresh-current-view', refresh)
+  }, [view, access?.email])
 
 
   useEffect(() => {
