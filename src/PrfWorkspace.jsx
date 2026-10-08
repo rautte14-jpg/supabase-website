@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
 
 const ACTIVE_KEY = 'srd-prf-active-tab'
 const clean = (v) => String(v ?? '').trim()
@@ -14,41 +13,22 @@ function TabButton({ value, active, icon, children, onClick }) {
 }
 
 export default function PrfWorkspace({ statusCounts = [], selectedStatus = 'ALL', onSelectStatus }) {
-  const [host, setHost] = useState(null)
-  const [weekly, setWeekly] = useState(null)
-  const [status, setStatus] = useState(null)
-  const [tableWrap, setTableWrap] = useState(null)
-  const [attentionHost, setAttentionHost] = useState(null)
   const [active, setActive] = useState(() => {
     try { return sessionStorage.getItem(ACTIVE_KEY) || 'activity' } catch { return 'activity' }
   })
 
   useEffect(() => {
-    const navHost = document.getElementById('prf-workspace-nav-host')
-    const weeklySection = document.getElementById('prf-weekly-base')
-    const statusSection = document.getElementById('prf-status-base')
-    const attHost = document.getElementById('prf-attention-host')
-    const wrap = document.getElementById('prf-table-base')
+    const weekly = document.getElementById('prf-weekly-base')
+    const status = document.getElementById('prf-status-base')
+    const tableWrap = document.getElementById('prf-table-base')
+    if (!weekly || !status || !tableWrap) return
 
-    if (!navHost || !weeklySection || !statusSection || !attHost || !wrap) return
-
-    setWeekly(weeklySection)
-    setStatus(statusSection)
-    setTableWrap(wrap)
-    setAttentionHost(attHost)
-    setHost(navHost)
-  }, [])
-
-  useEffect(() => {
-    if (!weekly || !status || !attentionHost || !tableWrap) return
     const safe = ['activity', 'status', 'attention'].includes(active) ? active : 'activity'
     weekly.style.display = safe === 'activity' ? '' : 'none'
     status.style.display = safe === 'status' ? '' : 'none'
-    attentionHost.style.display = safe === 'attention' ? '' : 'none'
     tableWrap.style.display = ''
-    if (host) host.style.display = ''
     try { sessionStorage.setItem(ACTIVE_KEY, safe) } catch {}
-  }, [active, weekly, status, attentionHost, tableWrap, host])
+  }, [active])
 
   const statusCards = useMemo(() => {
     const counts = new Map(
@@ -80,16 +60,14 @@ export default function PrfWorkspace({ statusCounts = [], selectedStatus = 'ALL'
     if (onSelectStatus) onSelectStatus(card.label)
   }
 
-  if (!host) return null
-
-  return createPortal(<>
+  return <>
     <div className="prfw-tabs" role="tablist" aria-label="PRF tracker sections">
       <TabButton value="activity" active={active} icon="▤" onClick={setActive}>PRF Activity</TabButton>
       <TabButton value="status" active={active} icon="◫" onClick={setActive}>Status & Progress</TabButton>
       <TabButton value="attention" active={active} icon="!" onClick={setActive}>Attention Needed</TabButton>
     </div>
 
-    {attentionHost && createPortal(
+    {active === 'attention' && (
       <section className="prfw-attention">
         <div className="prfw-attention-head">
           <div>
@@ -110,8 +88,7 @@ export default function PrfWorkspace({ statusCounts = [], selectedStatus = 'ALL'
           ))}
         </div>
         <div className="prfw-att-note">The detailed PRF list below remains available in every tab, so weekly and status selections can still be reviewed without changing the existing PRF logic.</div>
-      </section>,
-      attentionHost,
+      </section>
     )}
 
     <style>{`
@@ -122,5 +99,5 @@ export default function PrfWorkspace({ statusCounts = [], selectedStatus = 'ALL'
       .prfw-att-note{margin-top:12px;padding:9px 10px;border-radius:9px;background:#f8fafc;color:#64748b;font-size:10px;border:1px solid #edf2f7}
       @media(max-width:1100px){.prfw-attention-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:760px){.prfw-tabs{grid-template-columns:1fr}.prfw-tab{border-right:0;border-bottom:1px solid #e2e8f0}.prfw-tab:last-child{border-bottom:0}.prfw-attention-head{flex-direction:column}.prfw-attention-total{align-items:flex-start}.prfw-attention-grid{grid-template-columns:1fr}}
     `}</style>
-  </>, host)
+  </>
 }
