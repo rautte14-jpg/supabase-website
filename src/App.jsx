@@ -1961,6 +1961,11 @@ export default function App() {
         ])
       } else if (targetView === 'vessel') {
         if (vesselSearch.trim().length >= 2) await searchVesselSr(vesselSearch)
+      } else if (targetView === 'stock') {
+        await Promise.all([
+          loadTables(VIEW_TABLES[targetView] || [], force),
+          loadStockPageFast(stockAgeFilter, search),
+        ])
       } else if (targetView === 'mrn') {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
