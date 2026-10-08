@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import * as XLSX from 'xlsx'
 import { supabase } from './lib/supabase'
-import { SOURCE_OPTIONS, detectSource, entityKey, humanSource, mapRows, normalizeSheetRows } from './importers'
+import { entityKey, humanSource } from './importers'
 
 const ImportPanel = lazy(() => import('./ImportPanel.jsx'))
 const AgeingTrend = lazy(() => import('./AgeingTrend.jsx'))
