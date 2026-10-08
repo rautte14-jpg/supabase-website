@@ -28,7 +28,6 @@ function Stat({label,value,helper,tone='',onClick,active=false}){ return <button
 
 export default function PendingPaymentsWorkspace(){
   const [host,setHost]=useState(null)
-  const [hidden,setHidden]=useState([])
   const [rows,setRows]=useState([])
   const [active,setActive]=useState('overview')
   const [filter,setFilter]=useState('ALL')
@@ -36,38 +35,31 @@ export default function PendingPaymentsWorkspace(){
 
   useEffect(()=>{
     const el=document.getElementById('pending-payments-workspace-host')
-    const base=document.getElementById('pending-payments-base')
-    if(!el) return
-    if(base) base.style.display='none'
-    setHidden(base?[base]:[])
-    setHost(el)
-    return()=>{ if(base?.isConnected) base.style.display='' }
+    if(el) setHost(el)
   },[])
 
   useEffect(()=>{
     if(!host) return
     let alive=true
-    let refreshTimer=null
     async function load(){
       if(!alive) return
       setLoading(true)
-      const {data,error}=await supabase.from('current_pending_payment_records').select('po_no,po_date,supplier,status,priority,po_value').order('po_date',{ascending:false})
-      if(alive){ if(!error) setRows(data||[]); setLoading(false) }
+      const {data,error}=await supabase
+        .from('current_pending_payment_records')
+        .select('po_no,po_date,supplier,status,priority,po_value')
+        .order('po_date',{ascending:false})
+      if(alive){
+        if(!error) setRows(data||[])
+        setLoading(false)
+      }
     }
-    const scheduleLoad=()=>{
-      window.clearTimeout(refreshTimer)
-      refreshTimer=window.setTimeout(load,250)
-    }
+
+    const refresh=()=>load()
     load()
-    const channel=supabase
-      .channel('pending-payments-workspace-live')
-      .on('postgres_changes',{event:'*',schema:'public',table:'pending_payment_records'},scheduleLoad)
-      .on('postgres_changes',{event:'*',schema:'public',table:'procurement_records'},scheduleLoad)
-      .subscribe()
+    window.addEventListener('srd:refresh-current-view',refresh)
     return()=>{
       alive=false
-      window.clearTimeout(refreshTimer)
-      supabase.removeChannel(channel)
+      window.removeEventListener('srd:refresh-current-view',refresh)
     }
   },[host])
 
