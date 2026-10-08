@@ -15,7 +15,7 @@ const NAV = [
   ['home', 'Home', '⌂'],
   ['overview', 'Overview', 'D'],
   ['prf', 'PRF Tracker', 'P'],
-  ['prpo', 'PR & PO Tracker', 'O'],
+  ['prpo', 'Purchase Requests', 'O'],
   ['payments', 'Pending Payments', 'P'],
   ['mtr', 'MTR Tracker', 'T'],
   ['mrn', 'MRN & Issues', 'M'],
@@ -29,8 +29,8 @@ const NAV = [
 
 const NAV_GROUPS = [
   ['Workspace', ['home', 'overview']],
-  ['Procurement', ['prf', 'prpo', 'payments']],
-  ['Materials', ['mtr', 'mrn', 'vessel']],
+  ['Procurement', ['prf', 'prpo', 'payments', 'mtr']],
+  ['Materials', ['mrn', 'vessel']],
   ['Inventory', ['stock']],
   ['Reporting', ['warehouse', 'inventoryPresentation', 'history']],
   ['Administration', ['updates']],
