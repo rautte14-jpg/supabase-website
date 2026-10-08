@@ -1481,7 +1481,7 @@ export default function App() {
     overview: ['procurement', 'sourceUpdates', 'snapshots', 'pendingPayments'],
     prf: ['lld', 'notes'],
     prpo: ['procurement', 'lld', 'notes'],
-    payments: ['pendingPayments'],
+    payments: [],
     mtr: ['notes'],
     mrn: ['notes'],
     vessel: [],
@@ -6333,71 +6333,9 @@ export default function App() {
             <>
               <PageHeader
                 title="Pending Payments"
-                subtitle="Current pending payment list uploaded from Procurement."
+                subtitle="Current reconciled payment position from Procurement and latest receipts."
               />
               <div id="pending-payments-workspace-host" className="ppw-host" />
-              <div id="pending-payments-base">
-
-              <div className="metric-grid prpo-metrics prpo-operational-metrics">
-                <MetricCard
-                  label="Total POs"
-                  value={fmt(inventoryPresentationPayments.total)}
-                  helper="Click to show all POs"
-                  tone="warn"
-                  active={pendingPaymentDetailFilter === 'ALL'}
-                  onClick={() => setPendingPaymentDetailFilter('ALL')}
-                />
-                <MetricCard
-                  label="Total PO Value"
-                  value={mvr(inventoryPresentationPayments.totalValue)}
-                  helper="Click to show all POs"
-                  active={pendingPaymentDetailFilter === 'ALL'}
-                  onClick={() => setPendingPaymentDetailFilter('ALL')}
-                />
-                <MetricCard
-                  label="Urgent"
-                  value={fmt(inventoryPresentationPayments.urgent)}
-                  helper="Click to show urgent POs"
-                  tone="bad"
-                  active={pendingPaymentDetailFilter === 'URGENT'}
-                  onClick={() => setPendingPaymentDetailFilter('URGENT')}
-                />
-                {inventoryPresentationPayments.statusCounts.slice(0, 3).map(([status, count]) => (
-                  <MetricCard
-                    key={status}
-                    label={status}
-                    value={fmt(count)}
-                    helper="Click to show details"
-                    active={pendingPaymentDetailFilter === status}
-                    onClick={() => setPendingPaymentDetailFilter(status)}
-                  />
-                ))}
-              </div>
-
-              <section className="prpo-section-card">
-                <div className="prpo-section-title">
-                  <div>
-                    <span className="eyebrow">PROCUREMENT · PENDING PAYMENT LIST</span>
-                    <h3>{pendingPaymentDetailTitle}</h3>
-                    <p>{fmt(pendingPaymentDetailRows.length)} PO{pendingPaymentDetailRows.length === 1 ? '' : 's'} shown from the uploaded Pending Payment List.</p>
-                  </div>
-                  <span className="prpo-date-basis live">CURRENT LIST</span>
-                </div>
-
-                <DataTable
-                  rows={pendingPaymentDetailRows}
-                  columns={[
-                    { key: 'po_no', label: 'PO Number', render: (v) => <span className="font-mono text-[11px] font-semibold text-slate-800">{v || '—'}</span> },
-                    { key: 'po_date', label: 'PO Date' },
-                    { key: 'supplier', label: 'Supplier' },
-                    { key: 'status', label: 'Status', render: (v) => <StatusPill value={v} /> },
-                    { key: 'priority', label: 'Priority', render: (v) => <StatusPill value={v} /> },
-                    { key: 'po_value', label: 'PO Value', render: (v) => mvr(v) },
-                  ]}
-                  limit={300}
-                />
-              </section>
-              </div>
             </>
           )}
 
