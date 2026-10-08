@@ -1380,7 +1380,7 @@ export default function App() {
   const [mrnWorkshopFilter, setMrnWorkshopFilter] = useState('ALL')
   const [mrnWpTypeFilter, setMrnWpTypeFilter] = useState('ALL')
   const [srIssueFilter, setSrIssueFilter] = useState('ALL')
-  const [srIssueWeekFilter, setSrIssueWeekFilter] = useState(() => weekStartWednesday(new Date().toISOString().slice(0, 10)))
+  const [srIssueWeekFilter, setSrIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [stockAgeFilter, setStockAgeFilter] = useState('ALL')
   const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseReceiptDetail, setWarehouseReceiptDetail] = useState('NONE')
@@ -6649,8 +6649,10 @@ export default function App() {
 
                 {!srIssueSummary.total && !mrnFastLoading ? (
                   <EmptyState
-                    title="No SR issue export loaded"
-                    text="Upload the latest SR Issues / Issued Items export in Update Centre to verify actual issue activity against MRNs."
+                    title={Number(mrnIssueFast.overall?.total || 0) > 0 ? 'No SR issue activity in selected week' : 'No SR issue export loaded'}
+                    text={Number(mrnIssueFast.overall?.total || 0) > 0
+                      ? 'Choose another Wednesday–Tuesday period or All weeks to view available SR issue activity.'
+                      : 'Upload the latest SR Issues / Issued Items export in Update Centre to verify actual issue activity against MRNs.'}
                   />
                 ) : (
                   <>
@@ -6667,7 +6669,7 @@ export default function App() {
                             <option value="ALL">All weeks</option>
                             {srIssueWeekOptions.map((week, index) => (
                               <option key={week.weekStart} value={week.weekStart}>
-                                {index === 0 ? 'This week · ' : index === 1 ? 'Previous week · ' : ''}
+                                {index === 0 ? 'This week · ' : index === 1 ? 'Last completed week · ' : ''}
                                 {formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}
                               </option>
                             ))}
