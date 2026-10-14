@@ -188,9 +188,9 @@ export function mapRows(source, rows) {
   if (source === 'PENDING_PAYMENTS') {
     return rows.map((r) => ({
       po_no: text(r, ['PO Number', 'PO No', 'PO']),
-      po_date: date(r, ['PO Date', 'Purchase Order Date']),
+      po_date: date(r, ['PO Date', 'Purchase Order Date', 'PO Received Date']),
       supplier: text(r, ['Supplier', 'Vendor', 'Supplier Name']),
-      status: text(r, ['Status', 'Payment Status']),
+      status: text(r, ['Status', 'Payment Status', 'Payment Type']),
       priority: text(r, ['Priority', 'Urgency']),
       po_value: number(r, ['PO Value', 'Amount', 'PO Amount', 'Value']),
       source_updated_at: new Date().toISOString(),
