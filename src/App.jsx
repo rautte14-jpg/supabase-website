@@ -1003,9 +1003,40 @@ function ImportPanel({ onApplied, email }) {
         if (error) throw error
         await insertBatches('material_records', mapped)
       } else if (source === 'SR_ISSUES') {
-        const { error } = await supabase.from('sr_issue_records').delete().neq('id', 0)
-        if (error) throw error
-        await insertBatches('sr_issue_records', mapped)
+        // Large SR issue exports are staged first, then swapped in one atomic
+        // server-side transaction. This keeps the old live dataset intact until
+        // every new row is safely uploaded and avoids DELETE statement timeouts.
+        const importId = crypto.randomUUID()
+        const batchSize = 750
+        const concurrency = 4
+
+        for (let i = 0; i < mapped.length; i += batchSize * concurrency) {
+          const group = []
+          for (let offset = 0; offset < batchSize * concurrency; offset += batchSize) {
+            const batch = mapped.slice(i + offset, i + offset + batchSize)
+            if (!batch.length) continue
+            group.push(
+              supabase
+                .from('sr_issue_import_stage')
+                .insert(batch.map((row) => ({ ...row, import_id: importId })))
+            )
+          }
+
+          const results = await Promise.all(group)
+          const failed = results.find((result) => result.error)
+          if (failed?.error) throw failed.error
+
+          const uploaded = Math.min(mapped.length, i + batchSize * concurrency)
+          setMessage('Uploading SR issue data… ' + uploaded.toLocaleString() + ' / ' + mapped.length.toLocaleString())
+        }
+
+        setMessage('Finalizing SR issue update…')
+        const { data: importedCount, error: finalizeError } = await supabase
+          .rpc('finalize_sr_issue_import', { p_import_id: importId })
+        if (finalizeError) throw finalizeError
+        if (Number(importedCount || 0) !== mapped.length) {
+          throw new Error('SR issue import count mismatch. Expected ' + mapped.length + ', finalized ' + Number(importedCount || 0) + '.')
+        }
       } else if (source === 'TRANSACTIONS') {
         const { error } = await supabase.from('inventory_transactions').delete().neq('id', 0)
         if (error) throw error
