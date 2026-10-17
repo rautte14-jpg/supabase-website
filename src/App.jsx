@@ -1365,7 +1365,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [viewLoadError, setViewLoadError] = useState('')
   const viewLoadRequestId = useRef(0)
-  const [data, setData = useState({
+  const [data, setData] = useState({
     procurement: [],
     material: [],
     stock: [],
