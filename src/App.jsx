@@ -661,7 +661,7 @@ function EmptyState({ title = 'No records yet', text = 'Use Update Centre to loa
   )
 }
 
-function DataTable({ rows, columns, onUpdate, noteType, noteMap, limit = 300, className = '' }) {
+function DataTable({ rows, columns, onUpdate, noteType, noteMap, limit = 300, className = '', loading = false, error = false, onRetry }) {
   const cappedTotal = Math.min(rows.length, limit)
   const initialRender = Math.min(cappedTotal, 100)
   const [renderLimit, setRenderLimit] = useState(initialRender)
@@ -671,6 +671,8 @@ function DataTable({ rows, columns, onUpdate, noteType, noteMap, limit = 300, cl
   }, [rows, limit])
 
   const visible = rows.slice(0, renderLimit)
+  if (loading) return <div className="empty-state" role="status"><strong>Loading records…</strong><span>Please wait while the latest records load.</span></div>
+  if (error) return <div className="empty-state" role="alert"><strong>Unable to load records</strong><span>The data request did not complete. Try again.</span>{onRetry && <button type="button" onClick={onRetry}>Retry</button>}</div>
   if (!rows.length) return <EmptyState />
 
   const canShowMore = renderLimit < cappedTotal
@@ -1478,7 +1480,9 @@ export default function App() {
     overallStatusCounts: [],
     selectedStatusCounts: [],
     weekCounts: [],
-    loading: false,
+    loading: true,
+    loaded: false,
+    error: false,
   })
   const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseReceiptDetail, setWarehouseReceiptDetail] = useState('NONE')
@@ -2046,7 +2050,7 @@ export default function App() {
     status = prfStatusFilter,
     searchTerm = search,
   ) {
-    setPrfFastMeta((current) => ({ ...current, loading: true }))
+    setPrfFastMeta((current) => ({ ...current, loading: true, error: false }))
     try {
       const { data: result, error } = await supabase.rpc('prf_tracker_data', {
         p_week_start: week === 'ALL' ? null : week,
@@ -2066,11 +2070,13 @@ export default function App() {
         selectedStatusCounts: Array.isArray(payload.selectedStatusCounts) ? payload.selectedStatusCounts : [],
         weekCounts: Array.isArray(payload.weekCounts) ? payload.weekCounts : [],
         loading: false,
+        loaded: true,
+        error: false,
       })
       return payload
     } catch (error) {
-      setPrfFastMeta((current) => ({ ...current, loading: false }))
-      throw error
+      console.error('Failed to load PRF Tracker', error)
+      setPrfFastMeta((current) => ({ ...current, loading: false, loaded: true, error: true }))
     }
   }
 
@@ -6167,7 +6173,7 @@ export default function App() {
                     onClick={() => selectPrfWeek('ALL')}
                   >
                     <span className="!text-[10px] !font-semibold !uppercase !tracking-wider !text-blue-600">ALL PRFs</span>
-                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{fmt(prfFastMeta.overallTotal)}</strong>
+                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{prfFastMeta.loaded && !prfFastMeta.loading ? fmt(prfFastMeta.overallTotal) : 'Loading…'}</strong>
                   </button>
 
                   {prfWeekCounts.map((week) => (
@@ -6202,8 +6208,8 @@ export default function App() {
                     </h3>
                   </div>
                   <span>
-                    {fmt(prfFastMeta.selectedTotal)}
-                    {prfWeekFilter === 'ALL' ? ' total PRFs' : ' PRFs in selected week'}
+                    {prfFastMeta.loaded && !prfFastMeta.loading ? fmt(prfFastMeta.selectedTotal) : 'Loading…'}
+                    {prfFastMeta.loaded && !prfFastMeta.loading ? (prfWeekFilter === 'ALL' ? ' total PRFs' : ' PRFs in selected week') : ''}
                   </span>
                 </div>
 
@@ -6213,7 +6219,7 @@ export default function App() {
                     onClick={() => setPrfStatusFilter('ALL')}
                   >
                     <span className="!text-[10px] !font-semibold !uppercase !tracking-wider !text-blue-600">{prfWeekFilter === 'ALL' ? 'ALL PRFs' : 'ALL IN WEEK'}</span>
-                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{fmt(prfFastMeta.selectedTotal)}</strong>
+                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{prfFastMeta.loaded && !prfFastMeta.loading ? fmt(prfFastMeta.selectedTotal) : 'Loading…'}</strong>
                   </button>
 
                   {prfStatusCounts.map(([status, count]) => (
@@ -6237,10 +6243,13 @@ export default function App() {
               </section>
               <div id="prf-table-base">
               <div className="prpo-visible-count">
-                <strong>{prfFastMeta.loading ? 'Loading…' : fmt(prfRows.length) + ' shown'}</strong>
-                <span>{fmt(prfFastMeta.filteredTotal)} matching PRF{prfFastMeta.filteredTotal === 1 ? '' : 's'}</span>
+                <strong>{!prfFastMeta.loaded || prfFastMeta.loading ? 'Loading…' : fmt(prfRows.length) + ' shown'}</strong>
+                <span>{!prfFastMeta.loaded || prfFastMeta.loading ? 'Loading PRF matches…' : fmt(prfFastMeta.filteredTotal) + ' matching PRF' + (prfFastMeta.filteredTotal === 1 ? '' : 's')}</span>
               </div>
               <DataTable
+                loading={!prfFastMeta.loaded || prfFastMeta.loading}
+                error={prfFastMeta.error}
+                onRetry={() => loadPrfPageFast(prfWeekFilter, prfStatusFilter, search)}
                 className="prf-data-table !rounded-xl !border !border-slate-200 !bg-white !shadow-sm [&_thead]:!bg-slate-50 [&_th]:!bg-slate-50 [&_th]:!px-3 [&_th]:!py-3 [&_th]:!text-xs [&_th]:!font-semibold [&_th]:!uppercase [&_th]:!tracking-wide [&_th]:!text-slate-500 [&_tbody_tr]:!border-b [&_tbody_tr]:!border-slate-100 [&_td]:!px-3 [&_td]:!py-3 [&_td]:!text-slate-700 [&_.mini-button]:!rounded-md [&_.mini-button]:!border [&_.mini-button]:!border-slate-200 [&_.mini-button]:!bg-slate-50 [&_.mini-button]:!px-3 [&_.mini-button]:!py-1 [&_.mini-button]:!text-xs [&_.mini-button]:!font-medium [&_.mini-button]:!text-slate-600 [&_.mini-button]:!transition-colors hover:[&_.mini-button]:!border-blue-200 hover:[&_.mini-button]:!bg-blue-50 hover:[&_.mini-button]:!text-blue-600"
                 rows={prfRows}
                 limit={300}
