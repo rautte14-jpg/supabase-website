@@ -6150,7 +6150,7 @@ export default function App() {
           {view === 'prf' && (
             <>
               <PageHeader title="PRF Tracker" subtitle="PRF / IPF requests and their movement into PR, MTR and PO." />
-              <Suspense fallback={null}>
+              <Suspense fallback={<div className="empty-state" role="status"><strong>Loading PRF sections…</strong><span>Preparing the tracker controls.</span></div>}>
                 <PrfWorkspace
                   statusCounts={prfStatusCounts}
                   selectedStatus={prfStatusFilter}
