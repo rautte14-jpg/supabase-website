@@ -646,8 +646,20 @@ function EmptyState({ title = 'No records yet', text = 'Use Update Centre to loa
 }
 
 function DataTable({ rows, columns, onUpdate, noteType, noteMap, limit = 300, className = '' }) {
-  const visible = rows.slice(0, limit)
+  const cappedTotal = Math.min(rows.length, limit)
+  const initialRender = Math.min(cappedTotal, 100)
+  const [renderLimit, setRenderLimit] = useState(initialRender)
+
+  useEffect(() => {
+    setRenderLimit(Math.min(Math.min(rows.length, limit), 100))
+  }, [rows, limit])
+
+  const visible = rows.slice(0, renderLimit)
   if (!rows.length) return <EmptyState />
+
+  const canShowMore = renderLimit < cappedTotal
+  const remaining = Math.max(0, cappedTotal - renderLimit)
+
   return (
     <div className={'table-wrap !rounded-xl !border !border-slate-200 !bg-white !shadow-sm [&_thead]:!bg-slate-50 [&_th]:!bg-slate-50 [&_th]:!px-3 [&_th]:!py-3 [&_th]:!text-[10px] [&_th]:!font-semibold [&_th]:!uppercase [&_th]:!tracking-wider [&_th]:!text-slate-500 [&_tbody_tr]:!border-b [&_tbody_tr]:!border-slate-100 [&_tbody_tr]:transition-colors hover:[&_tbody_tr]:!bg-slate-50/70 [&_td]:!px-3 [&_td]:!py-3 [&_td]:!text-[11px] [&_td]:!leading-5 [&_td]:!text-slate-700 [&_.mini-button]:!rounded-md [&_.mini-button]:!border [&_.mini-button]:!border-slate-200 [&_.mini-button]:!bg-slate-50 [&_.mini-button]:!px-3 [&_.mini-button]:!py-1 [&_.mini-button]:!text-xs [&_.mini-button]:!font-medium [&_.mini-button]:!text-slate-600 [&_.mini-button]:!transition-colors hover:[&_.mini-button]:!border-blue-200 hover:[&_.mini-button]:!bg-blue-50 hover:[&_.mini-button]:!text-blue-600 ' + className}>
       <table>
@@ -680,7 +692,27 @@ function DataTable({ rows, columns, onUpdate, noteType, noteMap, limit = 300, cl
           })}
         </tbody>
       </table>
-      {rows.length > limit && <p className="table-note">Showing first {limit} of {rows.length} records.</p>}
+
+      {(canShowMore || rows.length > limit) && (
+        <div className="table-progressive-footer">
+          <span>
+            Showing {visible.length} of {rows.length > limit ? limit : rows.length}
+            {rows.length > limit ? ' loaded records' : ' records'}
+          </span>
+          {canShowMore && (
+            <button
+              type="button"
+              className="mini-button"
+              onClick={() => setRenderLimit((current) => Math.min(cappedTotal, current + 100))}
+            >
+              Show next {Math.min(100, remaining)}
+            </button>
+          )}
+          {!canShowMore && rows.length > limit && (
+            <small>Table capped at {limit} rows. Use filters/search to narrow the list.</small>
+          )}
+        </div>
+      )}
     </div>
   )
 }
