@@ -1414,6 +1414,7 @@ export default function App() {
   })
   const [noteState, setNoteState] = useState(null)
   const [vesselSearch, setVesselSearch] = useState('')
+  const vesselSearchRequestId = useRef(0)
   const [vesselFast, setVesselFast] = useState({
     procurement: [],
     material: [],
@@ -1780,10 +1781,13 @@ export default function App() {
     }
   }
 
-  async function searchVesselSr(term) {
+  async function searchVesselSr(term, requestedId = null) {
+    const requestId = requestedId ?? ++vesselSearchRequestId.current
     const clean = String(term || '').trim()
     if (clean.length < 2) {
-      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false, error: false })
+      if (requestId === vesselSearchRequestId.current) {
+        setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false, error: false })
+      }
       return
     }
 
@@ -1791,6 +1795,7 @@ export default function App() {
     try {
       const { data: result, error } = await supabase.rpc('search_vessel_sr', { p_term: clean })
       if (error) throw error
+      if (requestId !== vesselSearchRequestId.current) return
       const payload = result || {}
       setVesselFast({
         procurement: Array.isArray(payload.procurement) ? payload.procurement : [],
@@ -1801,6 +1806,7 @@ export default function App() {
         error: false,
       })
     } catch (error) {
+      if (requestId !== vesselSearchRequestId.current) return
       console.error('Vessel / SR search failed', error)
       setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false, error: true })
     }
@@ -2157,7 +2163,7 @@ export default function App() {
           loadMtrPageFast(),
         ])
       } else if (targetView === 'vessel') {
-        if (vesselSearch.trim().length >= 2) await searchVesselSr(vesselSearch)
+        // The debounced vessel search effect below owns this request.
       } else if (targetView === 'stock') {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
@@ -2245,12 +2251,14 @@ export default function App() {
 
   useEffect(() => {
     if (view !== 'vessel') return
+    const requestId = ++vesselSearchRequestId.current
     const term = vesselSearch.trim()
     if (term.length < 2) {
-      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false })
+      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false, error: false })
       return
     }
-    const timer = window.setTimeout(() => searchVesselSr(term), 350)
+    setVesselFast((current) => ({ ...current, loading: true, error: false }))
+    const timer = window.setTimeout(() => searchVesselSr(term, requestId), 350)
     return () => window.clearTimeout(timer)
   }, [view, vesselSearch])
 
