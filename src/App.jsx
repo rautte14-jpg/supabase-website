@@ -1,5 +1,4 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import * as XLSX from 'xlsx'
 import { supabase } from './lib/supabase'
 import { SOURCE_OPTIONS, detectSource, entityKey, humanSource, mapRows, normalizeSheetRows } from './importers'
 
@@ -944,7 +943,11 @@ function ImportPanel({ onApplied, email }) {
     setFile(next)
     setMessage('Reading workbook…')
     try {
-      const buffer = await next.arrayBuffer()
+      const [{ default: XLSXDefault, ...xlsxModule }, buffer] = await Promise.all([
+        import('xlsx'),
+        next.arrayBuffer(),
+      ])
+      const XLSX = XLSXDefault || xlsxModule
       const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
       const name = workbook.SheetNames[0]
       const sheet = workbook.Sheets[name]
