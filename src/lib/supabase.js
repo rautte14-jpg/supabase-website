@@ -156,9 +156,11 @@ async function fastFetch(input, init = {}) {
       return response
     })()
     inFlightGets.set(key, pending)
-    pending.finally(() => {
+    const clearInFlight = () => {
       if (inFlightGets.get(key) === pending) inFlightGets.delete(key)
-    })
+    }
+    // Handle both outcomes without creating an unobserved rejected promise.
+    pending.then(clearInFlight, clearInFlight)
   }
 
   const response = await pending
