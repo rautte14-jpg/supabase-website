@@ -10,6 +10,22 @@ const PendingPaymentsWorkspace = lazy(() => import('./PendingPaymentsWorkspace.j
 const PrfWorkspace = lazy(() => import('./PrfWorkspace.jsx'))
 const MtrFastUpload = lazy(() => import('./MtrFastUpload.jsx'))
 
+const ROUTE_PRELOADERS = {
+  prpo: () => Promise.all([
+    import('./PrDetailOverlayComplete.jsx'),
+    import('./PrTrackerCompleteV2.jsx'),
+    import('./PrOpenPositionV2.jsx'),
+    import('./PrMonthlyChart.jsx'),
+  ]),
+  payments: () => import('./PendingPaymentsWorkspace.jsx'),
+  prf: () => import('./PrfWorkspace.jsx'),
+  updates: () => import('./MtrFastUpload.jsx'),
+}
+
+function preloadRoute(key) {
+  ROUTE_PRELOADERS[key]?.().catch(() => {})
+}
+
 const NAV = [
   ['home', 'Home', '⌂'],
   ['overview', 'Overview', 'D'],
@@ -5311,6 +5327,8 @@ export default function App() {
                         ? '!bg-white/10 !text-white before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-blue-400'
                         : '!text-slate-300 hover:!bg-white/[0.06] hover:!text-white')
                     }
+                    onMouseEnter={() => preloadRoute(key)}
+                    onFocus={() => preloadRoute(key)}
                     onClick={() => { setView(key); setSidebarOpen(false) }}
                   >
                     <span className="!grid !h-5 !w-5 !place-items-center !bg-transparent !text-current">
@@ -5372,7 +5390,7 @@ export default function App() {
               <LineIcon name="refresh" className="h-4 w-4" />{loading ? 'Refreshing…' : 'Refresh'}
             </button>
             {canEdit && (
-              <button className="primary !inline-flex !items-center !gap-2 !rounded-lg !bg-blue-600 !px-4 !py-2 !text-sm !font-semibold !text-white !shadow-sm hover:!bg-blue-700" onClick={() => setView('updates')}>
+              <button className="primary !inline-flex !items-center !gap-2 !rounded-lg !bg-blue-600 !px-4 !py-2 !text-sm !font-semibold !text-white !shadow-sm hover:!bg-blue-700" onMouseEnter={() => preloadRoute('updates')} onFocus={() => preloadRoute('updates')} onClick={() => setView('updates')}>
                 <LineIcon name="upload" className="h-4 w-4" />Update data
               </button>
             )}
