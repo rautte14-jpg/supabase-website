@@ -1364,6 +1364,7 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [viewLoadError, setViewLoadError] = useState('')
+  const viewLoadRequestId = useRef(0)
   const [data, setData = useState({
     procurement: [],
     material: [],
@@ -2143,6 +2144,7 @@ export default function App() {
 
   async function loadForView(targetView = view, force = false) {
     if (!session || !access) return
+    const requestId = ++viewLoadRequestId.current
     setLoading(true)
     setViewLoadError('')
     try {
@@ -2189,26 +2191,15 @@ export default function App() {
       }
     } catch (error) {
       console.error('Failed to load portal data', error)
-      setViewLoadError('Some data could not be loaded. Please retry the module.')
+      if (requestId === viewLoadRequestId.current) {
+        setViewLoadError('Some data could not be loaded. Please retry the module.')
+      }
     } finally {
-      setLoading(false)
+      if (requestId === viewLoadRequestId.current) setLoading(false)
     }
   }
 
   async function refreshCurrentView() {
-    if (view === 'home') {
-      setLoading(true)
-      setViewLoadError('')
-      try {
-        await loadHomeSummary()
-      } catch (error) {
-        console.error('Failed to refresh home summary', error)
-        setViewLoadError('Some dashboard data could not be loaded. Please retry.')
-      } finally {
-        setLoading(false)
-      }
-      return
-    }
     await loadForView(view, true)
   }
 
@@ -2259,7 +2250,10 @@ export default function App() {
     }
     setVesselFast((current) => ({ ...current, loading: true, error: false }))
     const timer = window.setTimeout(() => searchVesselSr(term, requestId), 350)
-    return () => window.clearTimeout(timer)
+    return () => {
+      window.clearTimeout(timer)
+      if (vesselSearchRequestId.current === requestId) vesselSearchRequestId.current += 1
+    }
   }, [view, vesselSearch])
 
 
