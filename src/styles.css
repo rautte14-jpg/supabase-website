@@ -6599,3 +6599,21 @@ body.srd-sidebar-open{overflow:hidden}
   .sidebar.srd-sidebar-drawer{width:min(86vw,280px)!important}
   .topbar{padding-left:12px!important}
 }
+
+
+.table-progressive-footer{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  border-top:1px solid #e2e8f0;
+  background:#f8fafc;
+  color:#64748b;
+  font-size:11px;
+}
+.table-progressive-footer small{color:#94a3b8}
+.table-progressive-footer .mini-button{flex:0 0 auto}
+@media(max-width:640px){
+  .table-progressive-footer{align-items:flex-start;flex-direction:column}
+}
