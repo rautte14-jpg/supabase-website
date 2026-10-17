@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { SOURCE_OPTIONS, detectSource, entityKey, humanSource, mapRows, normalizeSheetRows } from './importers'
 
@@ -1363,7 +1363,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
-  const [data, setData] = useState({
+  const [viewLoadError, setViewLoadError] = useState('')
+  const [data, setData = useState({
     procurement: [],
     material: [],
     stock: [],
@@ -1419,6 +1420,7 @@ export default function App() {
     transactions: [],
     issues: [],
     loading: false,
+    error: false,
   })
   const [slide, setSlide] = useState(0)
   const [prfStatusFilter, setPrfStatusFilter] = useState('ALL')
@@ -1519,7 +1521,9 @@ export default function App() {
     overall: null,
     rows: [],
     loadedPeriod: '',
+    error: false,
   })
+  const srIssueRequestId = useRef(0)
   const [mrnFastLoading, setMrnFastLoading] = useState(false)
 
   const canEdit = access && ['admin', 'editor'].includes(lower(access.role))
@@ -1779,11 +1783,11 @@ export default function App() {
   async function searchVesselSr(term) {
     const clean = String(term || '').trim()
     if (clean.length < 2) {
-      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false })
+      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false, error: false })
       return
     }
 
-    setVesselFast((current) => ({ ...current, loading: true }))
+    setVesselFast((current) => ({ ...current, loading: true, error: false }))
     try {
       const { data: result, error } = await supabase.rpc('search_vessel_sr', { p_term: clean })
       if (error) throw error
@@ -1794,10 +1798,11 @@ export default function App() {
         transactions: Array.isArray(payload.transactions) ? payload.transactions : [],
         issues: Array.isArray(payload.issues) ? payload.issues : [],
         loading: false,
+        error: false,
       })
     } catch (error) {
       console.error('Vessel / SR search failed', error)
-      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false })
+      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false, error: true })
     }
   }
 
@@ -1855,7 +1860,9 @@ export default function App() {
   }
 
   async function loadMrnPageFast(period = srIssueWeekFilter) {
+    const requestId = ++srIssueRequestId.current
     setMrnFastLoading(true)
+    setMrnIssueFast((current) => ({ ...current, error: false }))
     try {
       const needsMrnRows = !mrnMaterialRows.length
       const [materialRows, weekResult, overallResult, issueRows] = await Promise.all([
@@ -1873,26 +1880,42 @@ export default function App() {
       if (overallResult.error) throw overallResult.error
 
       if (needsMrnRows) setMrnMaterialRows(materialRows)
-      setMrnIssueFast({
+      setMrnIssueFast((current) => ({
+        ...current,
         weeks: weekResult.data || [],
         overall: overallResult.data?.[0] || null,
-        rows: issueRows,
-        loadedPeriod: period,
-      })
+        ...(requestId === srIssueRequestId.current
+          ? { rows: issueRows, loadedPeriod: period, error: false }
+          : {}),
+      }))
+    } catch (error) {
+      console.error('Failed to load MRN / SR issue data', error)
+      if (requestId === srIssueRequestId.current) {
+        setMrnIssueFast((current) => ({ ...current, error: true }))
+      }
     } finally {
-      setMrnFastLoading(false)
+      if (requestId === srIssueRequestId.current) setMrnFastLoading(false)
     }
   }
 
   async function selectSrIssueWeek(period) {
+    const requestId = ++srIssueRequestId.current
     setSrIssueWeekFilter(period)
     setSrIssueFilter('ALL')
     setMrnFastLoading(true)
+    setMrnIssueFast((current) => ({ ...current, error: false }))
     try {
       const rows = await loadMrnIssueRows(period)
-      setMrnIssueFast((current) => ({ ...current, rows, loadedPeriod: period }))
+      if (requestId === srIssueRequestId.current) {
+        setMrnIssueFast((current) => ({ ...current, rows, loadedPeriod: period, error: false }))
+      }
+    } catch (error) {
+      console.error('Failed to load selected SR issue week', error)
+      if (requestId === srIssueRequestId.current) {
+        setMrnIssueFast((current) => ({ ...current, error: true }))
+      }
     } finally {
-      setMrnFastLoading(false)
+      if (requestId === srIssueRequestId.current) setMrnFastLoading(false)
     }
   }
 
@@ -2115,6 +2138,7 @@ export default function App() {
   async function loadForView(targetView = view, force = false) {
     if (!session || !access) return
     setLoading(true)
+    setViewLoadError('')
     try {
       if (targetView === 'home') {
         await loadHomeSummary()
@@ -2159,6 +2183,7 @@ export default function App() {
       }
     } catch (error) {
       console.error('Failed to load portal data', error)
+      setViewLoadError('Some data could not be loaded. Please retry the module.')
     } finally {
       setLoading(false)
     }
@@ -2167,10 +2192,12 @@ export default function App() {
   async function refreshCurrentView() {
     if (view === 'home') {
       setLoading(true)
+      setViewLoadError('')
       try {
         await loadHomeSummary()
       } catch (error) {
         console.error('Failed to refresh home summary', error)
+        setViewLoadError('Some dashboard data could not be loaded. Please retry.')
       } finally {
         setLoading(false)
       }
@@ -5427,6 +5454,12 @@ export default function App() {
         )}
 
         <section className="content !bg-[#F8FAFC]">
+          {viewLoadError && (
+            <div className="notice" role="alert">
+              <span>{viewLoadError}</span>
+              <button type="button" className="secondary" onClick={refreshCurrentView}>Retry</button>
+            </div>
+          )}
           {view === 'home' && (
             <section className="home-dashboard-shell">
               <div className="home-dashboard-head">
@@ -6348,7 +6381,7 @@ export default function App() {
                     <span>{erpPrHeaders.length ? 'Live Simplix headers' : fmt(prSubmissionCounts.lines) + ' item line' + (prSubmissionCounts.lines === 1 ? '' : 's')}</span>
                   </div>
                 </div>
-                <DataTable rows={prSubmissionRows} columns={prSubmissionColumns} limit={250} />
+                <DataTable rows={prSubmissionRows} columns={prSubmissionColumns} limit={250} loading={loading} />
                 <div id="prpo-monthly-host" className="pr-month-chart-host" />
               </section>
 
@@ -6421,6 +6454,7 @@ export default function App() {
                     </div>
                     <DataTable
                       rows={pendingPaymentRows}
+                      loading={loading}
                       columns={[
                         { key: 'po_no', label: 'PO Number', render: (v) => displayValue(v, true) },
                         { key: 'pr_no', label: 'PR No.', render: (v) => displayValue(v, true) },
@@ -6511,7 +6545,7 @@ export default function App() {
                     <span>{fmt(new Set(prPoReceiptRows.map((r) => r.pr_no).filter(Boolean)).size)} PRs</span>
                   </div>
                 </div>
-                <DataTable rows={prPoReceiptRows} columns={receiptItemColumns} limit={150} />
+                <DataTable rows={prPoReceiptRows} columns={receiptItemColumns} limit={150} loading={loading} />
               </section>
 
             </>
@@ -6792,6 +6826,7 @@ export default function App() {
                       </div>
                       <DataTable
                         rows={weekFilteredMrnRows.filter((row) => mrnStatusLabel(row) === mrnStatusFilter)}
+                        loading={loading || mrnFastLoading}
                         columns={mrnQuickColumns}
                         limit={150}
                       />
@@ -6831,6 +6866,7 @@ export default function App() {
                       </div>
                       <DataTable
                         rows={weekFilteredMrnRows.filter((row) => (String(rawField(row, ['WORKSHOP NAME']) || row.workshop || '').trim() || 'BLANK') === mrnWorkshopFilter)}
+                        loading={loading || mrnFastLoading}
                         columns={mrnQuickColumns}
                         limit={150}
                       />
@@ -6919,7 +6955,7 @@ export default function App() {
                       </div>
                       <strong>{mrnFastLoading ? 'Loading…' : fmt(srIssueRows.length) + (srIssueSummary.total > srIssueRows.length ? ' of ' + fmt(srIssueSummary.total) + ' lines shown' : ' issue lines')}</strong>
                     </div>
-                    <DataTable rows={srIssueRows} columns={srIssueColumns} limit={250} />
+                    <DataTable rows={srIssueRows} columns={srIssueColumns} limit={250} loading={mrnFastLoading || mrnIssueFast.loadedPeriod !== srIssueWeekFilter} error={mrnIssueFast.error} onRetry={() => selectSrIssueWeek(srIssueWeekFilter)} />
                   </>
                 )}
               </section>
@@ -6952,7 +6988,7 @@ export default function App() {
                 <span>{fmt(mrnVisibleCounts.mrnNumbers)} distinct MRN number{mrnVisibleCounts.mrnNumbers === 1 ? '' : 's'} shown</span>
               </div>
 
-              <DataTable rows={mrnRows} columns={mrnColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} />
+              <DataTable rows={mrnRows} columns={mrnColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} loading={loading} />
             </>
           )}
 
@@ -6998,15 +7034,15 @@ export default function App() {
                 <div className="joined-grid">
                   <section className="panel wide">
                     <div className="panel-head"><h3>Procurement</h3><span>{vesselProc.length} records</span></div>
-                    <DataTable rows={vesselProc} columns={procurementColumns.slice(0, 10)} noteType="procurement" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={100} />
+                    <DataTable rows={vesselProc} columns={procurementColumns.slice(0, 10)} loading={vesselFast.loading} error={vesselFast.error} onRetry={() => searchVesselSr(vesselSearch)} noteType="procurement" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={100} />
                   </section>
                   <section className="panel wide">
                     <div className="panel-head"><h3>MTR / MRN</h3><span>{vesselMat.length} records</span></div>
-                    <DataTable rows={vesselMat} columns={materialColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={100} />
+                    <DataTable rows={vesselMat} columns={materialColumns} loading={vesselFast.loading} error={vesselFast.error} onRetry={() => searchVesselSr(vesselSearch)} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={100} />
                   </section>
                   <section className="panel wide">
                     <div className="panel-head"><h3>ERP Issues / Receipts</h3><span>{vesselTx.length} records</span></div>
-                    <DataTable rows={vesselTx} limit={100} columns={[
+                    <DataTable rows={vesselTx} limit={100} loading={vesselFast.loading} error={vesselFast.error} onRetry={() => searchVesselSr(vesselSearch)} columns={[
                       { key: 'physical_date', label: 'Date' },
                       { key: 'transaction_type', label: 'Type', render: (v) => <StatusPill value={v} /> },
                       { key: 'item_code', label: 'Item' },
