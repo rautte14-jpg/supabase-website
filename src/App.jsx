@@ -1454,6 +1454,7 @@ export default function App() {
     lineCount: 0,
     mtrCount: 0,
     loading: false,
+    error: false,
   })
   const [mtrControlFilter, setMtrControlFilter] = useState('ALL')
   const [mtrStatusFilter, setMtrStatusFilter] = useState('ALL')
@@ -1471,6 +1472,7 @@ export default function App() {
     rows: [],
     total: 0,
     loading: false,
+    error: false,
   })
   const [prfFastRows, setPrfFastRows] = useState([])
   const [prfFastMeta, setPrfFastMeta] = useState({
@@ -1740,7 +1742,7 @@ export default function App() {
   }
 
   async function loadMtrPageFast() {
-    setMtrFast((current) => ({ ...current, loading: true }))
+    setMtrFast((current) => ({ ...current, loading: true, error: false }))
     try {
       const week = mtrWeekFilter === 'ALL' ? null : mtrWeekFilter
       const searchTerm = lower(search).trim()
@@ -1766,10 +1768,11 @@ export default function App() {
         lineCount: Number(detail.lineCount || 0),
         mtrCount: Number(detail.mtrCount || 0),
         loading: false,
+        error: false,
       })
     } catch (error) {
       console.error('Failed to load MTR tracker', error)
-      setMtrFast((current) => ({ ...current, loading: false }))
+      setMtrFast((current) => ({ ...current, loading: false, error: true }))
     }
   }
 
@@ -2081,7 +2084,7 @@ export default function App() {
   }
 
   async function loadStockPageFast(filter = stockAgeFilter, searchTerm = search) {
-    setStockFast((current) => ({ ...current, loading: true }))
+    setStockFast((current) => ({ ...current, loading: true, error: false }))
     try {
       const [summaryResult, detailResult] = await Promise.all([
         supabase.from('stock_ageing_summary').select('*').limit(1),
@@ -2101,10 +2104,11 @@ export default function App() {
         rows: Array.isArray(detail.rows) ? detail.rows : [],
         total: Number(detail.total || 0),
         loading: false,
+        error: false,
       })
     } catch (error) {
       console.error('Failed to load Stock & Ageing', error)
-      setStockFast((current) => ({ ...current, loading: false }))
+      setStockFast((current) => ({ ...current, loading: false, error: true }))
     }
   }
 
@@ -6173,7 +6177,7 @@ export default function App() {
                     onClick={() => selectPrfWeek('ALL')}
                   >
                     <span className="!text-[10px] !font-semibold !uppercase !tracking-wider !text-blue-600">ALL PRFs</span>
-                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{prfFastMeta.loaded && !prfFastMeta.loading ? fmt(prfFastMeta.overallTotal) : 'Loading…'}</strong>
+                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{prfFastMeta.error ? 'Unavailable' : prfFastMeta.loaded && !prfFastMeta.loading ? fmt(prfFastMeta.overallTotal) : 'Loading…'}</strong>
                   </button>
 
                   {prfWeekCounts.map((week) => (
@@ -6208,7 +6212,7 @@ export default function App() {
                     </h3>
                   </div>
                   <span>
-                    {prfFastMeta.loaded && !prfFastMeta.loading ? fmt(prfFastMeta.selectedTotal) : 'Loading…'}
+                    {prfFastMeta.error ? 'Unavailable' : prfFastMeta.loaded && !prfFastMeta.loading ? fmt(prfFastMeta.selectedTotal) : 'Loading…'}
                     {prfFastMeta.loaded && !prfFastMeta.loading ? (prfWeekFilter === 'ALL' ? ' total PRFs' : ' PRFs in selected week') : ''}
                   </span>
                 </div>
@@ -6243,8 +6247,8 @@ export default function App() {
               </section>
               <div id="prf-table-base">
               <div className="prpo-visible-count">
-                <strong>{!prfFastMeta.loaded || prfFastMeta.loading ? 'Loading…' : fmt(prfRows.length) + ' shown'}</strong>
-                <span>{!prfFastMeta.loaded || prfFastMeta.loading ? 'Loading PRF matches…' : fmt(prfFastMeta.filteredTotal) + ' matching PRF' + (prfFastMeta.filteredTotal === 1 ? '' : 's')}</span>
+                <strong>{prfFastMeta.error ? 'Unavailable' : !prfFastMeta.loaded || prfFastMeta.loading ? 'Loading…' : fmt(prfRows.length) + ' shown'}</strong>
+                <span>{prfFastMeta.error ? 'Unable to load PRF matches' : !prfFastMeta.loaded || prfFastMeta.loading ? 'Loading PRF matches…' : fmt(prfFastMeta.filteredTotal) + ' matching PRF' + (prfFastMeta.filteredTotal === 1 ? '' : 's')}</span>
               </div>
               <DataTable
                 loading={!prfFastMeta.loaded || prfFastMeta.loading}
@@ -6667,8 +6671,17 @@ export default function App() {
                 <span>{fmt(mtrRows.length)} of {fmt(mtrVisibleCounts.lines)} item line{mtrVisibleCounts.lines === 1 ? '' : 's'} shown</span>
               </div>
 
-              {mtrFast.loading && <div className="notice">Loading current MTR data…</div>}
-              <DataTable rows={mtrRows} columns={mtrColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={300} />
+              <DataTable
+                rows={mtrRows}
+                columns={mtrColumns}
+                noteType="material"
+                noteMap={noteMap}
+                onUpdate={canEdit ? openNote : undefined}
+                limit={300}
+                loading={mtrFast.loading}
+                error={mtrFast.error}
+                onRetry={loadMtrPageFast}
+              />
             </>
           )}
 
@@ -7076,6 +7089,9 @@ export default function App() {
 
               <DataTable
                 rows={stockRows}
+                loading={stockFast.loading}
+                error={stockFast.error}
+                onRetry={() => loadStockPageFast(stockAgeFilter, search)}
                 noteType="stock"
                 noteMap={noteMap}
                 onUpdate={canEdit ? openNote : undefined}
