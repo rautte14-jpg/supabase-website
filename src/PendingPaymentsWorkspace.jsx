@@ -31,6 +31,7 @@ export default function PendingPaymentsWorkspace(){
   const [filter,setFilter]=useState('ALL')
   const [loading,setLoading]=useState(false)
   const [error,setError]=useState(false)
+  const [summaryError,setSummaryError]=useState(false)
   const [summary,setSummary]=useState(null)
 
   useEffect(()=>{
@@ -39,6 +40,7 @@ export default function PendingPaymentsWorkspace(){
       if(!alive) return
       setLoading(true)
       setError(false)
+      setSummaryError(false)
       try{
         const [rowsResult,summaryResult]=await Promise.all([
           supabase
@@ -56,8 +58,10 @@ export default function PendingPaymentsWorkspace(){
         if(summaryResult.error){
           console.error('Failed to load pending payment summary',summaryResult.error)
           setSummary(null)
+          setSummaryError(true)
         }else{
           setSummary(summaryResult.data?.[0]||null)
+          setSummaryError(false)
         }
       }catch(loadError){
         console.error('Failed to load pending payment records',loadError)
@@ -113,6 +117,7 @@ export default function PendingPaymentsWorkspace(){
   const urgentTitle = filter==='URGENT' ? 'Urgent pending payment POs' : filter==='ADVANCE' ? 'Advance Pending POs' : filter==='HOLD' ? 'Credit on Hold POs' : 'Urgent and hold follow-up'
 
   return <div className="ppw-shell">
+    {summaryError && <div className="empty-state" role="alert"><strong>Weekly payment comparison is unavailable</strong><span>The summary request did not complete.</span><button type="button" onClick={()=>window.dispatchEvent(new Event('srd:refresh-current-view'))}>Retry</button></div>}
     {summary && <div className="ppw-weekly-movement">
       <div><span>LAST WEEK PENDING</span><strong>{Number(summary.last_week_count||0).toLocaleString()}</strong><small>{money(summary.last_week_value)}</small></div>
       <div><span>THIS WEEK PENDING</span><strong>{Number(summary.current_count||0).toLocaleString()}</strong><small>{money(summary.current_value)}</small></div>
