@@ -2058,10 +2058,9 @@ export default function App() {
       if (targetView === 'home') {
         await loadHomeSummary()
       } else if (targetView === 'prf') {
-        await Promise.all([
-          loadTables(VIEW_TABLES[targetView] || [], force),
-          loadPrfPageFast(),
-        ])
+        // PRF detail is loaded by the filter-aware effect below.
+        // Keep reference updates here without requesting the same PRF RPC twice.
+        await loadTables(VIEW_TABLES[targetView] || [], force)
       } else if (targetView === 'overview') {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
