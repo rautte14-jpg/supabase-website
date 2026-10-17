@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { SOURCE_OPTIONS, detectSource, entityKey, humanSource, mapRows, normalizeSheetRows } from './importers'
 
@@ -661,7 +661,7 @@ function EmptyState({ title = 'No records yet', text = 'Use Update Centre to loa
   )
 }
 
-function DataTable({ rows, columns, onUpdate, noteType, noteMap, limit = 300, className = '' }) {
+function DataTable({ rows, columns, onUpdate, noteType, noteMap, limit = 300, className = '', loading = false, error = false, onRetry }) {
   const cappedTotal = Math.min(rows.length, limit)
   const initialRender = Math.min(cappedTotal, 100)
   const [renderLimit, setRenderLimit] = useState(initialRender)
@@ -671,6 +671,8 @@ function DataTable({ rows, columns, onUpdate, noteType, noteMap, limit = 300, cl
   }, [rows, limit])
 
   const visible = rows.slice(0, renderLimit)
+  if (loading) return <div className="empty-state" role="status"><strong>Loading records…</strong><span>Please wait while the latest records load.</span></div>
+  if (error) return <div className="empty-state" role="alert"><strong>Unable to load records</strong><span>The data request did not complete. Try again.</span>{onRetry && <button type="button" onClick={onRetry}>Retry</button>}</div>
   if (!rows.length) return <EmptyState />
 
   const canShowMore = renderLimit < cappedTotal
@@ -1361,6 +1363,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
+  const [viewLoadError, setViewLoadError] = useState('')
+  const viewLoadRequestId = useRef(0)
   const [data, setData] = useState({
     procurement: [],
     material: [],
@@ -1411,12 +1415,14 @@ export default function App() {
   })
   const [noteState, setNoteState] = useState(null)
   const [vesselSearch, setVesselSearch] = useState('')
+  const vesselSearchRequestId = useRef(0)
   const [vesselFast, setVesselFast] = useState({
     procurement: [],
     material: [],
     transactions: [],
     issues: [],
     loading: false,
+    error: false,
   })
   const [slide, setSlide] = useState(0)
   const [prfStatusFilter, setPrfStatusFilter] = useState('ALL')
@@ -1452,6 +1458,7 @@ export default function App() {
     lineCount: 0,
     mtrCount: 0,
     loading: false,
+    error: false,
   })
   const [mtrControlFilter, setMtrControlFilter] = useState('ALL')
   const [mtrStatusFilter, setMtrStatusFilter] = useState('ALL')
@@ -1469,6 +1476,7 @@ export default function App() {
     rows: [],
     total: 0,
     loading: false,
+    error: false,
   })
   const [prfFastRows, setPrfFastRows] = useState([])
   const [prfFastMeta, setPrfFastMeta] = useState({
@@ -1478,7 +1486,9 @@ export default function App() {
     overallStatusCounts: [],
     selectedStatusCounts: [],
     weekCounts: [],
-    loading: false,
+    loading: true,
+    loaded: false,
+    error: false,
   })
   const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
   const [warehouseReceiptDetail, setWarehouseReceiptDetail] = useState('NONE')
@@ -1513,7 +1523,9 @@ export default function App() {
     overall: null,
     rows: [],
     loadedPeriod: '',
+    error: false,
   })
+  const srIssueRequestId = useRef(0)
   const [mrnFastLoading, setMrnFastLoading] = useState(false)
 
   const canEdit = access && ['admin', 'editor'].includes(lower(access.role))
@@ -1736,7 +1748,7 @@ export default function App() {
   }
 
   async function loadMtrPageFast() {
-    setMtrFast((current) => ({ ...current, loading: true }))
+    setMtrFast((current) => ({ ...current, loading: true, error: false }))
     try {
       const week = mtrWeekFilter === 'ALL' ? null : mtrWeekFilter
       const searchTerm = lower(search).trim()
@@ -1762,24 +1774,29 @@ export default function App() {
         lineCount: Number(detail.lineCount || 0),
         mtrCount: Number(detail.mtrCount || 0),
         loading: false,
+        error: false,
       })
     } catch (error) {
       console.error('Failed to load MTR tracker', error)
-      setMtrFast((current) => ({ ...current, loading: false }))
+      setMtrFast((current) => ({ ...current, loading: false, error: true }))
     }
   }
 
-  async function searchVesselSr(term) {
+  async function searchVesselSr(term, requestedId = null) {
+    const requestId = requestedId ?? ++vesselSearchRequestId.current
     const clean = String(term || '').trim()
     if (clean.length < 2) {
-      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false })
+      if (requestId === vesselSearchRequestId.current) {
+        setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false, error: false })
+      }
       return
     }
 
-    setVesselFast((current) => ({ ...current, loading: true }))
+    setVesselFast((current) => ({ ...current, loading: true, error: false }))
     try {
       const { data: result, error } = await supabase.rpc('search_vessel_sr', { p_term: clean })
       if (error) throw error
+      if (requestId !== vesselSearchRequestId.current) return
       const payload = result || {}
       setVesselFast({
         procurement: Array.isArray(payload.procurement) ? payload.procurement : [],
@@ -1787,10 +1804,12 @@ export default function App() {
         transactions: Array.isArray(payload.transactions) ? payload.transactions : [],
         issues: Array.isArray(payload.issues) ? payload.issues : [],
         loading: false,
+        error: false,
       })
     } catch (error) {
+      if (requestId !== vesselSearchRequestId.current) return
       console.error('Vessel / SR search failed', error)
-      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false })
+      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false, error: true })
     }
   }
 
@@ -1848,7 +1867,9 @@ export default function App() {
   }
 
   async function loadMrnPageFast(period = srIssueWeekFilter) {
+    const requestId = ++srIssueRequestId.current
     setMrnFastLoading(true)
+    setMrnIssueFast((current) => ({ ...current, error: false }))
     try {
       const needsMrnRows = !mrnMaterialRows.length
       const [materialRows, weekResult, overallResult, issueRows] = await Promise.all([
@@ -1866,26 +1887,42 @@ export default function App() {
       if (overallResult.error) throw overallResult.error
 
       if (needsMrnRows) setMrnMaterialRows(materialRows)
-      setMrnIssueFast({
+      setMrnIssueFast((current) => ({
+        ...current,
         weeks: weekResult.data || [],
         overall: overallResult.data?.[0] || null,
-        rows: issueRows,
-        loadedPeriod: period,
-      })
+        ...(requestId === srIssueRequestId.current
+          ? { rows: issueRows, loadedPeriod: period, error: false }
+          : {}),
+      }))
+    } catch (error) {
+      console.error('Failed to load MRN / SR issue data', error)
+      if (requestId === srIssueRequestId.current) {
+        setMrnIssueFast((current) => ({ ...current, error: true }))
+      }
     } finally {
-      setMrnFastLoading(false)
+      if (requestId === srIssueRequestId.current) setMrnFastLoading(false)
     }
   }
 
   async function selectSrIssueWeek(period) {
+    const requestId = ++srIssueRequestId.current
     setSrIssueWeekFilter(period)
     setSrIssueFilter('ALL')
     setMrnFastLoading(true)
+    setMrnIssueFast((current) => ({ ...current, error: false }))
     try {
       const rows = await loadMrnIssueRows(period)
-      setMrnIssueFast((current) => ({ ...current, rows, loadedPeriod: period }))
+      if (requestId === srIssueRequestId.current) {
+        setMrnIssueFast((current) => ({ ...current, rows, loadedPeriod: period, error: false }))
+      }
+    } catch (error) {
+      console.error('Failed to load selected SR issue week', error)
+      if (requestId === srIssueRequestId.current) {
+        setMrnIssueFast((current) => ({ ...current, error: true }))
+      }
     } finally {
-      setMrnFastLoading(false)
+      if (requestId === srIssueRequestId.current) setMrnFastLoading(false)
     }
   }
 
@@ -2046,7 +2083,7 @@ export default function App() {
     status = prfStatusFilter,
     searchTerm = search,
   ) {
-    setPrfFastMeta((current) => ({ ...current, loading: true }))
+    setPrfFastMeta((current) => ({ ...current, loading: true, error: false }))
     try {
       const { data: result, error } = await supabase.rpc('prf_tracker_data', {
         p_week_start: week === 'ALL' ? null : week,
@@ -2066,16 +2103,18 @@ export default function App() {
         selectedStatusCounts: Array.isArray(payload.selectedStatusCounts) ? payload.selectedStatusCounts : [],
         weekCounts: Array.isArray(payload.weekCounts) ? payload.weekCounts : [],
         loading: false,
+        loaded: true,
+        error: false,
       })
       return payload
     } catch (error) {
-      setPrfFastMeta((current) => ({ ...current, loading: false }))
-      throw error
+      console.error('Failed to load PRF Tracker', error)
+      setPrfFastMeta((current) => ({ ...current, loading: false, loaded: true, error: true }))
     }
   }
 
   async function loadStockPageFast(filter = stockAgeFilter, searchTerm = search) {
-    setStockFast((current) => ({ ...current, loading: true }))
+    setStockFast((current) => ({ ...current, loading: true, error: false }))
     try {
       const [summaryResult, detailResult] = await Promise.all([
         supabase.from('stock_ageing_summary').select('*').limit(1),
@@ -2095,16 +2134,19 @@ export default function App() {
         rows: Array.isArray(detail.rows) ? detail.rows : [],
         total: Number(detail.total || 0),
         loading: false,
+        error: false,
       })
     } catch (error) {
       console.error('Failed to load Stock & Ageing', error)
-      setStockFast((current) => ({ ...current, loading: false }))
+      setStockFast((current) => ({ ...current, loading: false, error: true }))
     }
   }
 
   async function loadForView(targetView = view, force = false) {
     if (!session || !access) return
+    const requestId = ++viewLoadRequestId.current
     setLoading(true)
+    setViewLoadError('')
     try {
       if (targetView === 'home') {
         await loadHomeSummary()
@@ -2123,7 +2165,7 @@ export default function App() {
           loadMtrPageFast(),
         ])
       } else if (targetView === 'vessel') {
-        if (vesselSearch.trim().length >= 2) await searchVesselSr(vesselSearch)
+        // The debounced vessel search effect below owns this request.
       } else if (targetView === 'stock') {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
@@ -2149,23 +2191,15 @@ export default function App() {
       }
     } catch (error) {
       console.error('Failed to load portal data', error)
+      if (requestId === viewLoadRequestId.current) {
+        setViewLoadError('Some data could not be loaded. Please retry the module.')
+      }
     } finally {
-      setLoading(false)
+      if (requestId === viewLoadRequestId.current) setLoading(false)
     }
   }
 
   async function refreshCurrentView() {
-    if (view === 'home') {
-      setLoading(true)
-      try {
-        await loadHomeSummary()
-      } catch (error) {
-        console.error('Failed to refresh home summary', error)
-      } finally {
-        setLoading(false)
-      }
-      return
-    }
     await loadForView(view, true)
   }
 
@@ -2208,13 +2242,18 @@ export default function App() {
 
   useEffect(() => {
     if (view !== 'vessel') return
+    const requestId = ++vesselSearchRequestId.current
     const term = vesselSearch.trim()
     if (term.length < 2) {
-      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false })
+      setVesselFast({ procurement: [], material: [], transactions: [], issues: [], loading: false, error: false })
       return
     }
-    const timer = window.setTimeout(() => searchVesselSr(term), 350)
-    return () => window.clearTimeout(timer)
+    setVesselFast((current) => ({ ...current, loading: true, error: false }))
+    const timer = window.setTimeout(() => searchVesselSr(term, requestId), 350)
+    return () => {
+      window.clearTimeout(timer)
+      if (vesselSearchRequestId.current === requestId) vesselSearchRequestId.current += 1
+    }
   }, [view, vesselSearch])
 
 
@@ -5417,6 +5456,12 @@ export default function App() {
         )}
 
         <section className="content !bg-[#F8FAFC]">
+          {viewLoadError && (
+            <div className="notice" role="alert">
+              <span>{viewLoadError}</span>
+              <button type="button" className="secondary" onClick={refreshCurrentView}>Retry</button>
+            </div>
+          )}
           {view === 'home' && (
             <section className="home-dashboard-shell">
               <div className="home-dashboard-head">
@@ -6144,7 +6189,7 @@ export default function App() {
           {view === 'prf' && (
             <>
               <PageHeader title="PRF Tracker" subtitle="PRF / IPF requests and their movement into PR, MTR and PO." />
-              <Suspense fallback={null}>
+              <Suspense fallback={<div className="empty-state" role="status"><strong>Loading PRF sections…</strong><span>Preparing the tracker controls.</span></div>}>
                 <PrfWorkspace
                   statusCounts={prfStatusCounts}
                   selectedStatus={prfStatusFilter}
@@ -6167,7 +6212,7 @@ export default function App() {
                     onClick={() => selectPrfWeek('ALL')}
                   >
                     <span className="!text-[10px] !font-semibold !uppercase !tracking-wider !text-blue-600">ALL PRFs</span>
-                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{fmt(prfFastMeta.overallTotal)}</strong>
+                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{prfFastMeta.error ? 'Unavailable' : prfFastMeta.loaded && !prfFastMeta.loading ? fmt(prfFastMeta.overallTotal) : 'Loading…'}</strong>
                   </button>
 
                   {prfWeekCounts.map((week) => (
@@ -6202,8 +6247,8 @@ export default function App() {
                     </h3>
                   </div>
                   <span>
-                    {fmt(prfFastMeta.selectedTotal)}
-                    {prfWeekFilter === 'ALL' ? ' total PRFs' : ' PRFs in selected week'}
+                    {prfFastMeta.error ? 'Unavailable' : prfFastMeta.loaded && !prfFastMeta.loading ? fmt(prfFastMeta.selectedTotal) : 'Loading…'}
+                    {prfFastMeta.loaded && !prfFastMeta.loading ? (prfWeekFilter === 'ALL' ? ' total PRFs' : ' PRFs in selected week') : ''}
                   </span>
                 </div>
 
@@ -6213,7 +6258,7 @@ export default function App() {
                     onClick={() => setPrfStatusFilter('ALL')}
                   >
                     <span className="!text-[10px] !font-semibold !uppercase !tracking-wider !text-blue-600">{prfWeekFilter === 'ALL' ? 'ALL PRFs' : 'ALL IN WEEK'}</span>
-                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{fmt(prfFastMeta.selectedTotal)}</strong>
+                    <strong className="!text-xl !font-semibold !tracking-tight !text-blue-700">{prfFastMeta.loaded && !prfFastMeta.loading ? fmt(prfFastMeta.selectedTotal) : 'Loading…'}</strong>
                   </button>
 
                   {prfStatusCounts.map(([status, count]) => (
@@ -6237,10 +6282,13 @@ export default function App() {
               </section>
               <div id="prf-table-base">
               <div className="prpo-visible-count">
-                <strong>{prfFastMeta.loading ? 'Loading…' : fmt(prfRows.length) + ' shown'}</strong>
-                <span>{fmt(prfFastMeta.filteredTotal)} matching PRF{prfFastMeta.filteredTotal === 1 ? '' : 's'}</span>
+                <strong>{prfFastMeta.error ? 'Unavailable' : !prfFastMeta.loaded || prfFastMeta.loading ? 'Loading…' : fmt(prfRows.length) + ' shown'}</strong>
+                <span>{prfFastMeta.error ? 'Unable to load PRF matches' : !prfFastMeta.loaded || prfFastMeta.loading ? 'Loading PRF matches…' : fmt(prfFastMeta.filteredTotal) + ' matching PRF' + (prfFastMeta.filteredTotal === 1 ? '' : 's')}</span>
               </div>
               <DataTable
+                loading={!prfFastMeta.loaded || prfFastMeta.loading}
+                error={prfFastMeta.error}
+                onRetry={() => loadPrfPageFast(prfWeekFilter, prfStatusFilter, search)}
                 className="prf-data-table !rounded-xl !border !border-slate-200 !bg-white !shadow-sm [&_thead]:!bg-slate-50 [&_th]:!bg-slate-50 [&_th]:!px-3 [&_th]:!py-3 [&_th]:!text-xs [&_th]:!font-semibold [&_th]:!uppercase [&_th]:!tracking-wide [&_th]:!text-slate-500 [&_tbody_tr]:!border-b [&_tbody_tr]:!border-slate-100 [&_td]:!px-3 [&_td]:!py-3 [&_td]:!text-slate-700 [&_.mini-button]:!rounded-md [&_.mini-button]:!border [&_.mini-button]:!border-slate-200 [&_.mini-button]:!bg-slate-50 [&_.mini-button]:!px-3 [&_.mini-button]:!py-1 [&_.mini-button]:!text-xs [&_.mini-button]:!font-medium [&_.mini-button]:!text-slate-600 [&_.mini-button]:!transition-colors hover:[&_.mini-button]:!border-blue-200 hover:[&_.mini-button]:!bg-blue-50 hover:[&_.mini-button]:!text-blue-600"
                 rows={prfRows}
                 limit={300}
@@ -6335,7 +6383,7 @@ export default function App() {
                     <span>{erpPrHeaders.length ? 'Live Simplix headers' : fmt(prSubmissionCounts.lines) + ' item line' + (prSubmissionCounts.lines === 1 ? '' : 's')}</span>
                   </div>
                 </div>
-                <DataTable rows={prSubmissionRows} columns={prSubmissionColumns} limit={250} />
+                <DataTable rows={prSubmissionRows} columns={prSubmissionColumns} limit={250} loading={loading} />
                 <div id="prpo-monthly-host" className="pr-month-chart-host" />
               </section>
 
@@ -6408,6 +6456,7 @@ export default function App() {
                     </div>
                     <DataTable
                       rows={pendingPaymentRows}
+                      loading={loading}
                       columns={[
                         { key: 'po_no', label: 'PO Number', render: (v) => displayValue(v, true) },
                         { key: 'pr_no', label: 'PR No.', render: (v) => displayValue(v, true) },
@@ -6498,7 +6547,7 @@ export default function App() {
                     <span>{fmt(new Set(prPoReceiptRows.map((r) => r.pr_no).filter(Boolean)).size)} PRs</span>
                   </div>
                 </div>
-                <DataTable rows={prPoReceiptRows} columns={receiptItemColumns} limit={150} />
+                <DataTable rows={prPoReceiptRows} columns={receiptItemColumns} limit={150} loading={loading} />
               </section>
 
             </>
@@ -6658,8 +6707,17 @@ export default function App() {
                 <span>{fmt(mtrRows.length)} of {fmt(mtrVisibleCounts.lines)} item line{mtrVisibleCounts.lines === 1 ? '' : 's'} shown</span>
               </div>
 
-              {mtrFast.loading && <div className="notice">Loading current MTR data…</div>}
-              <DataTable rows={mtrRows} columns={mtrColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={300} />
+              <DataTable
+                rows={mtrRows}
+                columns={mtrColumns}
+                noteType="material"
+                noteMap={noteMap}
+                onUpdate={canEdit ? openNote : undefined}
+                limit={300}
+                loading={mtrFast.loading}
+                error={mtrFast.error}
+                onRetry={loadMtrPageFast}
+              />
             </>
           )}
 
@@ -6770,6 +6828,7 @@ export default function App() {
                       </div>
                       <DataTable
                         rows={weekFilteredMrnRows.filter((row) => mrnStatusLabel(row) === mrnStatusFilter)}
+                        loading={loading || mrnFastLoading}
                         columns={mrnQuickColumns}
                         limit={150}
                       />
@@ -6809,6 +6868,7 @@ export default function App() {
                       </div>
                       <DataTable
                         rows={weekFilteredMrnRows.filter((row) => (String(rawField(row, ['WORKSHOP NAME']) || row.workshop || '').trim() || 'BLANK') === mrnWorkshopFilter)}
+                        loading={loading || mrnFastLoading}
                         columns={mrnQuickColumns}
                         limit={150}
                       />
@@ -6897,7 +6957,7 @@ export default function App() {
                       </div>
                       <strong>{mrnFastLoading ? 'Loading…' : fmt(srIssueRows.length) + (srIssueSummary.total > srIssueRows.length ? ' of ' + fmt(srIssueSummary.total) + ' lines shown' : ' issue lines')}</strong>
                     </div>
-                    <DataTable rows={srIssueRows} columns={srIssueColumns} limit={250} />
+                    <DataTable rows={srIssueRows} columns={srIssueColumns} limit={250} loading={mrnFastLoading || mrnIssueFast.loadedPeriod !== srIssueWeekFilter} error={mrnIssueFast.error} onRetry={() => selectSrIssueWeek(srIssueWeekFilter)} />
                   </>
                 )}
               </section>
@@ -6930,7 +6990,7 @@ export default function App() {
                 <span>{fmt(mrnVisibleCounts.mrnNumbers)} distinct MRN number{mrnVisibleCounts.mrnNumbers === 1 ? '' : 's'} shown</span>
               </div>
 
-              <DataTable rows={mrnRows} columns={mrnColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} />
+              <DataTable rows={mrnRows} columns={mrnColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} loading={loading} />
             </>
           )}
 
@@ -6976,15 +7036,15 @@ export default function App() {
                 <div className="joined-grid">
                   <section className="panel wide">
                     <div className="panel-head"><h3>Procurement</h3><span>{vesselProc.length} records</span></div>
-                    <DataTable rows={vesselProc} columns={procurementColumns.slice(0, 10)} noteType="procurement" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={100} />
+                    <DataTable rows={vesselProc} columns={procurementColumns.slice(0, 10)} loading={vesselFast.loading} error={vesselFast.error} onRetry={() => searchVesselSr(vesselSearch)} noteType="procurement" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={100} />
                   </section>
                   <section className="panel wide">
                     <div className="panel-head"><h3>MTR / MRN</h3><span>{vesselMat.length} records</span></div>
-                    <DataTable rows={vesselMat} columns={materialColumns} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={100} />
+                    <DataTable rows={vesselMat} columns={materialColumns} loading={vesselFast.loading} error={vesselFast.error} onRetry={() => searchVesselSr(vesselSearch)} noteType="material" noteMap={noteMap} onUpdate={canEdit ? openNote : undefined} limit={100} />
                   </section>
                   <section className="panel wide">
                     <div className="panel-head"><h3>ERP Issues / Receipts</h3><span>{vesselTx.length} records</span></div>
-                    <DataTable rows={vesselTx} limit={100} columns={[
+                    <DataTable rows={vesselTx} limit={100} loading={vesselFast.loading} error={vesselFast.error} onRetry={() => searchVesselSr(vesselSearch)} columns={[
                       { key: 'physical_date', label: 'Date' },
                       { key: 'transaction_type', label: 'Type', render: (v) => <StatusPill value={v} /> },
                       { key: 'item_code', label: 'Item' },
@@ -7067,6 +7127,9 @@ export default function App() {
 
               <DataTable
                 rows={stockRows}
+                loading={stockFast.loading}
+                error={stockFast.error}
+                onRetry={() => loadStockPageFast(stockAgeFilter, search)}
                 noteType="stock"
                 noteMap={noteMap}
                 onUpdate={canEdit ? openNote : undefined}
