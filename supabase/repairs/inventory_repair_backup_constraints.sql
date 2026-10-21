@@ -1,0 +1,2 @@
+alter table warehouse_repair_audit.stock_before_numeric_repair_20261021 add primary key(item_code);
+alter table warehouse_repair_audit.stock_before_numeric_repair_20261021 enable row level security;

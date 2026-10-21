@@ -1,3 +1,4 @@
+import { requestedQty, receivedQty, receiptTone, summarizeReceiptLines } from './lib/receipts.js'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabase'
 
@@ -23,28 +24,6 @@ function rawField(row, names) {
   return ''
 }
 
-function numeric(value) {
-  if (value === null || value === undefined || clean(value) === '') return null
-  const n = Number(String(value).replace(/,/g, '').replace(/[^0-9.-]/g, ''))
-  return Number.isFinite(n) ? n : null
-}
-
-function requestedQty(row) {
-  const direct = numeric(row?.qty_requested)
-  if (direct !== null) return Math.max(0, direct)
-  return Math.max(0, numeric(rawField(row, ['Requested Qty', 'Request Qty', 'Quantity', 'PR Qty'])) || 0)
-}
-
-function receivedQty(row) {
-  const direct = numeric(row?.qty_received)
-  if (direct !== null) return Math.max(0, direct)
-  const raw = numeric(rawField(row, ['Received Qty', 'Received Quantity', 'Receipt Qty', 'PO Received Qty', 'Delivered Qty']))
-  if (raw !== null) return Math.max(0, raw)
-  const text = lower([row?.status, row?.delivery_status, rawField(row, ['PO ERP Status', 'Receipt Status'])].filter(Boolean).join(' '))
-  if (/fully\s*receiv|completely\s*receiv|received|delivered/.test(text) && !/not\s*received|pending|partial|part\s*receiv/.test(text)) return requestedQty(row)
-  return 0
-}
-
 function poNumber(row) {
   return clean(row?.po_no || rawField(row, ['PO Number', 'PO No', 'Purchase Order']))
 }
@@ -58,11 +37,8 @@ function lineStatus(row) {
 }
 
 function tone(status) {
-  const s = lower(status)
-  if (/approved|complete|completed|received|closed|delivered|matched/.test(s)) return 'good'
-  if (/reject|cancel|fail|needs review/.test(s)) return 'bad'
-  if (/pending|review|progress|processing|waiting|part/.test(s)) return 'pending'
-  return 'neutral'
+  const result = receiptTone(status)
+  return ['waiting', 'violet'].includes(result) ? 'pending' : result
 }
 
 function statusColor(status) {
@@ -169,6 +145,7 @@ export default function PrDetailOverlayComplete() {
   const [prItems, setPrItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
 
   useEffect(() => {
     const handler = (event) => {
@@ -200,11 +177,12 @@ export default function PrDetailOverlayComplete() {
     ]).then(([h, d, items]) => {
       if (!active) return
       setLoading(false)
-      if (h.error) { setError(h.error.message || 'Could not load PR.'); return }
+      const failure = h.error || d.error || items.error
+      if (failure) { setError(failure.message || 'Could not load PR details.'); return }
       setHeader(h.data || null); setDetails(d.data || null); setPrItems(items.error ? [] : (items.data || []))
     }).catch((e) => { if (active) { setLoading(false); setError(e?.message || 'Could not load PR.') } })
     return () => { active = false }
-  }, [prNo])
+  }, [prNo, retry])
 
   useEffect(() => {
     if (!prNo) return
@@ -224,9 +202,7 @@ export default function PrDetailOverlayComplete() {
     return { ...row, _requested: requested, _received: received, _balance: Math.max(0, requested - received), _lineStatus: lineStatus(row), _po: poNumber(row) }
   }), [prItems])
   const itemSummary = useMemo(() => {
-    const requested = itemRows.reduce((s, r) => s + r._requested, 0)
-    const received = itemRows.reduce((s, r) => s + r._received, 0)
-    const balance = Math.max(0, requested - received)
+    const { requested, received, balance } = summarizeReceiptLines(prItems)
     const poNos = new Set(itemRows.map((r) => r._po).filter(Boolean))
     const simplixPo = Number(details?.po_count || 0) > 0
     const simplixReceipt = Number(details?.receipt_count || 0) > 0
@@ -235,9 +211,9 @@ export default function PrDetailOverlayComplete() {
     let check = 'Matched'
     if (!itemRows.length) check = 'No ERP item lines'
     else if (simplixPo !== erpPo || simplixReceipt !== erpReceipt) check = 'Needs Review'
-    const receiptStatus = requested > 0 && received >= requested ? 'Fully Received' : received > 0 ? 'Part Received' : 'Not Received'
+    const receiptStatus = !itemRows.length ? 'Unavailable — no ERP lines' : requested > 0 && received >= requested ? 'Fully Received' : received > 0 ? 'Part Received' : 'Not Received'
     return { requested, received, balance, poNos, check, receiptStatus }
-  }, [itemRows, details])
+  }, [itemRows, prItems, details])
 
   if (!prNo) return null
 
@@ -254,15 +230,15 @@ export default function PrDetailOverlayComplete() {
       <div style={{ position: 'relative', maxWidth: 1720, margin: '0 auto', padding: '24px 22px 42px 36px' }}>
         <div style={{ position: 'absolute', left: 16, top: 31, bottom: 50, width: 1, background: '#e5e7eb' }} />
         <span style={{ position: 'absolute', left: 12, top: 31, width: 9, height: 9, borderRadius: 999, background: '#fff', border: '3px solid #57b833', zIndex: 2 }} />
-        {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>Loading PR details…</div> : error ? <div style={{ padding: 18, borderRadius: 12, background: '#fee2e2', color: '#b91c1c' }}>{error}</div> : !header ? <div style={{ padding: 18, border: '1px dashed #cbd5e1', borderRadius: 12, color: '#64748b' }}>This PR is not available in the Simplix header sync.</div> : <>
+        {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>Loading PR details…</div> : error ? <div style={{ padding: 18, borderRadius: 12, background: '#fee2e2', color: '#b91c1c' }}>{error} <button onClick={() => setRetry(value => value + 1)}>Retry</button></div> : !header ? <div style={{ padding: 18, border: '1px dashed #cbd5e1', borderRadius: 12, color: '#64748b' }}>This PR is not available in the Simplix header sync.</div> : <>
           <TimelineCard details={details} receipts={receipts} />
 
           <SectionCard title="Procurement Snapshot" dot="#0f172a" note="Simplix + uploaded ERP PR Lines">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0,1fr))', gap: 10, padding: '14px 0 16px' }}>
               <Stat label="ITEM LINES" value={itemRows.length.toLocaleString()} />
-              <Stat label="REQUESTED QTY" value={itemSummary.requested.toLocaleString(undefined, { maximumFractionDigits: 3 })} />
-              <Stat label="RECEIVED QTY" value={itemSummary.received.toLocaleString(undefined, { maximumFractionDigits: 3 })} color="#166534" />
-              <Stat label="BALANCE QTY" value={itemSummary.balance.toLocaleString(undefined, { maximumFractionDigits: 3 })} color={itemSummary.balance > 0 ? '#b45309' : '#166534'} />
+              <Stat label="REQUESTED QTY" value={itemRows.length ? itemSummary.requested.toLocaleString(undefined, { maximumFractionDigits: 3 }) : '—'} />
+              <Stat label="RECEIVED QTY" value={itemRows.length ? itemSummary.received.toLocaleString(undefined, { maximumFractionDigits: 3 }) : '—'} color="#166534" />
+              <Stat label="BALANCE QTY" value={itemRows.length ? itemSummary.balance.toLocaleString(undefined, { maximumFractionDigits: 3 }) : '—'} color={itemSummary.balance > 0 ? '#b45309' : '#166534'} />
               <Stat label="RECEIPT POSITION" value={itemSummary.receiptStatus} />
               <Stat label="DATA CHECK" value={itemSummary.check} color={itemSummary.check === 'Needs Review' ? '#b91c1c' : itemSummary.check === 'Matched' ? '#166534' : '#64748b'} />
             </div>

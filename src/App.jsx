@@ -1,3 +1,5 @@
+import { parseNumber } from './lib/numbers.js'
+import { requestedQty, receivedQty } from './lib/receipts.js'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { clearSupabaseReadCache, supabase } from './lib/supabase'
 import { buildPrSubmissionWeeks, maldivesDateIso, submissionDateIso, submissionWeekStart } from './lib/prSubmissionActivity'
@@ -180,15 +182,13 @@ function numericRowField(row, directKey, rawNames = []) {
     ? direct
     : rawField(row, rawNames)
   if (value === null || value === undefined || String(value).trim() === '') return null
-  const parsed = Number(String(value).replace(/,/g, '').replace(/[^0-9.-]/g, ''))
-  return Number.isFinite(parsed) ? parsed : null
+  return parseNumber(value)
 }
 
 function rawNumber(row, names = []) {
   const value = rawField(row, names)
   if (value === null || value === undefined || String(value).trim() === '') return 0
-  const parsed = Number(String(value).replace(/,/g, '').replace(/[^0-9.-]/g, ''))
-  return Number.isFinite(parsed) ? parsed : 0
+  return parseNumber(value) ?? 0
 }
 
 function hasRawField(row, names = []) {
@@ -272,23 +272,6 @@ function receiptState(row) {
   return ''
 }
 
-function requestedQty(row) {
-  return numericRowField(row, 'qty_requested', ['Requested Qty', 'Request Qty', 'Quantity', 'PR Qty']) ?? 0
-}
-
-function receivedQty(row) {
-  const direct = numericRowField(row, 'qty_received', [
-    'Received',
-    'Received Qty',
-    'Received Quantity',
-    'Receipt Qty',
-    'PO Received Qty',
-    'Total Received Qty',
-    'Delivered Qty',
-  ])
-  if (direct !== null) return Math.max(0, direct)
-  return receiptState(row) === 'full' ? Math.max(0, requestedQty(row)) : 0
-}
 
 function prSubmittedDate(row) {
   return dateRowField(row, 'pr_date', [
@@ -879,7 +862,7 @@ function AgeingTrend({ snapshots }) {
   const currentDate = new Date(current.snapshot_date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
   const previousDate = previous
     ? new Date(previous.snapshot_date + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-    : 'Previous week'
+    : 'Previous upload'
 
   const buckets = [
     { key: 'p2', label: 'P2 — 1–3 Years' },
@@ -917,9 +900,9 @@ function AgeingTrend({ snapshots }) {
       <section className="panel ageing-movement-panel">
         <div className="panel-head">
           <div>
-            <span className="eyebrow">WEEK-TO-WEEK AGEING</span>
+            <span className="eyebrow">AGEING UPLOAD COMPARISON</span>
             <h3>Ageing Movement by Bucket</h3>
-            <p>Last week compared with the current ageing report.</p>
+            <p>Previous upload compared with the latest ageing report.</p>
           </div>
           <span>{previous ? previousDate + ' → ' + currentDate : currentDate}</span>
         </div>
@@ -927,8 +910,8 @@ function AgeingTrend({ snapshots }) {
         <div className="ageing-movement-table">
           <div className="ageing-movement-row ageing-movement-head">
             <span>Ageing bucket</span>
-            <span>Last week</span>
-            <span>This week</span>
+            <span>Previous · {previousDate}</span>
+            <span>Latest · {currentDate}</span>
             <span>Change</span>
           </div>
           {rows.map((row) => (
@@ -948,7 +931,7 @@ function AgeingTrend({ snapshots }) {
         <section className="ageing-takeaway">
           <div>
             <span className="eyebrow">KEY TAKEAWAY</span>
-            <h3>What changed this week?</h3>
+            <h3>What changed between uploads?</h3>
           </div>
           <div className="ageing-takeaway-points">
             <p>
@@ -1025,7 +1008,9 @@ function ImportPanel({ onApplied, email }) {
   }
 
   useEffect(() => {
-    if (rows.length) setMapped(mapRows(source, rows))
+    if (!rows.length) return
+    try { setMapped(mapRows(source, rows)) }
+    catch (error) { setMapped([]); setMessage(error.message || 'Invalid upload data.') }
   }, [source])
 
   async function insertBatches(table, records) {
@@ -1096,12 +1081,9 @@ function ImportPanel({ onApplied, email }) {
         if (error) throw error
         await insertBatches('inventory_transactions', mapped)
       } else if (source === 'STOCK') {
-        const { error } = await supabase.from('stock_items').delete().neq('item_code', '__never__')
+        const stockRows = Array.from(new Map(mapped.map(row => [row.item_code, row])).values())
+        const { error } = await supabase.rpc('commit_stock_snapshot', { p_rows: stockRows, p_snapshot: null })
         if (error) throw error
-        for (let i = 0; i < mapped.length; i += 400) {
-          const { error: upsertError } = await supabase.from('stock_items').upsert(mapped.slice(i, i + 400), { onConflict: 'item_code' })
-          if (upsertError) throw upsertError
-        }
       } else if (source === 'AGEING') {
         const ageingByItem = new Map()
         for (const row of mapped) {
@@ -1111,13 +1093,6 @@ function ImportPanel({ onApplied, email }) {
         }
 
         const ageingRows = Array.from(ageingByItem.values())
-
-        for (let i = 0; i < ageingRows.length; i += 400) {
-          const { error } = await supabase
-            .from('stock_items')
-            .upsert(ageingRows.slice(i, i + 400), { onConflict: 'item_code' })
-          if (error) throw error
-        }
 
         const snapshotMetrics = ageingRows.reduce((totals, row) => {
           totals.itemCount += 1
@@ -1144,34 +1119,18 @@ function ImportPanel({ onApplied, email }) {
         })
         snapshotMetrics.over1 = snapshotMetrics.p2 + snapshotMetrics.p3 + snapshotMetrics.p4 + snapshotMetrics.p5
 
-        const snapshotDate = new Date().toISOString().slice(0, 10)
-        const { data: sameDaySnapshots, error: sameDayError } = await supabase
-          .from('weekly_snapshots')
-          .select('id, metrics')
-          .eq('snapshot_date', snapshotDate)
-        if (sameDayError) throw sameDayError
-
-        const existingAgeing = (sameDaySnapshots || []).find((s) => s.metrics?.kind === 'AGEING')
-        const snapshotRecord = {
-          snapshot_date: snapshotDate,
-          label: 'Inventory Ageing — ' + (file?.name || snapshotDate),
-          metrics: snapshotMetrics,
-          priority_cases: [],
-          created_by: email,
-        }
-
-        if (existingAgeing) {
-          const { error: snapshotError } = await supabase
-            .from('weekly_snapshots')
-            .update(snapshotRecord)
-            .eq('id', existingAgeing.id)
-          if (snapshotError) throw snapshotError
-        } else {
-          const { error: snapshotError } = await supabase
-            .from('weekly_snapshots')
-            .insert(snapshotRecord)
-          if (snapshotError) throw snapshotError
-        }
+        const snapshotDate = maldivesDateIso()
+        const { error: snapshotError } = await supabase.rpc('commit_stock_snapshot', {
+          p_rows: ageingRows,
+          p_snapshot: {
+            snapshot_date: snapshotDate,
+            label: 'Inventory Ageing — ' + (file?.name || snapshotDate),
+            metrics: snapshotMetrics,
+            priority_cases: [],
+            created_by: email,
+          },
+        })
+        if (snapshotError) throw snapshotError
       }
 
       const { error: historyError } = await supabase.from('source_updates').insert({
@@ -1498,6 +1457,7 @@ export default function App() {
   const [inventorySlide, setInventorySlide] = useState(0)
   const [inventoryFullscreen, setInventoryFullscreen] = useState(false)
   const [inventoryDetail, setInventoryDetail] = useState(null)
+  const [overviewHeaders, setOverviewHeaders] = useState([])
   const [inventoryFast, setInventoryFast] = useState({
     mtr: null,
     stock: null,
@@ -1601,7 +1561,7 @@ export default function App() {
   }
 
   async function loadHomeSummary() {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = maldivesDateIso()
     const monthStart = today.slice(0, 7) + '-01'
 
     const [
@@ -1617,6 +1577,7 @@ export default function App() {
       totalItemsResult,
       lowStockCountResult,
       outOfStockCountResult,
+      submittedCountResult,
     ] = await Promise.all([
       supabase.from('portal_home_summary').select('*').limit(1),
       supabase
@@ -1624,12 +1585,12 @@ export default function App() {
         .select('po_no,po_date,supplier,status,priority,po_value')
         .order('po_value', { ascending: false }),
       supabase
-        .from('stock_items')
+        .from('stock_items_fast')
         .select('item_code,item_description,on_hand,stock_value')
         .order('stock_value', { ascending: false })
         .limit(6),
       supabase
-        .from('stock_items')
+        .from('stock_items_fast')
         .select('item_code,item_description,on_hand,stock_value')
         .gt('on_hand', 0)
         .order('on_hand', { ascending: false })
@@ -1663,7 +1624,7 @@ export default function App() {
         .gte('pr_date', monthStart)
         .lte('pr_date', today),
       supabase
-        .from('stock_items')
+        .from('stock_items_fast')
         .select('item_code', { count: 'exact', head: true }),
       supabase
         .from('home_high_consumption_stock')
@@ -1674,16 +1635,17 @@ export default function App() {
         .from('home_high_consumption_stock')
         .select('item_code', { count: 'exact', head: true })
         .lte('on_hand', 0),
+      supabase.from('erp_pr_headers').select('purch_req_id', { count: 'exact', head: true })
+        .gte('created_at', monthStart + 'T00:00:00+05:00')
+        .lt('created_at', today + 'T23:59:59.999999+05:00'),
     ])
 
-    if (summaryResult.error) throw summaryResult.error
+    const failedHome = [summaryResult,paymentsResult,stockValueResult,stockQtyResult,lowStockResult,updatesResult,issuesResult,ageingResult,homePrResult,totalItemsResult,lowStockCountResult,outOfStockCountResult,submittedCountResult].find(result => result.error)
+    if (failedHome) throw failedHome.error
     if (summaryResult.data?.[0]) setHomeSummary(summaryResult.data[0])
 
     const activityUpdates = updatesResult.data || []
     const homePrRows = homePrResult.data || []
-    const submittedPrs = new Set(
-      homePrRows.map((row) => String(row.pr_no || '').trim()).filter(Boolean),
-    )
     const receivedPrs = new Set(
       homePrRows
         .filter((row) => receivedQty(row) > 0)
@@ -1700,7 +1662,7 @@ export default function App() {
       activityUpdates,
       issueCountMonth: issuesResult.count || 0,
       ageing: (ageingResult.data || []).find((row) => row.metrics?.kind === 'AGEING') || null,
-      prsSubmitted: submittedPrs.size,
+      prsSubmitted: submittedCountResult.count || 0,
       prsReceived: receivedPrs.size,
       totalItems: totalItemsResult.count || 0,
       lowStockItems: lowStockCountResult.count || 0,
@@ -1928,7 +1890,7 @@ export default function App() {
   }
 
   async function loadWarehousePresentationFast() {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = maldivesDateIso()
     const monthStart = today.slice(0, 7) + '-01'
     const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult] = await Promise.all([
       supabase
@@ -2163,6 +2125,7 @@ export default function App() {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
           loadOverviewFast(overviewFrom, overviewTo),
+          fetchAllRows('erp_pr_headers', 'purch_req_id', true).then(setOverviewHeaders),
         ])
       } else if (targetView === 'mtr') {
         await Promise.all([
@@ -5157,14 +5120,13 @@ export default function App() {
     const rangeEnd = overviewFrom <= overviewTo ? overviewTo : overviewFrom
     const inRange = (date) => Boolean(date && date >= rangeStart && date <= rangeEnd)
 
-    const submittedPrNos = new Set()
+    const submittedPrNos = new Set(overviewHeaders.filter(row => inRange(submissionDateIso(row))).map(row => row.purch_req_id))
     const receivedPrNos = new Set()
     let receivedQtyTotal = 0
     let receivedValueTotal = 0
 
     allPrLines.forEach((row) => {
       const prNo = String(row.pr_no || '').trim()
-      if (prNo && inRange(prSubmittedDate(row))) submittedPrNos.add(prNo)
 
       const rDate = receivedDate(row)
       const rQty = receivedQty(row)
@@ -5214,6 +5176,7 @@ export default function App() {
     overviewTo,
     allPrLines,
     overviewFast,
+    overviewHeaders,
     pendingPaymentReconciliation.rows,
     ageingSnapshots,
   ])
@@ -5734,10 +5697,10 @@ export default function App() {
                   {homeDashboard.ageing?.metrics ? (
                     <div className="home-ageing-profile">
                       {[
-                        ['1–2 Years', Number(homeDashboard.ageing.metrics.p2 || 0)],
-                        ['2–3 Years', Number(homeDashboard.ageing.metrics.p3 || 0)],
-                        ['3–4 Years', Number(homeDashboard.ageing.metrics.p4 || 0)],
-                        ['4+ Years', Number(homeDashboard.ageing.metrics.p5 || 0)],
+                        ['1–3 Years', Number(homeDashboard.ageing.metrics.p2 || 0)],
+                        ['3–4 Years', Number(homeDashboard.ageing.metrics.p3 || 0)],
+                        ['4–5 Years', Number(homeDashboard.ageing.metrics.p4 || 0)],
+                        ['Over 5 Years', Number(homeDashboard.ageing.metrics.p5 || 0)],
                       ].map(([label, value], index, rows) => {
                         const max = Math.max(...rows.map((item) => Number(item[1] || 0)), 1)
                         return (
