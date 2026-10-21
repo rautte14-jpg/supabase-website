@@ -1,3 +1,4 @@
+import { ATOMIC_FILE_SOURCES, uploadSourceFile } from './lib/fileImports.js'
 import { parseNumber } from './lib/numbers.js'
 import { requestedQty, receivedQty } from './lib/receipts.js'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
@@ -1013,14 +1014,6 @@ function ImportPanel({ onApplied, email }) {
     catch (error) { setMapped([]); setMessage(error.message || 'Invalid upload data.') }
   }, [source])
 
-  async function insertBatches(table, records) {
-    for (let i = 0; i < records.length; i += 400) {
-      const batch = records.slice(i, i + 400)
-      const { error } = await supabase.from(table).insert(batch)
-      if (error) throw error
-    }
-  }
-
   async function applyFile() {
     if (!mapped.length) {
       setMessage('No usable rows were mapped from this file.')
@@ -1029,18 +1022,14 @@ function ImportPanel({ onApplied, email }) {
     setBusy(true)
     setMessage('Applying update…')
     try {
-      if (['PRF', 'PR', 'PO'].includes(source)) {
-        const { error } = await supabase.from('procurement_records').delete().eq('source_type', source)
-        if (error) throw error
-        await insertBatches('procurement_records', mapped)
-      } else if (source === 'PENDING_PAYMENTS') {
-        const { error } = await supabase.from('pending_payment_records').delete().neq('po_no', '__never__')
-        if (error) throw error
-        await insertBatches('pending_payment_records', mapped)
-      } else if (source === 'MTR' || source === 'MRN') {
-        const { error } = await supabase.from('material_records').delete().eq('document_type', source)
-        if (error) throw error
-        await insertBatches('material_records', mapped)
+      if (ATOMIC_FILE_SOURCES.has(source)) {
+        await uploadSourceFile(supabase, {
+          source,
+          records: mapped,
+          originalRows: rows.length,
+          fileName: file?.name || '',
+          sourceDate: file?.lastModified ? new Date(file.lastModified).toISOString().slice(0, 10) : null,
+        }, setMessage)
       } else if (source === 'SR_ISSUES') {
         // Large SR issue exports are staged first, then swapped in one atomic
         // server-side transaction. This keeps the old live dataset intact until
@@ -1076,10 +1065,6 @@ function ImportPanel({ onApplied, email }) {
         if (Number(importedCount || 0) !== mapped.length) {
           throw new Error('SR issue import count mismatch. Expected ' + mapped.length + ', finalized ' + Number(importedCount || 0) + '.')
         }
-      } else if (source === 'TRANSACTIONS') {
-        const { error } = await supabase.from('inventory_transactions').delete().neq('id', 0)
-        if (error) throw error
-        await insertBatches('inventory_transactions', mapped)
       } else if (source === 'STOCK') {
         const stockRows = Array.from(new Map(mapped.map(row => [row.item_code, row])).values())
         const { error } = await supabase.rpc('commit_stock_snapshot', { p_rows: stockRows, p_snapshot: null })
@@ -1133,21 +1118,24 @@ function ImportPanel({ onApplied, email }) {
         if (snapshotError) throw snapshotError
       }
 
-      const { error: historyError } = await supabase.from('source_updates').insert({
-        source_type: source,
-        file_name: file?.name || '',
-        source_date: file?.lastModified ? new Date(file.lastModified).toISOString().slice(0, 10) : null,
-        row_count: rows.length,
-        new_count: mapped.length,
-        changed_count: 0,
-        unchanged_count: Math.max(0, rows.length - mapped.length),
-        unmatched_count: Math.max(0, rows.length - mapped.length),
-        imported_by: email,
-      })
-      if (historyError) throw historyError
+      if (!ATOMIC_FILE_SOURCES.has(source)) {
+        const { error: historyError } = await supabase.from('source_updates').insert({
+          source_type: source,
+          file_name: file?.name || '',
+          source_date: file?.lastModified ? new Date(file.lastModified).toISOString().slice(0, 10) : null,
+          row_count: rows.length,
+          new_count: mapped.length,
+          changed_count: 0,
+          unchanged_count: Math.max(0, rows.length - mapped.length),
+          unmatched_count: Math.max(0, rows.length - mapped.length),
+          imported_by: email,
+        })
+        if (historyError) throw historyError
+      }
 
       setMessage('Update applied successfully.')
-      await onApplied()
+      try { await onApplied() }
+      catch { setMessage('Update was saved, but the view could not refresh. Refresh the module to see the latest data.') }
     } catch (error) {
       setMessage(error.message || 'Update failed.')
     } finally {
@@ -1214,15 +1202,15 @@ function ImportPanel({ onApplied, email }) {
 
         <label>
           What are you uploading?
-          <select value={source} onChange={(e) => setSource(e.target.value)}>
+          <select value={source} disabled={busy} onChange={(e) => setSource(e.target.value)}>
             {SOURCE_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
           </select>
         </label>
 
         <label className="file-drop">
           <strong>Choose Excel or CSV file</strong>
-          <span>.xlsx, .xls or .csv</span>
-          <input type="file" accept=".xlsx,.xls,.csv" onChange={chooseFile} />
+          <span>.xlsx, .xls or .csv — complete export for the selected source</span>
+          <input type="file" accept=".xlsx,.xls,.csv" disabled={busy} onChange={chooseFile} />
         </label>
 
         {file && (
