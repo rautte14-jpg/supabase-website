@@ -5697,10 +5697,10 @@ export default function App() {
                   {homeDashboard.ageing?.metrics ? (
                     <div className="home-ageing-profile">
                       {[
-                        ['1–2 Years', Number(homeDashboard.ageing.metrics.p2 || 0)],
-                        ['2–3 Years', Number(homeDashboard.ageing.metrics.p3 || 0)],
-                        ['3–4 Years', Number(homeDashboard.ageing.metrics.p4 || 0)],
-                        ['4+ Years', Number(homeDashboard.ageing.metrics.p5 || 0)],
+                        ['1–3 Years', Number(homeDashboard.ageing.metrics.p2 || 0)],
+                        ['3–4 Years', Number(homeDashboard.ageing.metrics.p3 || 0)],
+                        ['4–5 Years', Number(homeDashboard.ageing.metrics.p4 || 0)],
+                        ['Over 5 Years', Number(homeDashboard.ageing.metrics.p5 || 0)],
                       ].map(([label, value], index, rows) => {
                         const max = Math.max(...rows.map((item) => Number(item[1] || 0)), 1)
                         return (
