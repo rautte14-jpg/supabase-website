@@ -99,7 +99,7 @@ create or replace view public.home_high_consumption_stock with (security_invoker
      LEFT JOIN stock_items_fast s ON ((upper(TRIM(BOTH FROM s.item_code)) = r.item_code_key)))
   WHERE (r.consumption_rank <= 100);
 create or replace view public.inventory_presentation_stock_summary with (security_invoker=true) as
- SELECT ( SELECT COALESCE(sum(stock_items.stock_value), (0)::numeric) AS "coalesce"
+ SELECT ( SELECT COALESCE(sum(stock_items_fast.stock_value), (0)::numeric) AS "coalesce"
            FROM stock_items_fast) AS current_inventory_value,
     ( SELECT COALESCE(sum(abs(inventory_transactions.cost)), (0)::numeric) AS "coalesce"
            FROM inventory_transactions
@@ -599,7 +599,7 @@ AS $function$
         (select count(*)::bigint from issue_period),
         coalesce((select sum(abs(coalesce(quantity,0))) from issue_period),0)::numeric
       from material_period;
-    $function$
+    $function$;
 
 
 
