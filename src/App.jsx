@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { supabase } from './lib/supabase'
+import { clearSupabaseReadCache, supabase } from './lib/supabase'
+import { buildPrSubmissionWeeks, maldivesDateIso, submissionDateIso, submissionWeekStart } from './lib/prSubmissionActivity'
 import { SOURCE_OPTIONS, detectSource, entityKey, humanSource, mapRows, normalizeSheetRows } from './importers'
 
 const PrDetailOverlayComplete = lazy(() => import('./PrDetailOverlayComplete.jsx'))
@@ -1365,6 +1366,9 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [viewLoadError, setViewLoadError] = useState('')
   const viewLoadRequestId = useRef(0)
+  const [prSubmissionYear, setPrSubmissionYear] = useState(() => Number(maldivesDateIso().slice(0, 4)))
+  const [prSubmissionActivity, setPrSubmissionActivity] = useState({ headers: [], loading: true, error: false })
+  const [prSubmissionRefreshKey, setPrSubmissionRefreshKey] = useState(0)
   const [data, setData] = useState({
     procurement: [],
     material: [],
@@ -1376,7 +1380,6 @@ export default function App() {
     sourceUpdates: [],
     snapshots: [],
     pendingPayments: [],
-    erpPrHeaders: [],
   })
   const [loaded, setLoaded] = useState({
     procurement: false,
@@ -1389,7 +1392,6 @@ export default function App() {
     sourceUpdates: false,
     snapshots: false,
     pendingPayments: false,
-    erpPrHeaders: false,
   })
   const [homeSummary, setHomeSummary] = useState({
     prf_count: 0,
@@ -1580,7 +1582,6 @@ export default function App() {
     sourceUpdates: ['source_updates', 'imported_at', false],
     snapshots: ['weekly_snapshots', 'snapshot_date', false],
     pendingPayments: ['pending_payment_records', 'po_date', false],
-    erpPrHeaders: ['erp_pr_headers', 'created_at', false],
   }
 
   const VIEW_TABLES = {
@@ -2144,6 +2145,10 @@ export default function App() {
 
   async function loadForView(targetView = view, force = false) {
     if (!session || !access) return
+    if (targetView === 'prpo' && force) {
+      clearSupabaseReadCache('pr_lifecycle_fast')
+      setPrSubmissionRefreshKey((current) => current + 1)
+    }
     const requestId = ++viewLoadRequestId.current
     setLoading(true)
     setViewLoadError('')
@@ -2578,33 +2583,11 @@ export default function App() {
     [procurementData],
   )
 
-  const erpPrHeaders = data.erpPrHeaders || []
-
-  const prPoWeekCounts = useMemo(() => {
-    const weekSets = new Map()
-    const sourceRows = erpPrHeaders.length ? erpPrHeaders : allPrLines
-
-    sourceRows.forEach((row) => {
-      const date = erpPrHeaders.length
-        ? parseFlexibleDate(row.created_at || row.created_at_raw)
-        : prSubmittedDate(row)
-      const weekStart = weekStartWednesday(date)
-      const prNo = String(erpPrHeaders.length ? row.purch_req_id : row.pr_no || '').trim()
-      if (!weekStart || !prNo) return
-      if (!weekSets.has(weekStart)) weekSets.set(weekStart, new Set())
-      weekSets.get(weekStart).add(prNo)
-    })
-
-    const currentWeek = weekStartWednesday(new Date().toISOString().slice(0, 10))
-    return Array.from({ length: 8 }, (_, index) => {
-      const weekStart = addDaysIso(currentWeek, index * -7)
-      return {
-        weekStart,
-        weekEnd: addDaysIso(weekStart, 6),
-        count: weekSets.get(weekStart)?.size || 0,
-      }
-    })
-  }, [erpPrHeaders, allPrLines])
+  const erpPrHeaders = prSubmissionActivity.headers
+  const prPoWeekCounts = useMemo(
+    () => buildPrSubmissionWeeks(erpPrHeaders, prSubmissionYear),
+    [erpPrHeaders, prSubmissionYear],
+  )
 
   const prPoReceiptWeekCounts = useMemo(() => {
     const weekMap = new Map()
@@ -2645,33 +2628,12 @@ export default function App() {
     () => erpPrHeaders.filter((row) => {
       if (!matches(row)) return false
       if (prPoWeekFilter === 'ALL') return true
-      const submitted = parseFlexibleDate(row.created_at || row.created_at_raw)
-      return weekStartWednesday(submitted) === prPoWeekFilter
+      return submissionWeekStart(submissionDateIso(row)) === prPoWeekFilter
     }),
     [erpPrHeaders, query, prPoWeekFilter],
   )
 
-  const prSubmissionLineRows = useMemo(
-    () => weekFilteredPrLines.filter((row) => matches(row)),
-    [weekFilteredPrLines, query],
-  )
-
-  const legacyPrSubmissionRows = useMemo(() => {
-    const uniquePrs = new Map()
-    prSubmissionLineRows.forEach((row) => {
-      const prNo = String(row.pr_no || '').trim()
-      if (!prNo || uniquePrs.has(prNo)) return
-      uniquePrs.set(prNo, row)
-    })
-    return Array.from(uniquePrs.values())
-  }, [prSubmissionLineRows])
-
-  const prSubmissionRows = erpPrHeaders.length ? erpPrSubmissionRows : legacyPrSubmissionRows
-
-  const prSubmissionCounts = useMemo(() => ({
-    prs: prSubmissionRows.length,
-    lines: erpPrHeaders.length ? null : prSubmissionLineRows.length,
-  }), [prSubmissionRows, erpPrHeaders.length, prSubmissionLineRows])
+  const prSubmissionRows = erpPrSubmissionRows
 
   const prPoAgeing = useMemo(() => {
     const prMap = new Map()
@@ -3553,19 +3515,13 @@ export default function App() {
     { key: 'raw_received_date', label: 'Received Date', render: (_v, r) => displayValue(rawField(r, ['Received Date'])) },
   ]
 
-  const prSubmissionColumns = erpPrHeaders.length
-    ? [
+  const prSubmissionColumns = [
         { key: 'purch_req_id', label: 'PR Number', render: (v) => <span className="font-mono text-[11px] font-semibold text-slate-900">{displayValue(v, true)}</span> },
         { key: 'description', label: 'PR Description', render: (v) => displayValue(v, true) },
         { key: 'created_at_raw', label: 'Submitted Date', render: (v, r) => displayValue(v || r.created_at) },
         { key: 'created_by', label: 'Requested By', render: (v) => displayValue(v) },
         { key: 'site', label: 'Site', render: (v) => displayValue(v) },
         { key: 'status', label: 'ERP Status', render: (v) => <StatusPill value={v} /> },
-      ]
-    : [
-        { key: 'pr_no', label: 'PR Number', render: (v) => displayValue(v, true) },
-        { key: 'raw_pr_name', label: 'PR Description', render: (_v, r) => displayValue(rawField(r, ['PR Name', 'PR Description']), true) },
-        { key: 'pr_date', label: 'Submitted Date', render: (v, r) => v || rawField(r, ['Submitted Date']) || '—' },
       ]
 
   const receiptItemColumns = [
@@ -6331,7 +6287,7 @@ export default function App() {
                     <p>This section uses the latest <b>Simplix PR sync</b>. Selecting a week filters the live PR header records below.</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {erpPrHeaders.length > 0 && <span className="prpo-date-basis live">SIMPLIX SYNC · {fmt(erpPrHeaders.length)} PRs</span>}
+                    {!prSubmissionActivity.loading && !prSubmissionActivity.error && <span className="prpo-date-basis live">SIMPLIX SYNC · {fmt(erpPrHeaders.length)} PRs · {prSubmissionYear}</span>}
                     <span className="prpo-date-basis">DATE BASIS · SUBMITTED DATE</span>
                   </div>
                 </div>
@@ -6340,9 +6296,10 @@ export default function App() {
                   <button
                     className={prPoWeekFilter === 'ALL' ? 'prf-week-card active' : 'prf-week-card'}
                     onClick={() => selectPrPoWeek('ALL')}
+                    disabled={prSubmissionActivity.loading || prSubmissionActivity.error}
                   >
-                    <span>ALL SUBMITTED PRs</span>
-                    <strong>{fmt(erpPrHeaders.length || new Set(allPrLines.map((r) => r.pr_no).filter(Boolean)).size)} PRs</strong>
+                    <span>ALL SUBMITTED PRs ({prSubmissionYear})</span>
+                    <strong>{prSubmissionActivity.error ? 'Unavailable' : prSubmissionActivity.loading ? 'Loading…' : `${fmt(erpPrHeaders.length)} PRs`}</strong>
                   </button>
 
                   {prPoWeekCounts.map((week) => (
@@ -6350,12 +6307,15 @@ export default function App() {
                       key={week.weekStart}
                       className={prPoWeekFilter === week.weekStart ? 'prf-week-card active' : 'prf-week-card'}
                       onClick={() => selectPrPoWeek(week.weekStart)}
+                      disabled={prSubmissionActivity.loading || prSubmissionActivity.error}
                     >
                       <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
-                      <strong>{fmt(week.count)} {week.count === 1 ? 'PR raised' : 'PRs raised'}</strong>
+                      <strong>{prSubmissionActivity.error ? 'Unavailable' : prSubmissionActivity.loading ? 'Loading…' : `${fmt(week.count)} ${week.count === 1 ? 'PR raised' : 'PRs raised'}`}</strong>
                     </button>
                   ))}
                 </div>
+
+                {prSubmissionActivity.error && <div className="notice" role="alert"><span>Unable to load PR submission activity.</span><button type="button" onClick={refreshCurrentView}>Retry</button></div>}
 
                 <div className="prpo-filter-explainer">
                   <span className="prpo-filter-badge">SUBMITTED DATE FILTER</span>
@@ -6379,11 +6339,11 @@ export default function App() {
                     </h4>
                   </div>
                   <div>
-                    <strong>{fmt(prSubmissionCounts.prs)} PR{prSubmissionCounts.prs === 1 ? '' : 's'}</strong>
-                    <span>{erpPrHeaders.length ? 'Live Simplix headers' : fmt(prSubmissionCounts.lines) + ' item line' + (prSubmissionCounts.lines === 1 ? '' : 's')}</span>
+                    <strong>{prSubmissionActivity.error ? 'Unavailable' : prSubmissionActivity.loading ? 'Loading…' : `${fmt(prSubmissionRows.length)} PR${prSubmissionRows.length === 1 ? '' : 's'}`}</strong>
+                    <span>Live Simplix headers</span>
                   </div>
                 </div>
-                <DataTable rows={prSubmissionRows} columns={prSubmissionColumns} limit={250} loading={loading} />
+                <DataTable rows={prSubmissionRows} columns={prSubmissionColumns} limit={250} loading={prSubmissionActivity.loading} error={prSubmissionActivity.error} onRetry={refreshCurrentView} />
                 <div id="prpo-monthly-host" className="pr-month-chart-host" />
               </section>
 
@@ -7403,7 +7363,17 @@ export default function App() {
         {view === 'prpo' && (
           <>
             <PrDetailOverlayComplete />
-            <PrTrackerCompleteV2 />
+            <PrTrackerCompleteV2
+              selectedYear={prSubmissionYear}
+              onYearChange={(year) => {
+                setPrSubmissionYear(year)
+                setPrPoWeekFilter('ALL')
+                setPrSubmissionActivity({ headers: [], loading: true, error: false })
+              }}
+              submissionWeek={prPoWeekFilter}
+              onSubmissionData={setPrSubmissionActivity}
+              refreshKey={prSubmissionRefreshKey}
+            />
             <PrOpenPositionV2 />
             <PrMonthlyChart />
           </>
