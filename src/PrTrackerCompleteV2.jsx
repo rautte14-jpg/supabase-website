@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './lib/supabase'
+import { maldivesDateIso, submissionDateIso, submissionWeekStart } from './lib/prSubmissionActivity'
 
 const clean = (v) => String(v ?? '').trim()
 const lower = (v) => clean(v).toLowerCase()
-const CURRENT_YEAR = new Date().getFullYear()
+const CURRENT_YEAR = Number(maldivesDateIso().slice(0, 4))
 const YEAR_OPTIONS = Array.from({ length: 7 }, (_, i) => CURRENT_YEAR - i)
 const PAGE_SIZE = 200
 
@@ -178,42 +179,6 @@ function formatDate(value) {
   return d ? d.toLocaleString() : clean(value) || '—'
 }
 
-function monthNumber(name) {
-  return { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 }[lower(name).slice(0,3)]
-}
-
-function readWeekFilter(year) {
-  const marker = [...document.querySelectorAll('body *')].find((el) => el.children.length === 0 && lower(el.textContent) === 'submitted date filter')
-  if (!marker?.parentElement) return null
-  const text = clean(marker.parentElement.textContent)
-  if (/all pr submission dates/i.test(text)) return null
-  const m = text.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s*[–—-]\s*(?:(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+)?(\d{1,2})/i)
-  if (!m) return null
-  const sm = monthNumber(m[1]); const sd = Number(m[2]); const em = monthNumber(m[3] || m[1]); const ed = Number(m[4])
-  if (sm === undefined || em === undefined) return null
-  const start = new Date(year, sm, sd, 0, 0, 0)
-  let end = new Date(year, em, ed, 23, 59, 59)
-  if (end < start) end = new Date(year + 1, em, ed, 23, 59, 59)
-  return { start, end }
-}
-
-function updateLabels(year, count) {
-  const formatted = Number(count || 0).toLocaleString()
-  const leaves = [...document.querySelectorAll('body *')].filter((el) => el.children.length === 0)
-  leaves.forEach((el) => {
-    const text = lower(el.textContent)
-    if (text.startsWith('simplix sync') && text.includes('prs')) el.textContent = `SIMPLIX SYNC · ${formatted} PRs · ${year}`
-    if (text.startsWith('all submitted prs')) el.textContent = `All Submitted PRs (${year})`
-  })
-  for (const label of leaves.filter((el) => lower(el.textContent).startsWith('all submitted prs'))) {
-    let box = label.parentElement
-    for (let i = 0; box && i < 8; i += 1, box = box.parentElement) {
-      const number = [...box.querySelectorAll('*')].find((el) => el.children.length === 0 && (/^\d[\d,]*\s*PRs?$/i.test(clean(el.textContent)) || /^\d[\d,]*$/.test(clean(el.textContent))))
-      if (number) { number.textContent = /pr/i.test(number.textContent) ? `${formatted} PRs` : formatted; break }
-    }
-  }
-}
-
 function exportRows(rows, year) {
   const headers = ['PR Number','PR Description','Submitted Date','Requested By','Site','ERP Status','Current Approver','Stage Age','Latest Stage','RFQ','PO Status','Receipt Progress','Data Check']
   const body = rows.map((r) => [r.pr,r.description,r.dateText,r.createdBy,r.site,r.status,r.holder,r.ageText,r.stage,r.rfqCount,r.poStatus,r.receipt,r.check])
@@ -226,19 +191,18 @@ function exportRows(rows, year) {
 
 function Pill({ children, tone = 'neutral' }) { return <span className={`prv2-pill ${tone}`}>{children}</span> }
 
-export default function PrTrackerCompleteV2() {
+export default function PrTrackerCompleteV2({ selectedYear = CURRENT_YEAR, onYearChange, submissionWeek = 'ALL', onSubmissionData, refreshKey = 0 }) {
   const [host, setHost] = useState(null)
-  const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR)
   const [headers, setHeaders] = useState([])
   const [details, setDetails] = useState(new Map())
   const [lines, setLines] = useState(new Map())
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [lifecycleFilter, setLifecycleFilter] = useState('ALL')
   const [query, setQuery] = useState('')
-  const [weekFilter, setWeekFilter] = useState(null)
+  const weekFilter = submissionWeek !== 'ALL'
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
-  const timerRef = useRef(null)
+  const [loadError, setLoadError] = useState(false)
 
   useEffect(() => {
     const el = document.getElementById('prpo-lifecycle-host')
@@ -251,100 +215,107 @@ export default function PrTrackerCompleteV2() {
       const input = document.querySelector('input[placeholder*="Search PRF"]')
       const next = clean(input?.value)
       setQuery((old) => old === next ? old : next)
-      const wf = readWeekFilter(selectedYear)
-      setWeekFilter((old) => {
-        const a = old ? `${old.start.valueOf()}-${old.end.valueOf()}` : ''
-        const b = wf ? `${wf.start.valueOf()}-${wf.end.valueOf()}` : ''
-        return a === b ? old : wf
-      })
     }, 600)
     return () => window.clearInterval(id)
   }, [host, selectedYear])
 
   useEffect(() => {
     let active = true
+    let inFlight = false
     async function load() {
+      if (inFlight) return
+      inFlight = true
       setLoading(true)
-      const start = `${selectedYear}-01-01T00:00:00.000Z`
-      const end = `${selectedYear + 1}-01-01T00:00:00.000Z`
-      const out = []
-      let from = 0
+      setLoadError(false)
+      onSubmissionData?.({ headers: [], loading: true, error: false })
+      try {
+        const start = `${selectedYear}-01-01T00:00:00+05:00`
+        const end = `${selectedYear + 1}-01-01T00:00:00+05:00`
+        const out = []
+        let from = 0
 
-      while (active) {
-        const { data, error } = await supabase
-          .from('pr_lifecycle_fast')
-          .select('purch_req_id,description,created_at,created_at_raw,created_by,site,status,current_approver,current_workflow_status,rfq_count,po_count,receipt_count,detail_synced,line_count,requested_qty,received_qty,erp_po_count,po_status_text')
-          .gte('created_at', start)
-          .lt('created_at', end)
-          .order('created_at', { ascending: false })
-          .range(from, from + 999)
+        while (active) {
+          const { data, error } = await supabase
+            .from('pr_lifecycle_fast')
+            .select('purch_req_id,description,created_at,created_at_raw,created_by,site,status,current_approver,current_workflow_status,rfq_count,po_count,receipt_count,detail_synced,line_count,requested_qty,received_qty,erp_po_count,po_status_text')
+            .gte('created_at', start)
+            .lt('created_at', end)
+            .order('created_at', { ascending: false })
+            .order('purch_req_id', { ascending: true })
+            .range(from, from + 999)
 
-        if (error) {
-          console.warn('Fast PR lifecycle load failed', error.message)
-          break
+          if (error) throw error
+          out.push(...(data || []))
+          if (!data || data.length < 1000) break
+          from += 1000
         }
-        out.push(...(data || []))
-        if (!data || data.length < 1000) break
-        from += 1000
-      }
 
-      if (!active) return
+        if (!active) return
 
-      const headerRows = []
-      const detailMap = new Map()
-      const lineMap = new Map()
+        const headerRows = []
+        const detailMap = new Map()
+        const lineMap = new Map()
 
-      for (const row of out) {
-        const pr = clean(row.purch_req_id).toUpperCase()
-        if (!pr) continue
-        headerRows.push({
-          purch_req_id: row.purch_req_id,
-          description: row.description,
-          created_at: row.created_at,
-          created_at_raw: row.created_at_raw,
-          created_by: row.created_by,
-          site: row.site,
-          status: row.status,
-        })
-        if (row.detail_synced) {
-          detailMap.set(pr, {
+        for (const row of out) {
+          const pr = clean(row.purch_req_id).toUpperCase()
+          if (!pr) continue
+          headerRows.push({
             purch_req_id: row.purch_req_id,
-            current_approver: row.current_approver,
-            current_workflow_status: row.current_workflow_status,
-            rfq_count: row.rfq_count,
-            po_count: row.po_count,
-            receipt_count: row.receipt_count,
-            po_status_text: row.po_status_text,
+            description: row.description,
+            created_at: row.created_at,
+            created_at_raw: row.created_at_raw,
+            created_by: row.created_by,
+            site: row.site,
+            status: row.status,
           })
+          if (row.detail_synced) {
+            detailMap.set(pr, {
+              purch_req_id: row.purch_req_id,
+              current_approver: row.current_approver,
+              current_workflow_status: row.current_workflow_status,
+              rfq_count: row.rfq_count,
+              po_count: row.po_count,
+              receipt_count: row.receipt_count,
+              po_status_text: row.po_status_text,
+            })
+          }
+          if (Number(row.line_count || 0) > 0) {
+            lineMap.set(pr, [{
+              qty_requested: Number(row.requested_qty || 0),
+              qty_received: Number(row.received_qty || 0),
+              po_no: Number(row.erp_po_count || 0) > 0 ? '__AGGREGATED_PO__' : '',
+            }])
+          }
         }
-        if (Number(row.line_count || 0) > 0) {
-          lineMap.set(pr, [{
-            qty_requested: Number(row.requested_qty || 0),
-            qty_received: Number(row.received_qty || 0),
-            po_no: Number(row.erp_po_count || 0) > 0 ? '__AGGREGATED_PO__' : '',
-          }])
-        }
-      }
 
-      if (active) {
-        setHeaders(headerRows)
-        setDetails(detailMap)
-        setLines(lineMap)
+        if (active) {
+          setHeaders(headerRows)
+          setDetails(detailMap)
+          setLines(lineMap)
+          setLoading(false)
+          setPage(1)
+          onSubmissionData?.({ headers: headerRows, loading: false, error: false })
+        }
+      } catch (error) {
+        if (!active) return
+        console.warn('Fast PR lifecycle load failed', error.message)
+        setLoadError(true)
         setLoading(false)
-        setPage(1)
+        onSubmissionData?.({ headers: [], loading: false, error: true })
+      } finally {
+        inFlight = false
       }
     }
 
     load()
-    timerRef.current = window.setInterval(load, 120000)
+    const timer = window.setInterval(load, 120000)
     return () => {
       active = false
-      if (timerRef.current) window.clearInterval(timerRef.current)
+      window.clearInterval(timer)
     }
-  }, [selectedYear])
+  }, [selectedYear, refreshKey, onSubmissionData])
 
-  useEffect(() => { updateLabels(selectedYear, headers.length) }, [selectedYear, headers.length])
-  useEffect(() => { setPage(1) }, [statusFilter, lifecycleFilter, query, weekFilter, selectedYear])
+  useEffect(() => { setPage(1) }, [statusFilter, lifecycleFilter, query, submissionWeek, selectedYear])
 
   const rows = useMemo(() => headers.map((h) => {
     const pr = clean(h.purch_req_id).toUpperCase()
@@ -360,7 +331,7 @@ export default function PrTrackerCompleteV2() {
     if (!(lines.get(pr) || []).length) check = 'No ERP lines'
     else if (simplixPo !== erpPo || simplixReceipt !== erpReceipt) check = 'Needs Review'
     return {
-      pr, description: clean(h.description) || '—', date: parseDate(h.created_at || h.created_at_raw), dateText: formatDate(h.created_at_raw || h.created_at), createdBy: clean(h.created_by) || '—', site: clean(h.site) || '—', status: clean(h.status) || '—', detail,
+      pr, description: clean(h.description) || '—', submissionWeek: submissionWeekStart(submissionDateIso(h)), dateText: formatDate(h.created_at_raw || h.created_at), createdBy: clean(h.created_by) || '—', site: clean(h.site) || '—', status: clean(h.status) || '—', detail,
       holder: currentHolder(detail, stage), age, ageText: age === null ? '—' : age === 0 ? 'Today' : `${age}d`, stage, rfqCount: detail ? Number(detail.rfq_count || 0) : '—', poStatus: detail ? actualPoStatus(detail) : 'Sync pending', receipt: lineSummary.receipt, check,
     }
   }), [headers, details, lines])
@@ -370,28 +341,28 @@ export default function PrTrackerCompleteV2() {
     return rows.filter((r) => {
       if (statusFilter !== 'ALL' && statusGroup(r.status) !== statusFilter) return false
       if (!lifecycleMatches(r.detail, r.status, lifecycleFilter)) return false
-      if (weekFilter && (!r.date || r.date < weekFilter.start || r.date > weekFilter.end)) return false
+      if (weekFilter && r.submissionWeek !== submissionWeek) return false
       if (q && !lower([r.pr,r.description,r.createdBy,r.site,r.status,r.holder,r.stage,r.poStatus,r.receipt].join(' ')).includes(q)) return false
       return true
     })
-  }, [rows, statusFilter, lifecycleFilter, query, weekFilter])
+  }, [rows, statusFilter, lifecycleFilter, query, weekFilter, submissionWeek])
 
   const pages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
   const safePage = Math.min(page, pages)
-  const shown = filteredRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+  const shown = loading || loadError ? [] : filteredRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
   const summary = useMemo(() => ({ total: headers.length, synced: details.size, rfq: [...details.values()].filter((d) => Number(d.rfq_count || 0) > 0).length, po: [...details.values()].filter((d) => Number(d.po_count || 0) > 0).length, received: [...details.values()].filter((d) => Number(d.receipt_count || 0) > 0).length }), [headers, details])
 
   if (!host) return null
   return createPortal(<>
     <div className="prv2-toolbar">
       <div className="prv2-controls">
-        <div className="prv2-row"><span className="prv2-label">YEAR</span><select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))}>{YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}</select>{weekFilter && <span className="prv2-week">Weekly filter active</span>}</div>
+        <div className="prv2-row"><span className="prv2-label">YEAR</span><select value={selectedYear} onChange={(e) => onYearChange?.(Number(e.target.value))}>{YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}</select>{weekFilter && <span className="prv2-week">Weekly filter active</span>}</div>
         <div className="prv2-row"><span className="prv2-label">PR STATUS</span>{[['ALL','All'],['IN_REVIEW','In Review'],['APPROVED','Approved'],['REJECTED','Rejected'],['CANCELLED','Cancelled']].map(([v,t]) => <button key={v} className={statusFilter===v?'active':''} onClick={() => setStatusFilter(v)}>{t}</button>)}</div>
         <div className="prv2-row"><span className="prv2-label">LIFECYCLE</span>{[['ALL','All'],['PR_APPROVAL','PR Approval'],['NO_RFQ','No RFQ Yet'],['HAS_RFQ','RFQ Created'],['NO_PO','No PO Yet'],['HAS_PO','PO Created'],['NO_RECEIPT','No Receipt Yet'],['RECEIVED','Received'],['PENDING_APPROVER','Pending Approver'],['SYNC_PENDING','Sync Pending']].map(([v,t]) => <button key={v} className={lifecycleFilter===v?'active':''} onClick={() => setLifecycleFilter(v)}>{t}</button>)}</div>
       </div>
-      <div className="prv2-right"><div>{loading ? 'Loading · ' : ''}{selectedYear}: {summary.total.toLocaleString()} PRs · {summary.synced.toLocaleString()} synced · {summary.rfq.toLocaleString()} RFQ · {summary.po.toLocaleString()} PO · {summary.received.toLocaleString()} received</div><button className="export" onClick={() => exportRows(filteredRows, selectedYear)}>Export visible CSV</button></div>
+      <div className="prv2-right"><div>{loadError ? 'PR data unavailable' : loading ? 'Loading PR data…' : `${selectedYear}: ${summary.total.toLocaleString()} PRs · ${summary.synced.toLocaleString()} synced · ${summary.rfq.toLocaleString()} RFQ · ${summary.po.toLocaleString()} PO · ${summary.received.toLocaleString()} received`}</div><button className="export" disabled={loading || loadError} onClick={() => exportRows(filteredRows, selectedYear)}>Export visible CSV</button></div>
     </div>
-    <div className="prv2-resultbar"><div><strong>{filteredRows.length.toLocaleString()}</strong> PRs shown{query ? ` · Search: “${query}”` : ''}</div>{pages > 1 && <div className="prv2-pages"><button disabled={safePage<=1} onClick={() => setPage((p)=>Math.max(1,p-1))}>Previous</button><span>Page {safePage} of {pages}</span><button disabled={safePage>=pages} onClick={() => setPage((p)=>Math.min(pages,p+1))}>Next</button></div>}</div>
+    <div className="prv2-resultbar"><div>{loadError ? <strong role="alert">Unable to load PRs. Use Retry above.</strong> : loading ? <strong role="status">Loading PRs…</strong> : <><strong>{filteredRows.length.toLocaleString()}</strong> PRs shown{query ? ` · Search: “${query}”` : ''}</>}</div>{!loading && !loadError && pages > 1 && <div className="prv2-pages"><button disabled={safePage<=1} onClick={() => setPage((p)=>Math.max(1,p-1))}>Previous</button><span>Page {safePage} of {pages}</span><button disabled={safePage>=pages} onClick={() => setPage((p)=>Math.min(pages,p+1))}>Next</button></div>}</div>
     <div className="prv2-tablewrap"><table><thead><tr>{['PR Number','PR Description','Submitted Date','Requested By','Site','ERP Status','Current Approver','Stage Age','Latest Stage','RFQ','PO Status','Receipt Progress','Data Check'].map((h)=><th key={h}>{h}</th>)}</tr></thead><tbody>{shown.map((r)=><tr key={r.pr}>
       <td><strong>{r.pr}</strong></td><td>{r.description}</td><td>{r.dateText}</td><td>{r.createdBy}</td><td>{r.site}</td><td><Pill>{r.status}</Pill></td><td className="holder">{r.holder}</td><td><Pill tone={r.age===null?'neutral':r.age>=30?'bad':r.age>=14?'waiting':r.age>=7?'violet':'good'}>{r.ageText}</Pill></td><td><Pill tone={pillTone(r.stage)}>{r.stage}</Pill></td><td><Pill tone={Number(r.rfqCount)>0?'blue':'neutral'}>{r.rfqCount}</Pill></td><td><Pill tone={pillTone(r.poStatus)}>{r.poStatus}</Pill></td><td><Pill tone={pillTone(r.receipt)}>{r.receipt}</Pill></td><td><Pill tone={r.check==='Needs Review'?'bad':r.check==='Matched'?'good':'neutral'}>{r.check}</Pill></td>
     </tr>)}</tbody></table></div>
