@@ -1,3 +1,4 @@
+import { parseNumber } from './lib/numbers.js'
 const clean = (v) => String(v ?? '').trim()
 
 const meaningful = (v, zeroIsBlank = false) => {
@@ -27,10 +28,12 @@ function lookup(row, names) {
 
 const text = (row, names) => clean(lookup(row, names))
 const number = (row, names) => {
-  const raw = String(lookup(row, names) ?? '').replace(/,/g, '').trim()
-  if (!raw) return null
-  const n = Number(raw)
-  return Number.isFinite(n) ? n : null
+  const raw = lookup(row, names)
+  const parsed = parseNumber(raw)
+  if (clean(raw) && meaningful(raw) && parsed === null) {
+    throw new Error('Invalid numeric value in ' + names[0] + ': ' + clean(raw))
+  }
+  return parsed
 }
 
 const date = (row, names) => {
@@ -226,7 +229,7 @@ export function mapRows(source, rows) {
         supplier: text(r, ['Supplier', 'Vendor', 'Supplier Name']),
         item_code: text(r, ['Item', 'Item Code', 'Item Number', 'Item ID']),
         item_description: text(r, ['Description', 'Item Description', 'Product Name', 'Request Description']),
-        unit: text(r, ['Unit', 'UOM']),
+        unit: text(r, ['Unit', 'UOM', 'Inventory unit']),
         qty_requested: number(r, ['Requested Qty', 'Request Qty', 'Quantity', 'PR Qty']),
         qty_ordered: number(r, ['Ordered Qty', 'PO Qty', 'Order Qty']),
         qty_received: number(r, ['Received', 'Received Qty', 'Receipt Qty']),
@@ -278,7 +281,7 @@ export function mapRows(source, rows) {
       supplier: text(r, ['Supplier', 'Vendor', 'Supplier Name']),
       item_code: text(r, ['Item', 'Item Code', 'Item Number', 'Item ID']),
       item_description: text(r, ['Description', 'Item Description', 'Product Name']),
-      unit: text(r, ['Unit', 'UOM']),
+      unit: text(r, ['Unit', 'UOM', 'Inventory unit']),
       qty_requested: number(r, ['Requested Qty', 'Request Qty', 'Quantity', 'PR Qty']),
       qty_ordered: number(r, ['Ordered Qty', 'PO Qty', 'Order Qty']),
       qty_received: number(r, ['Received', 'Received Qty', 'Received Quantity', 'Receipt Qty', 'PO Received Qty', 'Total Received Qty', 'Delivered Qty']),
@@ -336,7 +339,7 @@ export function mapRows(source, rows) {
       sr_wo: text(r, ['SR/WO', 'SR', 'SR Number', 'WO', 'Service Request', 'Work Order']),
       item_code: text(r, ['Item', 'Item Code', 'Item Number', 'Item number', 'Item ID']),
       item_description: text(r, ['Description', 'Item Description', 'Product Name', 'Item Name', 'Item name']),
-      unit: text(r, ['Unit', 'UOM']),
+      unit: text(r, ['Unit', 'UOM', 'Inventory unit']),
       requested_qty: number(r, ['Requested Qty', 'Requested Quantity', 'Requested quantity', 'Request Qty', 'Quantity']),
       transferred_qty: number(r, [
         'Transferred Qty',
@@ -387,7 +390,7 @@ export function mapRows(source, rows) {
         item_description: text(r, ['Product name', 'Product Name', 'Description']),
         location: text(r, ['Location']),
         quantity: number(r, ['Quantity', 'Qty']),
-        unit: text(r, ['Unit', 'UOM']),
+        unit: text(r, ['Unit', 'UOM', 'Inventory unit']),
         customer_reference: text(r, ['Customer reference', 'Customer Reference']),
         customer_requisition: text(r, ['Customer requisition', 'Customer Requisition']),
         delivery_name: deliveryName,
@@ -420,7 +423,7 @@ export function mapRows(source, rows) {
         item_code: text(r, ['Item number', 'Item Number', 'Product number', 'Product Number', 'Item', 'Item Code', 'Item ID']),
         item_description: text(r, ['Description', 'Item Description', 'Product Name']),
         quantity: number(r, ['Quantity', 'Qty']),
-        unit: text(r, ['Unit', 'UOM']),
+        unit: text(r, ['Unit', 'UOM', 'Inventory unit']),
         cost: number(r, ['Cost amount', 'Cost Amount', 'Cost', 'Value']),
         po_no: referenceLower.includes('purchase order')
           ? referenceNo
@@ -450,7 +453,7 @@ export function mapRows(source, rows) {
       return {
         item_code: text(r, ['Item', 'Item Code', 'Item Number', 'Item ID']),
         item_description: text(r, ['Description', 'Item Description', 'Product Name']),
-        unit: text(r, ['Unit', 'UOM']),
+        unit: text(r, ['Unit', 'UOM', 'Inventory unit']),
         on_hand: onHand ?? 0,
         reserved: reserved ?? 0,
         available: available ?? ((onHand ?? 0) - (reserved ?? 0)),
@@ -498,7 +501,7 @@ export function mapRows(source, rows) {
       return {
         item_code: text(r, ['Item', 'Item Code', 'Item Number', 'Item ID']),
         item_description: text(r, ['Description', 'Item Description', 'Product Name']),
-        unit: text(r, ['Unit', 'UOM']),
+        unit: text(r, ['Unit', 'UOM', 'Inventory unit']),
         on_hand: onHand ?? 0,
         available: onHand ?? 0,
         unit_cost: unitCost ?? 0,

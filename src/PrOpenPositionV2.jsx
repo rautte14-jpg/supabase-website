@@ -1,3 +1,4 @@
+import { requestedQty, receivedQty } from './lib/receipts.js'
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './lib/supabase'
@@ -25,12 +26,6 @@ function statusGroup(status) {
   return 'IN_REVIEW'
 }
 
-function num(value) {
-  if (value === null || value === undefined || clean(value) === '') return 0
-  const n = Number(String(value).replace(/,/g, '').replace(/[^0-9.-]/g, ''))
-  return Number.isFinite(n) ? n : 0
-}
-
 function rawField(row, names) {
   const raw = row?.raw_source
   if (!raw || typeof raw !== 'object') return ''
@@ -43,19 +38,6 @@ function rawField(row, names) {
   return ''
 }
 
-function requestedQty(row) {
-  return Math.max(0, num(row?.qty_requested || rawField(row, ['Quantity','Requested Qty','PR Qty'])))
-}
-
-function receivedQty(row) {
-  const direct = row?.qty_received
-  if (direct !== null && direct !== undefined && clean(direct) !== '') return Math.max(0, num(direct))
-  const raw = rawField(row, ['Received Qty','Received Quantity','Receipt Qty','Delivered Qty'])
-  if (clean(raw)) return Math.max(0, num(raw))
-  const s = lower([row?.status, row?.delivery_status, rawField(row, ['PO ERP Status','Receipt Status'])].filter(Boolean).join(' '))
-  if (/fully\s*receiv|completed|delivered|received/.test(s) && !/not\s*received|partial|part\s*receiv|pending/.test(s)) return requestedQty(row)
-  return 0
-}
 
 function isUrgent(row) {
   return /(urgent|critical|high)/i.test(clean(row?.priority || rawField(row, ['Priority'])))

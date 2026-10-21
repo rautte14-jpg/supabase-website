@@ -1,3 +1,4 @@
+import { receiptTone, receiptStage, summarizeReceiptLines } from './lib/receipts.js'
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from './lib/supabase'
@@ -36,28 +37,6 @@ function rawField(row, names) {
   return ''
 }
 
-function numberValue(value) {
-  if (value === null || value === undefined || clean(value) === '') return null
-  const n = Number(String(value).replace(/,/g, '').replace(/[^0-9.-]/g, ''))
-  return Number.isFinite(n) ? n : null
-}
-
-function requestedQty(row) {
-  const direct = numberValue(row?.qty_requested)
-  if (direct !== null) return Math.max(0, direct)
-  return Math.max(0, numberValue(rawField(row, ['Requested Qty', 'Request Qty', 'Quantity', 'PR Qty'])) || 0)
-}
-
-function receivedQty(row) {
-  const direct = numberValue(row?.qty_received)
-  if (direct !== null) return Math.max(0, direct)
-  const raw = numberValue(rawField(row, ['Received Qty', 'Received Quantity', 'Receipt Qty', 'PO Received Qty', 'Delivered Qty']))
-  if (raw !== null) return Math.max(0, raw)
-  const text = lower([row?.status, row?.delivery_status, rawField(row, ['PO ERP Status', 'Receipt Status'])].filter(Boolean).join(' '))
-  if (/fully\s*receiv|completely\s*receiv|received|delivered/.test(text) && !/not\s*received|pending|partial|part\s*receiv/.test(text)) return requestedQty(row)
-  return 0
-}
-
 function poNumber(row) {
   return clean(row?.po_no || rawField(row, ['PO Number', 'PO No', 'Purchase Order']))
 }
@@ -70,13 +49,13 @@ function statusGroup(status) {
   return 'IN_REVIEW'
 }
 
-function latestStage(detail, status) {
+function latestStage(detail, status, summary) {
   if (!detail) return 'Sync Pending'
-  const receipt = Number(detail.receipt_count || 0)
   const po = Number(detail.po_count || 0)
   const rfq = Number(detail.rfq_count || 0)
   const group = statusGroup(status)
-  if (receipt > 0) return 'Received'
+  const receiving = receiptStage(detail, summary)
+  if (receiving) return receiving
   if (po > 0) return 'PO Stage'
   if (rfq > 0) return 'RFQ Stage'
   if (group === 'REJECTED') return 'Rejected'
@@ -101,7 +80,7 @@ function workflowDates(detail) {
 }
 
 function stageStart(detail, header, stage) {
-  if (stage === 'Received') {
+  if (/Received|Receipt/.test(stage)) {
     const dates = (Array.isArray(detail?.product_receipts) ? detail.product_receipts : []).map((r) => parseDate(r?.createdAt)).filter(Boolean)
     if (dates.length) return new Date(Math.max(...dates.map((d) => d.valueOf())))
   }
@@ -122,7 +101,9 @@ function currentHolder(detail, stage) {
     if (approvers.length) return [...new Set(approvers)].join(', ')
   }
   if (stage === 'PR Approval') return clean(detail.current_approver) || '—'
-  if (['Received', 'Rejected', 'Cancelled'].includes(stage)) return 'Completed'
+  if (['Fully Received', 'Rejected', 'Cancelled'].includes(stage)) return 'Completed'
+  if (stage === 'Part Received') return 'Awaiting remaining receipt'
+  if (stage === 'Receipt Needs Review') return 'Reconcile ERP receipt quantities'
   return clean(detail.current_approver) || '—'
 }
 
@@ -135,8 +116,7 @@ function actualPoStatus(detail) {
 }
 
 function summarizeLines(lines) {
-  const requested = lines.reduce((s, r) => s + requestedQty(r), 0)
-  const received = lines.reduce((s, r) => s + Math.min(requestedQty(r) || Number.MAX_SAFE_INTEGER, receivedQty(r)), 0)
+  const { requested, received } = summarizeReceiptLines(lines)
   const poNos = new Set(lines.map(poNumber).filter(Boolean))
   let receipt = 'No ERP data'
   if (lines.length) {
@@ -165,14 +145,7 @@ function lifecycleMatches(detail, status, filter) {
   return false
 }
 
-function pillTone(text) {
-  if (/needs review|reject|cancel/i.test(text)) return 'bad'
-  if (/fully received|received|matched/i.test(text)) return 'good'
-  if (/part|rfq/i.test(text)) return 'violet'
-  if (/no po|not received|approval|awaiting/i.test(text)) return 'waiting'
-  if (/po stage|created/i.test(text)) return 'blue'
-  return 'neutral'
-}
+const pillTone = receiptTone
 
 function formatDate(value) {
   const d = parseDate(value)
@@ -321,7 +294,7 @@ export default function PrTrackerCompleteV2({ selectedYear = CURRENT_YEAR, onYea
     const pr = clean(h.purch_req_id).toUpperCase()
     const detail = details.get(pr)
     const lineSummary = summarizeLines(lines.get(pr) || [])
-    const stage = latestStage(detail, h.status)
+    const stage = latestStage(detail, h.status, lineSummary)
     const age = daysSince(stageStart(detail, h, stage))
     const simplixPo = Number(detail?.po_count || 0) > 0
     const erpPo = lineSummary.poNos.size > 0
