@@ -179,7 +179,7 @@ export const SOURCE_OPTIONS = [
   ['MTR', 'MTR Register'],
   ['MRN', 'MRN / Material Request Register'],
   ['SR_ISSUES', 'SR Issues / Issued Items'],
-  ['TRANSACTIONS', 'ERP Receipts & Issues'],
+  ['TRANSACTIONS', 'Inventory Transactions (ERP Receipts & Issues)'],
   ['STOCK', 'On-hand Stock'],
   ['AGEING', 'Inventory Ageing'],
 ]
