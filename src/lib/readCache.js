@@ -1,0 +1,166 @@
+// Shared read-through cache for PostgREST GETs. This is intentionally short lived
+// and is invalidated immediately by the realtime performance layer whenever the
+// underlying table changes. It lets background warm-up requests be reused by the
+// normal App data loader instead of downloading the same large table twice.
+const inFlightGets = new Map()
+const responseCache = new Map()
+let cacheGeneration = 0
+const CACHE_TTL_MS = 120000
+const READ_ONLY_RPC_NAMES = new Set([
+  'overview_material_issue_summary',
+  'search_vessel_sr',
+  'mtr_tracker_summary',
+  'mtr_tracker_details',
+  'stock_ageing_details',
+  'prf_tracker_data',
+])
+
+function requestHeaders(input, init) {
+  const headers = new Headers(input instanceof Request ? input.headers : undefined)
+  if (init?.headers) new Headers(init.headers).forEach((value, key) => headers.set(key, value))
+  return headers
+}
+
+function requestKey(input, init = {}) {
+  const url = input instanceof Request ? input.url : String(input)
+  const headers = requestHeaders(input, init)
+  return [
+    url,
+    headers.get('authorization') || '',
+    headers.get('apikey') || '',
+    headers.get('range') || '',
+    headers.get('prefer') || '',
+    headers.get('accept-profile') || '',
+    typeof init.body === 'string' ? init.body : '',
+  ].join('|')
+}
+
+function cacheableUrl(url) {
+  return url.includes('/rest/v1/')
+}
+
+function responseFromCache(entry) {
+  return new Response(entry.body.slice(0), {
+    status: entry.status,
+    statusText: entry.statusText,
+    headers: new Headers(entry.headers),
+  })
+}
+
+export function clearSupabaseReadCache(table = '') {
+  cacheGeneration += 1
+  const aliases = {
+    procurement_records: ['portal_home_summary', 'current_pending_payment_records', 'pr_lifecycle_fast', 'procurement_pr_fast', 'inventory_procurement_summary', 'pending_payment_reconciliation_summary'],
+    pending_payment_records: ['current_pending_payment_records', 'pending_payment_reconciliation_summary', 'inventory_procurement_summary'],
+    erp_pr_headers: ['pr_lifecycle_fast', 'pr_monthly_summary'],
+    erp_pr_details: ['pr_lifecycle_fast'],
+    sr_issue_records: [
+      'sr_issue_records_fast',
+      'warehouse_issue_enriched_fast',
+      'warehouse_issue_weekly_summary',
+      'warehouse_issue_month_summary',
+      'sr_issue_overall_summary',
+    ],
+    material_records: [
+      'portal_home_summary',
+      'material_records_fast',
+      'inventory_presentation_mtr_summary',
+      'warehouse_mrn_weekly_summary',
+      'warehouse_mrn_month_summary',
+    ],
+    stock_items: ['portal_home_summary', 'stock_items_fast', 'stock_ageing_fast', 'stock_ageing_summary', 'inventory_presentation_stock_summary', 'home_high_consumption_stock'],
+    inventory_transactions: [
+      'inventory_transactions_fast',
+      'inventory_presentation_stock_summary',
+      'home_high_consumption_stock',
+      'warehouse_issue_enriched_fast',
+      'warehouse_issue_weekly_summary',
+      'warehouse_issue_month_summary',
+    ],
+  }
+  const rpcAliases = {
+    procurement_records: ['overview_material_issue_summary', 'search_vessel_sr', 'prf_tracker_data'],
+    material_records: ['overview_material_issue_summary', 'search_vessel_sr', 'mtr_tracker_summary', 'mtr_tracker_details'],
+    stock_items: ['stock_ageing_details'],
+    sr_issue_records: ['overview_material_issue_summary', 'search_vessel_sr'],
+    inventory_transactions: ['search_vessel_sr'],
+  }
+  const tables = table ? [table, ...(aliases[table] || [])] : []
+  const matchesInvalidation = (key) => {
+    if (!table) return true
+    const tableHit = tables.some((name) =>
+      key.includes(`/rest/v1/${encodeURIComponent(name)}?`) ||
+      key.includes(`/rest/v1/${name}?`)
+    )
+    const rpcHit = (rpcAliases[table] || []).some((name) =>
+      key.includes(`/rest/v1/rpc/${encodeURIComponent(name)}`) ||
+      key.includes(`/rest/v1/rpc/${name}`)
+    )
+    return tableHit || rpcHit
+  }
+
+  for (const key of responseCache.keys()) {
+    if (matchesInvalidation(key)) responseCache.delete(key)
+  }
+  for (const key of inFlightGets.keys()) {
+    if (matchesInvalidation(key)) inFlightGets.delete(key)
+  }
+}
+
+export async function fastFetch(input, init = {}) {
+  const method = String(init.method || (input instanceof Request ? input.method : 'GET')).toUpperCase()
+  const url = input instanceof Request ? input.url : String(input)
+  const rpcName = url.match(/\/rest\/v1\/rpc\/([^?]+)/)?.[1] || ''
+  const isReadRpc = method === 'POST' && READ_ONLY_RPC_NAMES.has(decodeURIComponent(rpcName))
+
+  if (method !== 'GET' && !isReadRpc) {
+    // Real writes invalidate all cached reads immediately.
+    clearSupabaseReadCache()
+    try {
+      return await fetch(input, init)
+    } finally {
+      // Reads started during a write may still contain the previous dataset.
+      clearSupabaseReadCache()
+    }
+  }
+
+  const key = requestKey(input, init)
+  const now = Date.now()
+
+  if (cacheableUrl(url)) {
+    const cached = responseCache.get(key)
+    if (cached && cached.expiresAt > now) return responseFromCache(cached)
+    if (cached) responseCache.delete(key)
+  }
+
+  let pending = inFlightGets.get(key)
+  if (!pending) {
+    const requestGeneration = cacheGeneration
+    pending = (async () => {
+      const response = await fetch(input, init)
+      if (response.ok && cacheableUrl(url) && requestGeneration === cacheGeneration) {
+        const clone = response.clone()
+        const body = await clone.arrayBuffer()
+        if (requestGeneration !== cacheGeneration) return response
+        responseCache.set(key, {
+          body,
+          status: clone.status,
+          statusText: clone.statusText,
+          headers: [...clone.headers.entries()],
+          expiresAt: Date.now() + CACHE_TTL_MS,
+        })
+      }
+      return response
+    })()
+    inFlightGets.set(key, pending)
+    const clearInFlight = () => {
+      if (inFlightGets.get(key) === pending) inFlightGets.delete(key)
+    }
+    // Handle both outcomes without creating an unobserved rejected promise.
+    pending.then(clearInFlight, clearInFlight)
+  }
+
+  const response = await pending
+  return response.clone()
+}
+

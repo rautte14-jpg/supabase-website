@@ -2109,6 +2109,7 @@ export default function App() {
         // PRF detail is loaded by the filter-aware effect below.
         // Keep reference updates here without requesting the same PRF RPC twice.
         await loadTables(VIEW_TABLES[targetView] || [], force)
+        if (force) await loadPrfPageFast(prfWeekFilter, prfStatusFilter, search)
       } else if (targetView === 'overview') {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
@@ -2122,6 +2123,7 @@ export default function App() {
         ])
       } else if (targetView === 'vessel') {
         // The debounced vessel search effect below owns this request.
+        if (force) await searchVesselSr(vesselSearch)
       } else if (targetView === 'stock') {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
@@ -2175,10 +2177,14 @@ export default function App() {
     }
   }, [view])
 
+  // Realtime listeners must use the filters from the current render.
+  const refreshViewRef = useRef(null)
+  refreshViewRef.current = () => loadForView(view, true)
   useEffect(() => {
     if (!access) return
-    const refresh = () => loadForView(view, true)
+    const refresh = () => refreshViewRef.current?.()
     window.addEventListener('srd:refresh-current-view', refresh)
+    window.dispatchEvent(new Event('srd:route-ready'))
     return () => window.removeEventListener('srd:refresh-current-view', refresh)
   }, [view, access?.email])
 
