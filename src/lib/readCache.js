@@ -113,6 +113,10 @@ export async function fastFetch(input, init = {}) {
   const rpcName = url.match(/\/rest\/v1\/rpc\/([^?]+)/)?.[1] || ''
   const isReadRpc = method === 'POST' && READ_ONLY_RPC_NAMES.has(decodeURIComponent(rpcName))
 
+  // Count-only queries use HEAD. They are reads, with no reusable body, and
+  // must not evict every cached table as if a dataset had been modified.
+  if (method === 'HEAD') return fetch(input, init)
+
   if (method !== 'GET' && !isReadRpc) {
     // Real writes invalidate all cached reads immediately.
     clearSupabaseReadCache()

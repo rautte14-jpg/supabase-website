@@ -73,3 +73,19 @@ test('Home summary cache follows changes to each of its underlying sources', asy
   }
   assert.equal(requests, 4)
 })
+
+test('count-only HEAD queries do not evict table reads or reuse their bodies', async t => {
+  let requests = 0
+  mockFetch(t, async (_input, init) => {
+    requests++
+    return init.method === 'HEAD'
+      ? new Response(null, { headers: { 'content-range': '*/42' } })
+      : new Response('rows')
+  })
+  await fastFetch(url)
+  const count = await fastFetch(url, { method: 'HEAD' })
+  assert.equal(count.headers.get('content-range'), '*/42')
+  assert.equal(await count.text(), '')
+  assert.equal(await (await fastFetch(url)).text(), 'rows')
+  assert.equal(requests, 2)
+})
