@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
 import { clearSupabaseReadCache, supabase } from './lib/supabase'
+import { createLiveRefresh } from './lib/liveRefresh.js'
 
 const ROUTE_TABLES = {
-  home: ['pending_payment_records', 'stock_items', 'source_updates', 'sr_issue_records', 'weekly_snapshots', 'procurement_records'],
-  overview: ['procurement_records', 'material_records', 'sr_issue_records', 'source_updates', 'weekly_snapshots', 'pending_payment_records'],
+  home: ['pending_payment_records', 'stock_items', 'source_updates', 'sr_issue_records', 'weekly_snapshots', 'procurement_records', 'material_records', 'inventory_transactions', 'erp_pr_headers'],
+  overview: ['procurement_records', 'material_records', 'sr_issue_records', 'source_updates', 'weekly_snapshots', 'pending_payment_records', 'erp_pr_headers'],
   prf: ['procurement_records', 'lld_updates', 'case_notes'],
   prpo: ['procurement_records', 'lld_updates', 'case_notes', 'erp_pr_headers', 'erp_pr_details'],
   payments: ['pending_payment_records', 'procurement_records'],
@@ -29,23 +30,16 @@ export default function PerformanceLayer() {
     let disposed = false
     let quietTimer = null
     let lastChangeAt = 0
-    const dirtyTables = new Set()
     const QUIET_MS = 1200
+    const liveRefresh = createLiveRefresh({
+      dependencies: ROUTE_TABLES,
+      invalidate: clearSupabaseReadCache,
+      refresh: () => window.dispatchEvent(new Event('srd:refresh-current-view')),
+      isHidden: () => document.hidden,
+    })
 
     const refreshForCurrentRoute = () => {
-      if (disposed || document.hidden) return
-      const route = currentRoute()
-      const dependencies = ROUTE_TABLES[route] || []
-      if (!dependencies.some((table) => dirtyTables.has(table))) return
-
-      // Clear again at the end of an import burst so a read made while rows were
-      // still being written cannot survive in cache as the final result.
-      dependencies
-        .filter((table) => dirtyTables.has(table))
-        .forEach((table) => clearSupabaseReadCache(table))
-
-      window.dispatchEvent(new Event('srd:refresh-current-view'))
-      window.setTimeout(() => dependencies.forEach((table) => dirtyTables.delete(table)), 2500)
+      if (!disposed) liveRefresh.flush(currentRoute())
     }
 
     const checkQuietPeriod = () => {
@@ -65,38 +59,43 @@ export default function PerformanceLayer() {
     }
 
     const onDatabaseChange = (payload) => {
-      const table = payload?.table
-      if (!table) {
-        clearSupabaseReadCache()
-        scheduleQuietRefresh()
-        return
-      }
-
       // In large imports thousands of row events can arrive. Invalidate once at
       // the start of the burst, then do one final invalidation + refresh after
       // the database has been quiet for a moment.
-      if (!dirtyTables.has(table)) {
-        dirtyTables.add(table)
-        clearSupabaseReadCache(table)
-      }
+      liveRefresh.mark(payload?.table)
       scheduleQuietRefresh()
     }
 
+    let subscribedBefore = false
     const channel = supabase
       .channel('srd-warehouse-live-performance')
       .on('postgres_changes', { event: '*', schema: 'public' }, onDatabaseChange)
-      .subscribe()
+      .subscribe((status) => {
+        if (disposed) return
+        if (status === 'SUBSCRIBED') {
+          if (subscribedBefore) {
+            liveRefresh.mark()
+            scheduleQuietRefresh()
+          }
+          subscribedBefore = true
+        }
+      })
 
     const onVisibility = () => {
       if (!document.hidden) refreshForCurrentRoute()
     }
     document.addEventListener('visibilitychange', onVisibility)
+    const onOnline = () => { liveRefresh.mark(); scheduleQuietRefresh() }
+    window.addEventListener('online', onOnline)
+    window.addEventListener('srd:route-ready', refreshForCurrentRoute)
 
     return () => {
       disposed = true
       window.__SRD_PERFORMANCE_LAYER_ACTIVE__ = false
       window.clearTimeout(quietTimer)
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('srd:route-ready', refreshForCurrentRoute)
       supabase.removeChannel(channel)
     }
   }, [])
