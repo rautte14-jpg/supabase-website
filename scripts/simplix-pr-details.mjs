@@ -1,3 +1,4 @@
+import { requestSimplix } from './simplix-http.mjs'
 const GET_REQUEST_TIMELINE_QUERY = [
   'query GetRequestTimeline($prRecId: Float!, $purchReqId: String!, $createdAt: Date) {',
   '  getRequestTimeline(prRecId: $prRecId, purchReqId: $purchReqId, createdAt: $createdAt) {',
@@ -97,17 +98,16 @@ function detailCandidates(headers, syncedMap, recentDays, staleHours, historical
 }
 
 async function graphqlRequest({ url, bearerToken, operationName, variables, query }) {
-  const response = await fetch(url, {
+  const { response, bodyText } = await requestSimplix(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: bearerToken.toLowerCase().startsWith('bearer ') ? bearerToken : 'Bearer ' + bearerToken },
     body: JSON.stringify({ operationName, variables, query }),
   })
-  const bodyText = await response.text()
   let payload = null
   try { payload = JSON.parse(bodyText) } catch {}
   const authFailed = response.status === 401 || payload?.errors?.some((item) => String(item?.extensions?.code || '').toUpperCase() === 'UNAUTHENTICATED' || lower(item?.message).includes('unauthorized'))
   if (authFailed) return { authFailed: true, data: null }
-  if (!response.ok) throw new Error(operationName + ' returned HTTP ' + response.status + ': ' + bodyText.slice(0, 500))
+  if (!response.ok) throw new Error(operationName + ' returned HTTP ' + response.status + '. Please check ERP availability.')
   if (payload?.errors?.length) throw new Error(operationName + ' GraphQL error: ' + JSON.stringify(payload.errors))
   return { authFailed: false, data: payload?.data || {} }
 }
@@ -144,59 +144,69 @@ async function loadExistingDetailSyncs(supabase) {
   return map
 }
 
-export async function syncPrDetails({ supabase, url, bearerToken, headers, promptHidden, recentDays = 180, staleHours = 6, historicalRefreshHours = 168, maxDetails = 100, dryRun = false }) {
+export async function syncPrDetails({ supabase, url, bearerToken, headers, promptHidden, recentDays = 180, staleHours = 6, historicalRefreshHours = 168, maxDetails = 100, dryRun = false, attempted = new Set() }) {
   const syncedMap = await loadExistingDetailSyncs(supabase)
-  const { candidates, stats } = detailCandidates(headers, syncedMap, recentDays, staleHours, historicalRefreshHours, maxDetails)
+  const { candidates, stats } = detailCandidates(headers.filter(row => !attempted.has(String(row.purch_req_id || row.purchReqId || '').trim())), syncedMap, recentDays, staleHours, historicalRefreshHours, maxDetails)
   const validHeaderCount = headers.filter((row) => String(row.purch_req_id || row.purchReqId || '').trim() && (row.rec_id ?? row.recId)).length
   console.log('\nPR detail coverage: ' + syncedMap.size + ' / ' + validHeaderCount + ' previously synced')
   console.log('Eligible now: ' + stats.eligible + ' · syncing up to ' + candidates.length + ' this run')
-  if (!candidates.length) return { bearerToken, synced: 0 }
+  if (!candidates.length) return { bearerToken, synced: 0, processed: 0, failed: [] }
 
   const tokenState = { value: bearerToken }
   let synced = 0
+  let processed = 0
+  const failed = []
   for (const header of candidates) {
     const prNo = String(header.purch_req_id || header.purchReqId || '').trim()
     const recId = Number(header.rec_id ?? header.recId)
     const createdAt = header.created_at_raw || header.createdAt || null
-    process.stdout.write('Detail ' + (synced + 1) + '/' + candidates.length + ' · ' + prNo + ' ... ')
+    attempted.add(prNo)
+    processed++
+    process.stdout.write('Detail ' + processed + '/' + candidates.length + ' · ' + prNo + ' ... ')
 
-    const timelineData = await requestWithFreshToken({ url, tokenState, promptHidden, operationName: 'GetRequestTimeline', variables: { prRecId: recId, purchReqId: prNo, createdAt }, query: GET_REQUEST_TIMELINE_QUERY })
-    const allData = await requestWithFreshToken({ url, tokenState, promptHidden, operationName: 'GetAllDatafromPR', variables: { prRecId: recId, purchReqId: prNo }, query: GET_ALL_DATA_QUERY })
+    try {
+      const timelineData = await requestWithFreshToken({ url, tokenState, promptHidden, operationName: 'GetRequestTimeline', variables: { prRecId: recId, purchReqId: prNo, createdAt }, query: GET_REQUEST_TIMELINE_QUERY })
+      const allData = await requestWithFreshToken({ url, tokenState, promptHidden, operationName: 'GetAllDatafromPR', variables: { prRecId: recId, purchReqId: prNo }, query: GET_ALL_DATA_QUERY })
 
-    const timeline = timelineData?.getRequestTimeline || {}
-    const details = allData?.getAllDatafromPR || {}
-    const prWorkflowGroup = timeline.PRWorkflowGroup || {}
-    const prWorkflow = prWorkflowGroup.Workflow || []
-    const current = currentWorkflowStep(prWorkflow)
-    const receipts = details.ProductReceipts || timeline.ProductReceipts || []
-    const rfqs = details.RFQs || []
-    const purchaseOrders = details.PurchaseOrderDetailsWithWorkflowHistory || []
+      const timeline = timelineData?.getRequestTimeline || {}
+      const details = allData?.getAllDatafromPR || {}
+      const prWorkflowGroup = timeline.PRWorkflowGroup || {}
+      const prWorkflow = prWorkflowGroup.Workflow || []
+      const current = currentWorkflowStep(prWorkflow)
+      const receipts = details.ProductReceipts || timeline.ProductReceipts || []
+      const rfqs = details.RFQs || []
+      const purchaseOrders = details.PurchaseOrderDetailsWithWorkflowHistory || []
 
-    const row = {
-      purch_req_id: prNo,
-      pr_rec_id: recId,
-      pr_workflow: prWorkflow,
-      po_workflow: timeline.POWorkflow || [],
-      rfqs,
-      purchase_orders: purchaseOrders,
-      product_receipts: receipts,
-      fixed_assets: details.FixedAssets || [],
-      current_approver: current?.UserName || null,
-      current_position: current?.Position || null,
-      current_workflow_status: current?.Status || null,
-      total_pr_workflow_time: prWorkflowGroup.totalTimeSpent == null ? null : String(prWorkflowGroup.totalTimeSpent),
-      rfq_count: rfqs.length,
-      po_count: purchaseOrders.length,
-      receipt_count: receipts.length,
-      detail_synced_at: new Date().toISOString(),
+      const row = {
+        purch_req_id: prNo,
+        pr_rec_id: recId,
+        pr_workflow: prWorkflow,
+        po_workflow: timeline.POWorkflow || [],
+        rfqs,
+        purchase_orders: purchaseOrders,
+        product_receipts: receipts,
+        fixed_assets: details.FixedAssets || [],
+        current_approver: current?.UserName || null,
+        current_position: current?.Position || null,
+        current_workflow_status: current?.Status || null,
+        total_pr_workflow_time: prWorkflowGroup.totalTimeSpent == null ? null : String(prWorkflowGroup.totalTimeSpent),
+        rfq_count: rfqs.length,
+        po_count: purchaseOrders.length,
+        receipt_count: receipts.length,
+        detail_synced_at: new Date().toISOString(),
+      }
+
+      if (!dryRun) {
+        const { error } = await supabase.from('erp_pr_details').upsert(row, { onConflict: 'purch_req_id' })
+        if (error) throw error
+      }
+      synced += 1
+      console.log(dryRun ? 'checked' : 'synced')
+    } catch (error) {
+      if (!error.retryable) throw error
+      failed.push(prNo)
+      console.log('deferred: ' + error.message + ' Continuing with other PRs.')
     }
-
-    if (!dryRun) {
-      const { error } = await supabase.from('erp_pr_details').upsert(row, { onConflict: 'purch_req_id' })
-      if (error) throw error
-    }
-    synced += 1
-    console.log(dryRun ? 'checked' : 'synced')
   }
-  return { bearerToken: tokenState.value, synced }
+  return { bearerToken: tokenState.value, synced, processed, failed }
 }

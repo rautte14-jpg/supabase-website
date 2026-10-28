@@ -95,4 +95,6 @@ echo.
 call "%NPM_CMD%" run sync:simplix-prs
 
 echo.
-pause
+echo Results above are saved for each successful PR.
+echo This window will remain open. Type exit when you are finished.
+cmd /k
