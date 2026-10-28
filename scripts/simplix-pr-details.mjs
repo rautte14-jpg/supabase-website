@@ -144,7 +144,7 @@ async function loadExistingDetailSyncs(supabase) {
   return map
 }
 
-export async function syncPrDetails({ supabase, url, bearerToken, headers, promptHidden, recentDays = 180, staleHours = 6, historicalRefreshHours = 168, maxDetails = 100, dryRun = false, attempted = new Set() }) {
+export async function syncPrDetails({ supabase, url, bearerToken, headers, promptHidden, recentDays = 180, staleHours = 6, historicalRefreshHours = 168, maxDetails = 100, dryRun = false, attempted = new Set(), onTokenChange = null }) {
   const syncedMap = await loadExistingDetailSyncs(supabase)
   const { candidates, stats } = detailCandidates(headers.filter(row => !attempted.has(String(row.purch_req_id || row.purchReqId || '').trim())), syncedMap, recentDays, staleHours, historicalRefreshHours, maxDetails)
   const validHeaderCount = headers.filter((row) => String(row.purch_req_id || row.purchReqId || '').trim() && (row.rec_id ?? row.recId)).length
@@ -152,7 +152,14 @@ export async function syncPrDetails({ supabase, url, bearerToken, headers, promp
   console.log('Eligible now: ' + stats.eligible + ' · syncing up to ' + candidates.length + ' this run')
   if (!candidates.length) return { bearerToken, synced: 0, processed: 0, failed: [] }
 
-  const tokenState = { value: bearerToken }
+  const tokenState = {
+    _value: bearerToken,
+    get value() { return this._value },
+    set value(next) {
+      this._value = next
+      onTokenChange?.(next)
+    },
+  }
   let synced = 0
   let processed = 0
   const failed = []
