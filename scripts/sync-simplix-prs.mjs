@@ -140,8 +140,7 @@ async function fetchAllPrs({ url, bearerToken, first, site, search, maxPages, on
     let pageFailures = 0
     while (true) {
       try {
-        // Refreshing authentication must not advance the page cursor.
-      result = await fetchPrPage({ url, bearerToken: token, after, first, site, search })
+        result = await fetchPrPage({ url, bearerToken: token, after, first, site, search })
         break
       } catch (error) {
         if (!error.retryable || ++pageFailures >= 3) throw error
