@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { parseNumber } from '../src/lib/numbers.js'
-import { mapRows } from '../src/importers.js'
+import { mapRows, normalizeSheetRows } from '../src/importers.js'
 import { receivedQty, requestedQty, receiptStage, receiptTone, summarizeReceiptLines } from '../src/lib/receipts.js'
 
 test('real currency-formatted ageing export preserves quantities and values', () => {
@@ -22,6 +22,24 @@ test('explicit zero is authoritative; full status fallback requires absent quant
   assert.equal(receivedQty({qty_requested:100,qty_received:null,delivery_status:'Not Received'}),0)
   assert.equal(receivedQty({qty_requested:100,raw_source:{'Received Qty':'$20.00'}}),20)
   assert.equal(requestedQty({qty_requested:null,raw_source:{Quantity:'$39.00'}}),39)
+})
+
+test('ageing report footer headings and totals are excluded before numeric validation', () => {
+  const rows = normalizeSheetRows([
+    ['Inventory aging report'],
+    ['Item group', 'Item number', 'Product name', 'On-hand quantity', 'On-hand value'],
+    ['ACCES', '1-0000006', 'Battery', 0, 0],
+    ['ACCES', '1-0000008', 'Battery 2', 2, 125.5],
+    ['Report summary', '', '', 'Sum On-hand quantity', 'Sum On-hand value'],
+    ['', '', '', 2, 125.5],
+  ])
+  const items = mapRows('AGEING', rows)
+  assert.deepEqual(items.map(r => [r.item_code, r.on_hand, r.stock_value]), [
+    ['1-0000006', 0, 0], ['1-0000008', 2, 125.5],
+  ])
+  assert.throws(() => mapRows('AGEING', [...rows, {
+    'Item number': '1-0000009', 'On-hand quantity': 'invalid',
+  }]), /Invalid numeric/)
 })
 test('receipt document does not imply all PR lines completed', () => {
   assert.equal(receiptStage({receipt_count:1},{requested:30,received:20}),'Part Received')
