@@ -1,3 +1,4 @@
+import { requestSimplix } from './simplix-http.mjs'
 import { createClient } from '@supabase/supabase-js'
 import readline from 'node:readline'
 import { syncPrDetails } from './simplix-pr-details.mjs'
@@ -99,7 +100,7 @@ function isRequestedInYear(node, year) {
 }
 
 async function fetchPrPage({ url, bearerToken, after, first, site, search }) {
-  const response = await fetch(url, {
+  const { response, bodyText } = await requestSimplix(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -112,7 +113,6 @@ async function fetchPrPage({ url, bearerToken, after, first, site, search }) {
     }),
   })
 
-  const bodyText = await response.text()
   let payload = null
   try { payload = JSON.parse(bodyText) } catch { payload = null }
   const authFailed = response.status === 401 || payload?.errors?.some((item) =>
@@ -120,12 +120,12 @@ async function fetchPrPage({ url, bearerToken, after, first, site, search }) {
     String(item?.message || '').toLowerCase().includes('unauthorized')
   )
   if (authFailed) return { authFailed: true, data: null }
-  if (!response.ok) throw new Error('Simplix API returned HTTP ' + response.status + ': ' + bodyText.slice(0, 500))
+  if (!response.ok) throw new Error('Simplix API returned HTTP ' + response.status + '. Please check ERP availability.')
   if (payload?.errors?.length) throw new Error('GraphQL error: ' + JSON.stringify(payload.errors))
   return { authFailed: false, data: payload?.data?.getPRs }
 }
 
-async function fetchAllPrs({ url, bearerToken, first, site, search, maxPages, onPage }) {
+async function fetchAllPrs({ url, bearerToken, first, site, search, maxPages, onPage, onTokenChange }) {
   const rows = []
   let after = null
   let page = 0
@@ -140,6 +140,7 @@ async function fetchAllPrs({ url, bearerToken, first, site, search, maxPages, on
       console.log('Open Simplix, refresh the PR page, copy a fresh bearer token, then paste it below.')
       token = await promptHidden('Fresh Simplix bearer token: ')
       if (!token) throw new Error('A fresh Simplix bearer token is required to continue.')
+      onTokenChange?.(token)
       result = await fetchPrPage({ url, bearerToken: token, after, first, site, search })
       if (result.authFailed) throw new Error('The replacement Simplix token was also rejected.')
     }
@@ -227,6 +228,7 @@ async function main() {
     site,
     search,
     maxPages,
+    onTokenChange: token => { bearerToken = token },
     onPage: dryRun ? null : async (pageNodes) => {
       const pageRows = pageNodes
         .filter((node) => isRequestedInYear(node, syncYear))
@@ -259,12 +261,15 @@ async function main() {
 
   let totalDetailSynced = 0
   let batchNumber = 0
+  let totalProcessed = 0
+  const attempted = new Set()
+  const deferred = new Set()
 
   while (true) {
-    if (detailLimit && totalDetailSynced >= detailLimit) break
+    if (detailLimit && totalProcessed >= detailLimit) break
 
     batchNumber += 1
-    const remainingAllowed = detailLimit ? detailLimit - totalDetailSynced : detailBatchSize
+    const remainingAllowed = detailLimit ? detailLimit - totalProcessed : detailBatchSize
     const maxDetails = Math.min(detailBatchSize, remainingAllowed)
 
     console.log('\n--- Detail batch ' + batchNumber + ' ---')
@@ -275,16 +280,34 @@ async function main() {
       headers: rows,
       promptHidden,
       maxDetails,
+      attempted,
       onTokenChange: (freshToken) => { bearerToken = freshToken },
     })
 
     bearerToken = detailResult.bearerToken || bearerToken
     totalDetailSynced += detailResult.synced
+    totalProcessed += detailResult.processed
+    detailResult.failed.forEach(pr => deferred.add(pr))
     console.log('PR detail records synced so far this run: ' + totalDetailSynced)
 
-    if (detailResult.synced < maxDetails) break
+    if (detailResult.processed < maxDetails) break
   }
 
+  if (deferred.size) {
+    console.log('\nRetrying ' + deferred.size + ' deferred PRs once after the other records…')
+    const retry = await syncPrDetails({ supabase, url: graphqlUrl, bearerToken,
+      headers: rows.filter(row => deferred.has(row.purch_req_id)), promptHidden,
+      maxDetails: deferred.size })
+    totalDetailSynced += retry.synced
+    deferred.clear()
+    retry.failed.forEach(pr => deferred.add(pr))
+  }
+  if (deferred.size) {
+    console.error('\nSync incomplete. Still pending: ' + [...deferred].join(', '))
+    console.error('Successful PRs are saved. Run again later to retry pending records; the progress counter restarts for each batch.')
+    process.exitCode = 1
+    return
+  }
   console.log('\nDetail sync finished.')
   console.log('PR detail records synced this run: ' + totalDetailSynced)
   console.log('Only PRs requested in ' + syncYear + ' are refreshed by this tool.')
