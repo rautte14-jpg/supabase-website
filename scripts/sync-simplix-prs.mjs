@@ -134,7 +134,22 @@ async function fetchAllPrs({ url, bearerToken, first, site, search, maxPages, on
 
   while (true) {
     page += 1
-    let result = await fetchPrPage({ url, bearerToken: token, after, first, site, search })
+    // An ERP gateway timeout is not an authentication failure. Keep the cursor
+    // unchanged and retry the same page; prior pages have already been saved.
+    let result
+    let pageFailures = 0
+    while (true) {
+      try {
+        // Refreshing authentication must not advance the page cursor.
+      result = await fetchPrPage({ url, bearerToken: token, after, first, site, search })
+        break
+      } catch (error) {
+        if (!error.retryable || ++pageFailures >= 3) throw error
+        const delay = Math.min(pageFailures * 15000, 45000)
+        console.warn('PR header page ' + page + ' temporarily failed (' + error.message + '). Retrying the same page in ' + delay / 1000 + 's.')
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
     if (result.authFailed) {
       console.log('\nSimplix authorization expired while syncing.')
       console.log('Open Simplix, refresh the PR page, copy a fresh bearer token, then paste it below.')
@@ -297,7 +312,9 @@ async function main() {
     console.log('\nRetrying ' + deferred.size + ' deferred PRs once after the other records…')
     const retry = await syncPrDetails({ supabase, url: graphqlUrl, bearerToken,
       headers: rows.filter(row => deferred.has(row.purch_req_id)), promptHidden,
-      maxDetails: deferred.size })
+      maxDetails: deferred.size,
+      onTokenChange: freshToken => { bearerToken = freshToken },
+    })
     totalDetailSynced += retry.synced
     deferred.clear()
     retry.failed.forEach(pr => deferred.add(pr))
