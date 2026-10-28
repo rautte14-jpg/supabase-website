@@ -470,7 +470,9 @@ export function mapRows(source, rows) {
   }
 
   if (source === 'AGEING') {
-    return rows.map((r) => {
+    // ERP report footers have no item number and may contain numeric-column
+    // labels. Exclude these non-item rows before parsing quantities and values.
+    return rows.filter((r) => text(r, ['Item', 'Item Code', 'Item Number', 'Item ID'])).map((r) => {
       const onHand = number(r, [
         'On Hand',
         'On-hand',
