@@ -13,6 +13,7 @@ const PrMonthlyChart = lazy(() => import('./PrMonthlyChart.jsx'))
 const PendingPaymentsWorkspace = lazy(() => import('./PendingPaymentsWorkspace.jsx'))
 const PrfWorkspace = lazy(() => import('./PrfWorkspace.jsx'))
 const MtrFastUpload = lazy(() => import('./MtrFastUpload.jsx'))
+const RTLReadiness = lazy(() => import('./RTLReadiness.jsx'))
 
 const ROUTE_PRELOADERS = {
   prpo: () => Promise.all([
@@ -24,6 +25,7 @@ const ROUTE_PRELOADERS = {
   payments: () => import('./PendingPaymentsWorkspace.jsx'),
   prf: () => import('./PrfWorkspace.jsx'),
   updates: () => import('./MtrFastUpload.jsx'),
+  rtl: () => import('./RTLReadiness.jsx'),
 }
 
 function preloadRoute(key) {
@@ -40,6 +42,7 @@ const NAV = [
   ['mrn', 'MRN & Issues', 'M'],
   ['vessel', 'Vessel / SR View', 'V'],
   ['stock', 'Stock & Ageing', 'S'],
+  ['rtl', 'RTL Vessel Readiness', 'R'],
   ['updates', 'Update Centre', 'U'],
   ['warehouse', 'Warehouse Presentation', 'W'],
   ['inventoryPresentation', 'Inventory Presentation', 'S'],
@@ -50,7 +53,7 @@ const NAV_GROUPS = [
   ['Workspace', ['home', 'overview']],
   ['Procurement', ['prf', 'prpo', 'payments', 'mtr']],
   ['Materials', ['mrn', 'vessel']],
-  ['Inventory', ['stock']],
+  ['Inventory', ['stock', 'rtl']],
   ['Reporting', ['warehouse', 'inventoryPresentation', 'history']],
   ['Administration', ['updates']],
 ]
@@ -59,6 +62,7 @@ function LineIcon({ name, className = 'h-5 w-5' }) {
   const paths = {
     home: <><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-7h6v7"/></>,
     overview: <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
+    rtl: <><path d="M12 3 4 7l8 4 8-4-8-4Z"/><path d="M4 12l8 4 8-4"/><path d="M4 17l8 4 8-4"/></>,
     prf: <><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4"/><path d="M9 12h6M9 16h6"/></>,
     prpo: <><path d="M4 5h16v14H4z"/><path d="M4 9h16"/><path d="M8 13h3M8 16h6"/></>,
     mtr: <><path d="M4 7h11"/><path d="m12 4 3 3-3 3"/><path d="M20 17H9"/><path d="m12 14-3 3 3 3"/></>,
@@ -5760,6 +5764,12 @@ export default function App() {
                 </section>
               </div>
             </section>
+          )}
+
+          {view === 'rtl' && (
+            <Suspense fallback={<div className="splash">Loading RTL vessel readiness…</div>}>
+              <RTLReadiness />
+            </Suspense>
           )}
 
           {view === 'overview' && (
