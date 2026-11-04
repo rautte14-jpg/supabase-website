@@ -1461,6 +1461,7 @@ export default function App() {
   const [warehouseIssueDetailOpen, setWarehouseIssueDetailOpen] = useState(false)
   const [warehouseIssueDetailRows, setWarehouseIssueDetailRows] = useState([])
   const [warehouseIssueDetailLoading, setWarehouseIssueDetailLoading] = useState(false)
+  const [warehouseIssueDetailError, setWarehouseIssueDetailError] = useState('')
   const warehouseRequestId = useRef(0)
   const [warehouseLoadState, setWarehouseLoadState] = useState('loading')
   const [warehouseFast, setWarehouseFast] = useState({
@@ -1934,6 +1935,7 @@ export default function App() {
 
   async function loadWarehouseIssueDetails(weekStart) {
     setWarehouseIssueDetailLoading(true)
+    setWarehouseIssueDetailError('')
     try {
       const weekEnd = addDaysIso(weekStart, 6)
       const { data: rows, error } = await supabase
@@ -1944,7 +1946,10 @@ export default function App() {
         .order('requested_receipt_date', { ascending: false })
         .limit(120)
       if (error) throw error
-      setWarehouseIssueDetailRows(rows || [])
+      if (weekStart === warehouseIssueWeekFilter) setWarehouseIssueDetailRows(rows || [])
+    } catch (error) {
+      console.error('Failed to load warehouse issue details', error)
+      setWarehouseIssueDetailError('Unable to load issue items. Please retry.')
     } finally {
       setWarehouseIssueDetailLoading(false)
     }
@@ -1955,8 +1960,8 @@ export default function App() {
       setWarehouseIssueDetailOpen(false)
       return
     }
-    await loadWarehouseIssueDetails(warehouseIssueWeekFilter)
     setWarehouseIssueDetailOpen(true)
+    await loadWarehouseIssueDetails(warehouseIssueWeekFilter)
   }
 
   async function loadInventoryPresentationFast() {
@@ -4134,7 +4139,7 @@ export default function App() {
             <section className="warehouse-receipt-detail">
               <div className="warehouse-receipt-detail-head">
                 <h4>ERP Receipt Records</h4>
-                <span>Showing {warehouseFast.receipts?.rows.length || 0} of {warehouseReceiptCurrent.entries} records</span>
+                <span>Showing {warehouseFast.receipts?.rows?.length || 0} of {warehouseReceiptCurrent.entries} records</span>
                 <button onClick={() => setWarehouseReceiptDetail('NONE')}>Close</button>
               </div>
               <div style={{ overflowX: 'auto', maxHeight: 360 }}>
@@ -4143,7 +4148,7 @@ export default function App() {
                     <tr key={index}><td>{row.pr_no}</td><td>{row.po_no || '—'}</td><td>{row.receipt_no || '—'}</td><td>{row.received_date}</td></tr>
                   ))}</tbody>
                 </table>
-                {!warehouseFast.receipts?.rows.length && <p>No synced receipt records in this period.</p>}
+                {!warehouseFast.receipts?.rows?.length && <p>No synced receipt records in this period.</p>}
               </div>
             </section>
           )}
@@ -4213,6 +4218,7 @@ export default function App() {
                 setWarehouseIssueWeekFilter(e.target.value)
                 setWarehouseIssueDetailOpen(false)
                 setWarehouseIssueDetailRows([])
+                setWarehouseIssueDetailError('')
               }}
             >
               {warehouseIssueWeekOptions.map((week) => (
@@ -4253,6 +4259,7 @@ export default function App() {
                 </div>
               </div>
 
+              {warehouseIssueDetailError && <div role="alert" className="meeting-no-exceptions">{warehouseIssueDetailError} <button type="button" onClick={() => loadWarehouseIssueDetails(warehouseIssueWeekFilter)}>Retry</button></div>}
               <div className="warehouse-issue-table">
                 <div className="warehouse-issue-row warehouse-receipt-head">
                   <span>Date</span>
@@ -4278,7 +4285,7 @@ export default function App() {
                     <em>{row.issue_stage || row.issue_state || '—'}</em>
                   </div>
                 ))}
-                {!warehouseIssueWeek.rows.length && (
+                {!warehouseIssueDetailLoading && !warehouseIssueDetailError && !warehouseIssueWeek.rows.length && (
                   <div className="meeting-no-exceptions">No issue item records found for the selected week.</div>
                 )}
               </div>
@@ -6985,7 +6992,7 @@ export default function App() {
                           </div>}</div>
                       <footer>
                         <span>Shipbuilding & Repair Division · Materials Management</span>
-                        <span>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</span>
+                        <span>{slide === 2 ? formatShortDate(warehouseMrnWeekFilter) + ' – ' + formatShortDate(addDaysIso(warehouseMrnWeekFilter, 6)) : slide === 3 ? formatShortDate(warehouseIssueWeekFilter) + ' – ' + formatShortDate(addDaysIso(warehouseIssueWeekFilter, 6)) : formatShortDate(warehouseWeekStart) + ' – ' + formatShortDate(warehouseWeekEnd)}</span>
                       </footer>
                     </div>
 
