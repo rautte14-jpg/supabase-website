@@ -1377,7 +1377,7 @@ export default function App() {
   const [prfStatusFilter, setPrfStatusFilter] = useState('ALL')
   const [prfWeekFilter, setPrfWeekFilter] = useState('ALL')
   const [prPoWeekFilter, setPrPoWeekFilter] = useState('ALL')
-  const [prPoReceiptWeekFilter, setPrPoReceiptWeekFilter] = useState(() => weekStartWednesday(new Date().toISOString().slice(0, 10)))
+  const [prPoReceiptWeekFilter, setPrPoReceiptWeekFilter] = useState(() => weekStartWednesday(maldivesDateIso()))
   const [prPoAgeFilter, setPrPoAgeFilter] = useState('ALL')
   const [prPoUrgentFilter, setPrPoUrgentFilter] = useState(false)
   const [prPoReceiptPendingFilter, setPrPoReceiptPendingFilter] = useState(false)
@@ -1418,7 +1418,7 @@ export default function App() {
   const [mrnWorkshopFilter, setMrnWorkshopFilter] = useState('ALL')
   const [mrnWpTypeFilter, setMrnWpTypeFilter] = useState('ALL')
   const [srIssueFilter, setSrIssueFilter] = useState('ALL')
-  const [srIssueWeekFilter, setSrIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
+  const [srIssueWeekFilter, setSrIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(maldivesDateIso()), -7))
   const [stockAgeFilter, setStockAgeFilter] = useState('ALL')
   const [stockFast, setStockFast] = useState({
     summary: null,
@@ -1439,7 +1439,7 @@ export default function App() {
     loaded: false,
     error: false,
   })
-  const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
+  const [warehouseMrnWeekFilter, setWarehouseMrnWeekFilter] = useState(() => addDaysIso(weekStartWednesday(maldivesDateIso()), -7))
   const [warehouseReceiptDetail, setWarehouseReceiptDetail] = useState('NONE')
   const [warehouseFullscreen, setWarehouseFullscreen] = useState(false)
   const [inventorySlide, setInventorySlide] = useState(0)
@@ -1457,10 +1457,12 @@ export default function App() {
   const [inventoryMtrDetailRows, setInventoryMtrDetailRows] = useState([])
   const [inventoryProcurementDetailRows, setInventoryProcurementDetailRows] = useState([])
   const [inventoryDetailLoading, setInventoryDetailLoading] = useState(false)
-  const [warehouseIssueWeekFilter, setWarehouseIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7))
+  const [warehouseIssueWeekFilter, setWarehouseIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(maldivesDateIso()), -7))
   const [warehouseIssueDetailOpen, setWarehouseIssueDetailOpen] = useState(false)
   const [warehouseIssueDetailRows, setWarehouseIssueDetailRows] = useState([])
   const [warehouseIssueDetailLoading, setWarehouseIssueDetailLoading] = useState(false)
+  const warehouseRequestId = useRef(0)
+  const [warehouseLoadState, setWarehouseLoadState] = useState('loading')
   const [warehouseFast, setWarehouseFast] = useState({
     mrnWeeks: [],
     mrnMonth: null,
@@ -1543,7 +1545,7 @@ export default function App() {
     vessel: [],
     stock: ['snapshots'],
     updates: ['sourceUpdates'],
-    warehouse: ['procurement'],
+    warehouse: [],
     inventoryPresentation: [],
     history: ['sourceUpdates', 'snapshots'],
   }
@@ -1878,42 +1880,56 @@ export default function App() {
   }
 
   async function loadWarehousePresentationFast() {
-    const today = maldivesDateIso()
-    const monthStart = today.slice(0, 7) + '-01'
-    const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult] = await Promise.all([
-      supabase
-        .from('warehouse_mrn_weekly_summary')
-        .select('*')
-        .order('week_start', { ascending: false })
-        .limit(12),
-      supabase
-        .from('warehouse_mrn_month_summary')
-        .select('*')
-        .eq('month_start', monthStart)
-        .limit(1),
-      supabase
-        .from('warehouse_issue_weekly_summary')
-        .select('*')
-        .order('week_start', { ascending: false })
-        .limit(12),
-      supabase
-        .from('warehouse_issue_month_summary')
-        .select('*')
-        .eq('month_start', monthStart)
-        .limit(1),
-    ])
+    const requestId = ++warehouseRequestId.current
+    setWarehouseLoadState('loading')
+    try {
+      const today = maldivesDateIso()
+      const signal = AbortSignal.timeout(20000)
+      const monthStart = today.slice(0, 7) + '-01'
+      const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult, receiptsResult] = await Promise.all([
+        supabase
+          .from('warehouse_mrn_weekly_summary')
+          .select('*')
+          .order('week_start', { ascending: false })
+          .limit(12).abortSignal(signal),
+        supabase
+          .from('warehouse_mrn_month_summary')
+          .select('*')
+          .eq('month_start', monthStart)
+          .limit(1).abortSignal(signal),
+        supabase
+          .from('warehouse_issue_weekly_summary')
+          .select('*')
+          .order('week_start', { ascending: false })
+          .limit(12).abortSignal(signal),
+        supabase
+          .from('warehouse_issue_month_summary')
+          .select('*')
+          .eq('month_start', monthStart)
+          .limit(1).abortSignal(signal),
+        supabase.rpc('warehouse_receipt_summary', { p_today: today }).abortSignal(signal),
+      ])
 
-    if (mrnWeeksResult.error) throw mrnWeeksResult.error
-    if (mrnMonthResult.error) throw mrnMonthResult.error
-    if (issueWeeksResult.error) throw issueWeeksResult.error
-    if (issueMonthResult.error) throw issueMonthResult.error
+      if (receiptsResult.error) throw receiptsResult.error
+      if (!receiptsResult.data?.periods) throw new Error('Receipt summary unavailable')
+      if (mrnWeeksResult.error) throw mrnWeeksResult.error
+      if (mrnMonthResult.error) throw mrnMonthResult.error
+      if (issueWeeksResult.error) throw issueWeeksResult.error
+      if (issueMonthResult.error) throw issueMonthResult.error
 
-    setWarehouseFast({
-      mrnWeeks: mrnWeeksResult.data || [],
-      mrnMonth: mrnMonthResult.data?.[0] || null,
-      issueWeeks: issueWeeksResult.data || [],
-      issueMonth: issueMonthResult.data?.[0] || null,
-    })
+      if (requestId !== warehouseRequestId.current) return
+      setWarehouseFast({
+        receipts: receiptsResult.data,
+        mrnWeeks: mrnWeeksResult.data || [],
+        mrnMonth: mrnMonthResult.data?.[0] || null,
+        issueWeeks: issueWeeksResult.data || [],
+        issueMonth: issueMonthResult.data?.[0] || null,
+      })
+      setWarehouseLoadState('ready')
+    } catch (error) {
+      if (requestId === warehouseRequestId.current) setWarehouseLoadState('error')
+      throw error
+    }
   }
 
   async function loadWarehouseIssueDetails(weekStart) {
@@ -2095,6 +2111,7 @@ export default function App() {
 
   async function loadForView(targetView = view, force = false) {
     if (!session || !access) return
+    if (targetView === 'warehouse' && force) clearSupabaseReadCache()
     if (targetView === 'prpo' && force) {
       clearSupabaseReadCache('pr_lifecycle_fast')
       setPrSubmissionRefreshKey((current) => current + 1)
@@ -2505,7 +2522,7 @@ export default function App() {
       if (weekStart) counts.set(weekStart, (counts.get(weekStart) || 0) + 1)
     })
 
-    const currentWeek = weekStartWednesday(new Date().toISOString().slice(0, 10))
+    const currentWeek = weekStartWednesday(maldivesDateIso())
     return Array.from({ length: 8 }, (_, index) => {
       const weekStart = addDaysIso(currentWeek, index * -7)
       return {
@@ -2560,7 +2577,7 @@ export default function App() {
       if (row.pr_no) item.prs.add(String(row.pr_no).trim())
     })
 
-    const currentWeek = weekStartWednesday(new Date().toISOString().slice(0, 10))
+    const currentWeek = weekStartWednesday(maldivesDateIso())
     return Array.from({ length: 8 }, (_, index) => {
       const weekStart = addDaysIso(currentWeek, index * -7)
       const item = weekMap.get(weekStart)
@@ -2805,7 +2822,7 @@ export default function App() {
       counts.set(weekStart, (counts.get(weekStart) || 0) + 1)
     })
 
-    const currentWeek = weekStartWednesday(new Date().toISOString().slice(0, 10))
+    const currentWeek = weekStartWednesday(maldivesDateIso())
     return Array.from({ length: 8 }, (_, index) => {
       const weekStart = addDaysIso(currentWeek, index * -7)
       return {
@@ -3090,7 +3107,7 @@ export default function App() {
   }), [data.srIssues, mrnMatchRecords, srIssueCostIndex])
 
   const srIssueWeekOptions = useMemo(() => {
-    const currentWeek = weekStartWednesday(new Date().toISOString().slice(0, 10))
+    const currentWeek = weekStartWednesday(maldivesDateIso())
     return Array.from({ length: 8 }, (_, index) => {
       const weekStart = addDaysIso(currentWeek, index * -7)
       return { weekStart, weekEnd: addDaysIso(weekStart, 6) }
@@ -3375,7 +3392,7 @@ export default function App() {
   const today = new Date()
   const sevenDaysAgo = new Date()
   sevenDaysAgo.setDate(today.getDate() - 7)
-  const todayIso = today.toISOString().slice(0, 10)
+  const todayIso = maldivesDateIso()
 
   const metrics = useMemo(() => {
     const pendingPr = procurementData.filter((r) => ['PR', 'PO'].includes(r.source_type) && !isClosed(r.status || r.delivery_status))
@@ -3978,57 +3995,12 @@ export default function App() {
   const warehouseCurrentWeekStart = weekStartWednesday(todayIso)
   const warehouseWeekStart = addDaysIso(warehouseCurrentWeekStart, -7)
   const warehouseWeekEnd = addDaysIso(warehouseWeekStart, 6)
-  const warehousePreviousWeekStart = addDaysIso(warehouseWeekStart, -7)
 
-  const warehouseReceiptSummaryForWeek = (weekStart) => {
-    const rows = allPrLines.filter((row) => {
-      const date = receivedDate(row)
-      return date && receivedQty(row) > 0 && weekStartWednesday(date) === weekStart
-    })
-
-    const prs = new Set(rows.map((row) => String(row.pr_no || '').trim()).filter(Boolean))
-    const qty = rows.reduce((sum, row) => sum + receivedQty(row), 0)
-    const value = rows.reduce((sum, row) => {
-      const amount = numericRowField(row, 'amount', [
-        'Amount', 'PO Amount', 'PO Value', 'Total Amount', 'Value',
-        'Line Amount', 'Net Amount', 'Line Value', 'Total Value', 'Purchase Amount',
-      ]) ?? 0
-      const requested = requestedQty(row)
-      const received = receivedQty(row)
-      if (!(amount > 0) || !(received > 0)) return sum
-      return sum + (requested > 0 ? amount * Math.min(1, received / requested) : amount)
-    }, 0)
-
-    return { rows, prs: prs.size, lines: rows.length, qty, value }
-  }
-
-  const warehouseReceiptCurrent = warehouseReceiptSummaryForWeek(warehouseWeekStart)
-  const warehouseReceiptPrevious = warehouseReceiptSummaryForWeek(warehousePreviousWeekStart)
-
+  const warehouseReceiptCurrent = warehouseFast.receipts?.periods.current || {}
+  const warehouseReceiptPrevious = warehouseFast.receipts?.periods.previous || {}
+  const warehouseReceiptMonth = warehouseFast.receipts?.periods.month || {}
   const warehouseMonthStart = todayIso.slice(0, 7) + '-01'
   const warehouseMonthLabel = new Date(todayIso + 'T12:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-
-  const warehouseReceiptMonth = useMemo(() => {
-    const rows = allPrLines.filter((row) => {
-      const date = receivedDate(row)
-      return date && date >= warehouseMonthStart && date <= todayIso && receivedQty(row) > 0
-    })
-
-    const prs = new Set(rows.map((row) => String(row.pr_no || '').trim()).filter(Boolean))
-    const qty = rows.reduce((sum, row) => sum + receivedQty(row), 0)
-    const value = rows.reduce((sum, row) => {
-      const amount = numericRowField(row, 'amount', [
-        'Amount', 'PO Amount', 'PO Value', 'Total Amount', 'Value',
-        'Line Amount', 'Net Amount', 'Line Value', 'Total Value', 'Purchase Amount',
-      ]) ?? 0
-      const requested = requestedQty(row)
-      const received = receivedQty(row)
-      if (!(amount > 0) || !(received > 0)) return sum
-      return sum + (requested > 0 ? amount * Math.min(1, received / requested) : amount)
-    }, 0)
-
-    return { rows, prs: prs.size, qty, value }
-  }, [allPrLines, warehouseMonthStart, todayIso])
 
   const warehouseMrnMonth = useMemo(() => ({
     created: Number(warehouseFast.mrnMonth?.created || 0),
@@ -4044,93 +4016,8 @@ export default function App() {
     pendingValue: Number(warehouseFast.issueMonth?.pending_value || 0),
   }), [warehouseFast.issueMonth])
 
-  const warehouseReceiptPrState = useMemo(() => {
-    const receivedPrNos = new Set(
-      warehouseReceiptCurrent.rows
-        .map((row) => String(row.pr_no || '').trim())
-        .filter(Boolean),
-    )
-
-    const states = new Map()
-    receivedPrNos.forEach((prNo) => {
-      const rows = allPrLines.filter((row) => String(row.pr_no || '').trim() === prNo)
-      let requested = 0
-      let received = 0
-      let fullLines = 0
-      let partialLines = 0
-
-      rows.forEach((row) => {
-        const req = requestedQty(row)
-        const rec = receivedQty(row)
-        const state = receiptState(row)
-        requested += req
-        received += Math.min(req > 0 ? req : Number.MAX_SAFE_INTEGER, rec)
-        if (state === 'full') fullLines += 1
-        if (state === 'partial') partialLines += 1
-      })
-
-      const full =
-        (requested > 0 && received >= requested) ||
-        (rows.length > 0 && fullLines === rows.length)
-
-      states.set(prNo, {
-        prNo,
-        rows,
-        requested,
-        received,
-        full,
-        partial: !full && (received > 0 || partialLines > 0 || fullLines > 0),
-      })
-    })
-
-    return states
-  }, [warehouseReceiptCurrent.rows, allPrLines])
-
-  const warehouseFullyReceivedPrNos = useMemo(
-    () => new Set([...warehouseReceiptPrState.values()].filter((x) => x.full).map((x) => x.prNo)),
-    [warehouseReceiptPrState],
-  )
-
-  const warehousePartReceivedPrNos = useMemo(
-    () => new Set([...warehouseReceiptPrState.values()].filter((x) => x.partial).map((x) => x.prNo)),
-    [warehouseReceiptPrState],
-  )
-
-  const warehouseReceiptDetailRows = useMemo(() => {
-    if (warehouseReceiptDetail === 'ALL') {
-      return warehouseReceiptCurrent.rows
-    }
-
-    if (warehouseReceiptDetail === 'FULL') {
-      return warehouseReceiptCurrent.rows.filter((row) =>
-        warehouseFullyReceivedPrNos.has(String(row.pr_no || '').trim())
-      )
-    }
-
-    if (warehouseReceiptDetail === 'PARTIAL') {
-      return allPrLines.filter((row) =>
-        warehousePartReceivedPrNos.has(String(row.pr_no || '').trim())
-      )
-    }
-
-    return []
-  }, [
-    warehouseReceiptDetail,
-    warehouseReceiptCurrent.rows,
-    warehouseFullyReceivedPrNos,
-    warehousePartReceivedPrNos,
-    allPrLines,
-  ])
-
-  const warehouseReceiptDetailTitle =
-    warehouseReceiptDetail === 'PARTIAL'
-      ? 'Part Received PR Details'
-      : warehouseReceiptDetail === 'FULL'
-        ? 'Fully Received PR Items'
-        : 'PR Receipt Items'
-
   const warehouseMrnWeekOptions = useMemo(() => {
-    const latestCompletedWeek = addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7)
+    const latestCompletedWeek = addDaysIso(weekStartWednesday(maldivesDateIso()), -7)
     return Array.from({ length: 8 }, (_, index) => {
       const weekStart = addDaysIso(latestCompletedWeek, index * -7)
       return { weekStart, weekEnd: addDaysIso(weekStart, 6) }
@@ -4155,7 +4042,7 @@ export default function App() {
   }, [warehouseFast.mrnWeeks, warehouseMrnWeekFilter])
 
   const warehouseIssueWeekOptions = useMemo(() => {
-    const latestCompletedWeek = addDaysIso(weekStartWednesday(new Date().toISOString().slice(0, 10)), -7)
+    const latestCompletedWeek = addDaysIso(weekStartWednesday(maldivesDateIso()), -7)
     return Array.from({ length: 8 }, (_, index) => {
       const weekStart = addDaysIso(latestCompletedWeek, index * -7)
       return { weekStart, weekEnd: addDaysIso(weekStart, 6) }
@@ -4199,8 +4086,8 @@ export default function App() {
           </div>
           <div className="meeting-metrics">
             <MetricCard label="PRs Received This Month" value={fmt(warehouseReceiptMonth.prs)} helper="Distinct PRs with receipt activity this month" />
-            <MetricCard label="Received Quantity This Month" value={fmt(warehouseReceiptMonth.qty, 2)} helper="Total quantity received this month" />
-            <MetricCard label="Received Value This Month" value={mvr(warehouseReceiptMonth.value)} helper="Value of items received this month" />
+            <MetricCard label="Received Quantity This Month" value="Unavailable" helper="ERP receipt details do not include quantities" />
+            <MetricCard label="Received Value This Month" value="Unavailable" helper="ERP receipt details do not include values" />
             <MetricCard label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
             <MetricCard label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
             <MetricCard label="SR Issues This Month" value={fmt(warehouseIssueMonth.total)} helper={mvr(warehouseIssueMonth.value) + ' issue value · ' + fmt(warehouseIssueMonth.openOrder) + ' open'} />
@@ -4218,7 +4105,7 @@ export default function App() {
               <span>REPORTING PERIOD RECEIPTS</span>
               <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
             </div>
-            <small>Based on Received Date in PR / PO Tracker</small>
+            <small>Based on synced ERP product receipt dates</small>
           </div>
 
           <div className="meeting-change-grid warehouse-receipt-cards">
@@ -4230,97 +4117,33 @@ export default function App() {
               <b>{fmt(warehouseReceiptCurrent.prs)}</b>
               <div>
                 <small>Previous period: {fmt(warehouseReceiptPrevious.prs)}</small>
-                <strong>Click to list received items</strong>
+                <strong>Click to list receipt records</strong>
               </div>
             </button>
 
-            <button
-              className={warehouseReceiptDetail === 'FULL' ? 'meeting-change-card receipt-card active' : 'meeting-change-card receipt-card'}
-              onClick={() => setWarehouseReceiptDetail((current) => current === 'FULL' ? 'NONE' : 'FULL')}
-            >
-              <span>Fully received PRs</span>
-              <b>{fmt(warehouseFullyReceivedPrNos.size)}</b>
-              <div>
-                <small>Completed receipt status</small>
-                <strong>Click to view items</strong>
-              </div>
-            </button>
-
-            <button
-              className={warehouseReceiptDetail === 'PARTIAL' ? 'meeting-change-card receipt-card active' : 'meeting-change-card receipt-card'}
-              onClick={() => setWarehouseReceiptDetail((current) => current === 'PARTIAL' ? 'NONE' : 'PARTIAL')}
-            >
-              <span>Part received PRs</span>
-              <b>{fmt(warehousePartReceivedPrNos.size)}</b>
-              <div>
-                <small>PRs with remaining quantities</small>
-                <strong>Click to view full PR detail</strong>
-              </div>
-            </button>
-
-            <div className="meeting-change-card">
-              <span>Received quantity</span>
-              <b>{fmt(warehouseReceiptCurrent.qty, 2)}</b>
-              <div>
-                <small>Previous period: {fmt(warehouseReceiptPrevious.qty, 2)}</small>
-                <strong>{deltaText(warehouseReceiptCurrent.qty, warehouseReceiptPrevious.qty)}</strong>
-              </div>
-            </div>
-
-            <div className="meeting-change-card">
-              <span>Received value</span>
-              <b>{mvr(warehouseReceiptCurrent.value)}</b>
-              <div>
-                <small>Previous period: {mvr(warehouseReceiptPrevious.value)}</small>
-                <strong>{deltaText(warehouseReceiptCurrent.value, warehouseReceiptPrevious.value)}</strong>
-              </div>
-            </div>
+            <div className="meeting-change-card"><span>Fully received PRs</span><b>Unavailable</b><small>Requires item-level received quantities</small></div>
+            <div className="meeting-change-card"><span>Part received PRs</span><b>Unavailable</b><small>Requires item-level received quantities</small></div>
+            <div className="meeting-change-card"><span>Received quantity</span><b>Unavailable</b><small>Not supplied in synced ERP receipt details</small></div>
+            <div className="meeting-change-card"><span>Received value</span><b>Unavailable</b><small>Not supplied in synced ERP receipt details</small></div>
           </div>
-
+          <p>{fmt(warehouseReceiptCurrent.entries)} PR-linked receipt records in this period. Counts reflect synced ERP data.
+            {warehouseFast.receipts?.synced_at && <> Last ERP detail sync: {new Date(warehouseFast.receipts.synced_at).toLocaleString()}.</>}
+          </p>
+          {warehouseFast.receipts?.invalid_dates > 0 && <p role="status">{warehouseFast.receipts.invalid_dates} receipt records have missing or invalid dates and are excluded from period totals.</p>}
           {warehouseReceiptDetail !== 'NONE' && (
             <section className="warehouse-receipt-detail">
               <div className="warehouse-receipt-detail-head">
-                <div>
-                  <span className="eyebrow">RECEIPT DETAILS</span>
-                  <h4>{warehouseReceiptDetailTitle}</h4>
-                </div>
-                <div>
-                  <strong>{fmt(warehouseReceiptDetailRows.length)} item lines</strong>
-                  <button onClick={() => setWarehouseReceiptDetail('NONE')}>Close</button>
-                </div>
+                <h4>ERP Receipt Records</h4>
+                <span>Showing {warehouseFast.receipts?.rows.length || 0} of {warehouseReceiptCurrent.entries} records</span>
+                <button onClick={() => setWarehouseReceiptDetail('NONE')}>Close</button>
               </div>
-
-              <div className="warehouse-receipt-table">
-                <div className="warehouse-receipt-row warehouse-receipt-head">
-                  <span>PR</span>
-                  <span>PO</span>
-                  <span>Item</span>
-                  <span>Description</span>
-                  <span>Requested</span>
-                  <span>Received</span>
-                  <span>Balance</span>
-                  <span>Status</span>
-                </div>
-                {warehouseReceiptDetailRows.slice(0, 80).map((row, index) => {
-                  const requested = requestedQty(row)
-                  const received = receivedQty(row)
-                  const balance = Math.max(0, requested - received)
-                  const state = receiptState(row)
-                  const status = state === 'full' ? 'Fully received' : received > 0 ? 'Part received' : 'Not received'
-                  return (
-                    <div className="warehouse-receipt-row" key={(row.pr_no || 'pr') + '-' + (row.item_code || index) + '-' + index}>
-                      <b>{row.pr_no || '—'}</b>
-                      <span>{row.po_no || '—'}</span>
-                      <span>{row.item_code || '—'}</span>
-                      <span title={row.item_description || ''}>{row.item_description || '—'}</span>
-                      <span>{fmt(requested, 2)}</span>
-                      <span>{fmt(received, 2)}</span>
-                      <span>{fmt(balance, 2)}</span>
-                      <em className={status === 'Fully received' ? 'good' : status === 'Part received' ? 'warn' : 'bad'}>{status}</em>
-                    </div>
-                  )
-                })}
-                {!warehouseReceiptDetailRows.length && <div className="meeting-no-exceptions">No receipt details found for this selection.</div>}
+              <div style={{ overflowX: 'auto', maxHeight: 360 }}>
+                <table><thead><tr><th>PR</th><th>PO</th><th>Receipt number</th><th>Received date</th></tr></thead>
+                  <tbody>{(warehouseFast.receipts?.rows || []).map((row, index) => (
+                    <tr key={index}><td>{row.pr_no}</td><td>{row.po_no || '—'}</td><td>{row.receipt_no || '—'}</td><td>{row.received_date}</td></tr>
+                  ))}</tbody>
+                </table>
+                {!warehouseFast.receipts?.rows.length && <p>No synced receipt records in this period.</p>}
               </div>
             </section>
           )}
@@ -7154,7 +6977,12 @@ export default function App() {
                         </div>
                         <div className="meeting-slide-mark">SRD</div>
                       </div>
-                      <div className="meeting-body">{warehouseSlides[Math.min(slide, warehouseSlides.length - 1)].body}</div>
+                      <div className="meeting-body">{warehouseLoadState === 'ready'
+                        ? warehouseSlides[Math.min(slide, warehouseSlides.length - 1)].body
+                        : <div role="status" className="meeting-no-exceptions">
+                            <p>{warehouseLoadState === 'error' ? 'Warehouse data could not be loaded. Figures are unavailable.' : 'Loading warehouse summary…'}</p>
+                            {warehouseLoadState === 'error' && <button onClick={refreshCurrentView}>Retry</button>}
+                          </div>}</div>
                       <footer>
                         <span>Shipbuilding & Repair Division · Materials Management</span>
                         <span>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</span>

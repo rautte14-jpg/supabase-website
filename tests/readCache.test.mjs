@@ -89,3 +89,16 @@ test('count-only HEAD queries do not evict table reads or reuse their bodies', a
   assert.equal(await (await fastFetch(url)).text(), 'rows')
   assert.equal(requests, 2)
 })
+
+test('ERP receipt sync invalidates the cached warehouse summary without evicting unrelated reads', async t => {
+  let requests = 0
+  mockFetch(t, async () => new Response(String(++requests)))
+  const rpc = 'https://example.invalid/rest/v1/rpc/warehouse_receipt_summary'
+  const options = { method: 'POST', body: JSON.stringify({ p_today: '2026-11-04' }) }
+  await fastFetch(url)
+  assert.equal(await (await fastFetch(rpc, options)).text(), '2')
+  assert.equal(await (await fastFetch(rpc, options)).text(), '2')
+  clearSupabaseReadCache('erp_pr_details')
+  assert.equal(await (await fastFetch(rpc, options)).text(), '3')
+  assert.equal(await (await fastFetch(url)).text(), '1')
+})

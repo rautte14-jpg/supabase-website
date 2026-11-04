@@ -13,7 +13,7 @@ const ROUTE_TABLES = {
   vessel: ['procurement_records', 'material_records', 'inventory_transactions', 'sr_issue_records', 'lld_updates'],
   stock: ['stock_items', 'weekly_snapshots'],
   updates: ['source_updates'],
-  warehouse: ['procurement_records', 'material_records', 'sr_issue_records', 'inventory_transactions'],
+  warehouse: ['erp_pr_details', 'material_records', 'sr_issue_records', 'inventory_transactions'],
   inventoryPresentation: ['procurement_records', 'material_records', 'pending_payment_records', 'stock_items', 'weekly_snapshots', 'inventory_transactions'],
   history: ['source_updates', 'weekly_snapshots'],
 }
