@@ -13,6 +13,7 @@ const READ_ONLY_RPC_NAMES = new Set([
   'mtr_tracker_details',
   'stock_ageing_details',
   'prf_tracker_data',
+  'warehouse_receipt_summary',
 ])
 
 function requestHeaders(input, init) {
@@ -79,6 +80,7 @@ export function clearSupabaseReadCache(table = '') {
     ],
   }
   const rpcAliases = {
+    erp_pr_details: ['warehouse_receipt_summary'],
     procurement_records: ['overview_material_issue_summary', 'search_vessel_sr', 'prf_tracker_data'],
     material_records: ['overview_material_issue_summary', 'search_vessel_sr', 'mtr_tracker_summary', 'mtr_tracker_details'],
     stock_items: ['stock_ageing_details'],
