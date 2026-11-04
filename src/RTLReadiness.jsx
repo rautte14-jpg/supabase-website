@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react'
 import { RTL_ROWS, RTL_SOURCE } from './rtlSpareSnapshot.js'
+import { RTL_PM_METADATA } from './rtlPartMetadataPm.js'
+import { RTL_STANDARD_METADATA } from './rtlPartMetadataStandard.js'
+import { RTL_CONDITIONAL_METADATA } from './rtlPartMetadataConditional.js'
 import * as XLSX from 'xlsx'
 import './rtlReadiness.css'
 
@@ -11,29 +14,20 @@ const TYPES = [
   { key: 'STANDARD', group: 'S', label: 'Standard Overhaul', short: 'Standard', description: 'Only items classified Over Haul spare' },
   { key: 'FULL', group: 'FULL', label: 'Full Overhaul Coverage', short: 'Full Coverage', description: 'All 263 items in the major overhaul requirement list' },
 ]
-const ITEM_NAMES = {
-  '1-0027252': 'SEAL, TC20X35X8',
-  '1-0113590': 'CENTAFLEX-R DAMPER',
-  '1-0010529': 'ELEMENT FUEL',
-  '1-0013226': 'GASKET, COPPER',
-  '1-0014839': 'HARNESS, WIRE',
-  '1-0028394': 'SEAT, VALVE',
-  '1-0022369': 'PIN, PISTON',
-  '1-0018347': 'LUB OIL FILTER',
-  '1-0020895': 'O-RING 4D G35',
-  '1-0063942': 'SENSOR, OIL BOOSTER',
-  '1-0019505': 'MOUNT, FLEXIBLE 900',
-  '1-0079788': 'HEAD ASSY, CYLINDER',
-  '1-0080288': 'MANIFOLD ASSY, INTAKE',
-  '1-0111308': 'CRANKSHAFT ASSY',
-  '1-0125018': 'PUMP ASSY, INJECTION',
-  '1-0075545': 'ALTERNATOR, 24V-60A',
-  '1-0031833': 'STARTING MOTOR ASSY',
-  '1-0016684': 'INTER COOLER O-RING',
-  '1-0006787': 'CASE, BEARING',
-  '1-0058929': 'CLAMP, A6X8',
-  '1-0125399': 'PIPE ASSY, PUMP OUT',
-  '1-0113857': 'ROD ASSY, CONNECTING',
+// Metadata is retained from the original PM and overhaul requirement sheets.
+const RTL_ITEM_INFO = new Map()
+let pmIndex = 0
+for (const [group, item] of RTL_ROWS) {
+  if (group === '1' || group === '2' || group === '3' || group === '4') {
+    const [partNumber, description] = RTL_PM_METADATA[pmIndex++] || ['', '']
+    RTL_ITEM_INFO.set(group + '|' + item, { partNumber, description })
+  }
+}
+for (const [item, partNumber, description] of RTL_STANDARD_METADATA) {
+  RTL_ITEM_INFO.set('S|' + item, { partNumber, description })
+}
+for (const [item, partNumber, description] of RTL_CONDITIONAL_METADATA) {
+  RTL_ITEM_INFO.set('C|' + item, { partNumber, description })
 }
 const fmt = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
 const targetRows = (type) => RTL_ROWS.filter(([g]) => type === 'FULL' ? (g === 'S' || g === 'C') : g === type)
@@ -48,7 +42,8 @@ export function evaluateRtlGroup(group, stockByItem, fleetSize = 28, target = 1)
     const shortage = Math.max(0, perVessel * target - (available ?? 0))
     return { group: g, item, perVessel, available, missing, cover, shortage,
       provisionalNeed: Math.max(0, perVessel * target - (available ?? 0)),
-      name: ITEM_NAMES[item] || '' }
+      name: RTL_ITEM_INFO.get(g + '|' + item)?.description || '',
+      partNumber: RTL_ITEM_INFO.get(g + '|' + item)?.partNumber || '' }
   })
   const coverage = rows.length ? Math.min(fleetSize, ...rows.map(r => r.cover)) : 0
   return {
@@ -100,7 +95,7 @@ export default function RTLReadiness() {
       if (filter === 'blockers') return row.missing || row.shortage > 0
       return true
     })
-    .filter(row => !search || (row.item + ' ' + row.name).toLowerCase().includes(search.toLowerCase()))
+    .filter(row => !search || (row.item + ' ' + row.name + ' ' + row.partNumber).toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => Number(b.missing) - Number(a.missing) || b.provisionalNeed - a.provisionalNeed || a.item.localeCompare(b.item)),
   [current, filter, search])
 
@@ -133,10 +128,10 @@ export default function RTLReadiness() {
   }
   function downloadShortages() {
     const lines = [
-      ['Maintenance type', 'Item number', 'Item description', 'Per vessel', 'Available physical', 'Source record', 'Required for target', 'Additional quantity (confirmed)', 'Provisional need if missing'].join(','),
+      ['Maintenance type', 'Item number', 'Manufacturer part number', 'Item description', 'Per vessel', 'Available physical', 'Source record', 'Required for target', 'Additional quantity (confirmed)', 'Provisional need if missing'].join(','),
       ...current.rows.filter(row => row.missing || row.shortage > 0).map(row =>
-        [current.label, row.item, row.name, row.perVessel, row.missing ? '0*' : row.available,
-          row.missing ? 'MISSING FROM EXPORT' : 'PRESENT',
+        [current.label, row.item, row.partNumber, row.name, row.perVessel, row.missing ? '0*' : row.available,
+          row.missing ? 'NOT IN ON-HAND REPORT - UNAVAILABLE' : 'PRESENT',
           row.perVessel * target, row.shortage, row.missing ? row.provisionalNeed : '']
           .map(value => '"' + String(value).replace(/"/g, '""') + '"').join(',')),
     ]
@@ -171,7 +166,7 @@ export default function RTLReadiness() {
         <div className="rtl-kpi-caption">{card.label}</div>
         <div className="rtl-kpi-coverage"><strong>{card.coverage}</strong><span>/ {RTL_SOURCE.fleetSize}</span></div>
         <div className="rtl-kpi-progress"><span style={{ width: (card.coverage / RTL_SOURCE.fleetSize * 100) + '%' }} /></div>
-        <div className="rtl-kpi-foot">{card.rows.length} required items · {card.blocked} blocking</div>
+        <div className="rtl-kpi-foot">{card.rows.length} required items · {card.blocked} blocking <span title="Items below the quantity required for one vessel, including items absent from the shared on-hand report">ⓘ</span></div>
       </button>)}
     </div>
     <div className="rtl-layout">
@@ -204,27 +199,27 @@ export default function RTLReadiness() {
     </div>
     <section className="rtl-panel rtl-table-panel">
       <div className="rtl-table-heading">
-        <div><small>STOCK EXCEPTIONS</small><h2>Limiting spares & item requirements</h2><p>Click a coverage card to review that category's items</p></div>
+        <div><small>STOCK EXCEPTIONS</small><h2>Limiting spares & item requirements</h2><p><b>Blocking</b> = below one-vessel requirement or unavailable in the on-hand report. Search by item number, part number, or description.</p></div>
         <div className="rtl-table-actions"><button type="button" onClick={downloadShortages}>Export shortages CSV</button></div>
       </div>
       <div className="rtl-controls">
         <div className="rtl-filters">
-          {[['blockers','Short / missing'],['short','Shortage'],['missing','Not in report'],['all','All items']].map(([key,label]) => <button key={key} type="button" className={filter===key?'active':''} onClick={() => setFilter(key)}>{label}</button>)}
+          {[['blockers','Blocking / unavailable'],['short','Shortage'],['missing','Not in report'],['all','All items']].map(([key,label]) => <button key={key} type="button" className={filter===key?'active':''} onClick={() => setFilter(key)}>{label}</button>)}
         </div>
-        <input value={search} onChange={event => setSearch(event.target.value)} aria-label="Search RTL spare parts" placeholder="Search item number or description…" />
+        <input value={search} onChange={event => setSearch(event.target.value)} aria-label="Search item number, part number or description" placeholder="Search item, P/N or description…" />
       </div>
       <div className="rtl-table-scroll"><table><thead><tr>
-        <th>Item number / description</th><th>Per vessel</th><th>Available</th><th>Coverage</th><th>Need for {target}</th><th>Additional qty</th><th>Record status</th>
+        <th>Item number / description</th><th>Part number (P/N)</th><th>Per vessel</th><th>Available</th><th>Coverage</th><th>Need for {target}</th><th>Additional qty</th><th>Record status</th>
       </tr></thead><tbody>
         {visibleRows.map(row => <tr key={row.item}>
-          <td><b>{row.item}</b>{row.name && <small>{row.name}</small>}</td>
+          <td><b>{row.item}</b>{row.name && <small>{row.name}</small>}</td><td className="rtl-part-number">{row.partNumber || '—'}</td>
           <td>{fmt(row.perVessel)}</td><td>{row.missing ? '0*' : fmt(row.available)}</td>
           <td>{fmt(Math.min(28,row.cover))}</td>
           <td>{fmt(row.perVessel * target)}</td>
           <td>{fmt(row.shortage)}</td>
           <td><span className={'rtl-status ' + (row.missing?'missing': row.available < row.perVessel?'short':'ok')}>{row.missing ? 'Not in on-hand report' : row.available < row.perVessel ? 'Below 1 vessel' : row.shortage > 0 ? 'Target shortfall' : 'Recorded'}</span></td>
         </tr>)}
-        {!visibleRows.length && <tr><td colSpan="7" className="rtl-empty">No items match these filters.</td></tr>}
+        {!visibleRows.length && <tr><td colSpan="8" className="rtl-empty">No items match these filters.</td></tr>}
       </tbody></table></div>
       <div className="rtl-table-footer">Showing {visibleRows.length} of {current.rows.length} item lines · Source quantities are a snapshot, not live ERP updates</div>
     </section>
