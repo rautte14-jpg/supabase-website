@@ -78,3 +78,10 @@
 @media(max-width:900px){.rtl-layout{grid-template-columns:1fr}.rtl-hero-mark{display:none}}
 @media(max-width:650px){.rtl-shell{padding:0 0 25px}.rtl-hero{padding:18px}.rtl-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.rtl-kpi{padding:13px;min-height:135px}.rtl-kpi-coverage strong{font-size:26px}.rtl-panel{padding:16px}.rtl-controls{flex-direction:column;align-items:stretch}.rtl-controls>input{width:100%}.rtl-table-panel{padding:0}.rtl-table-heading{padding:16px;flex-wrap:wrap}.rtl-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.rtl-stats>div{padding:9px 7px}.rtl-stats strong{font-size:20px}}
 @media(max-width:380px){.rtl-kpis{grid-template-columns:1fr}}
+
+/* Manufacturer part number column: visible, selectable and searchable. */
+.rtl-table-scroll th:nth-child(2) { min-width: 160px; }
+.rtl-table-scroll td.rtl-part-number { white-space: normal; min-width: 160px; max-width: 265px; font-weight: 700; color: #0b7181; overflow-wrap: anywhere; }
+.rtl-table-scroll td:first-child { min-width: 275px; }
+.rtl-table-heading p { max-width: 690px; }
+.rtl-table-heading p b { color: #126b79; }
