@@ -115,7 +115,7 @@ export default function RTLReadiness() {
       const rows = XLSX.utils.sheet_to_json(sheet, { defval: null })
       const updated = readStockImport(rows)
       // Override all items in this export. Items omitted from the new source stay missing.
-      const all = Object.fromEntries(new Set(RTL_ROWS.map(row => row[1])).values().map(item => [item, Object.hasOwn(updated, item) ? updated[item] : null]))
+      const all = Object.fromEntries([...new Set(RTL_ROWS.map(row => row[1]))].map(item => [item, Object.hasOwn(updated, item) ? updated[item] : null]))
       setStockOverride(all)
       setImportLabel(file.name)
       setFilter('blockers')
