@@ -8,6 +8,7 @@ import './tailwind.css'
 import './eddock-ui.css'
 import './eddock-ui-v2.css'
 import './eddock-ui-v3.css'
+import './srd-visual-refresh.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

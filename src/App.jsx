@@ -5097,10 +5097,10 @@ export default function App() {
     <div className="app-shell srd-drawer-layout bg-slate-50" data-view={view}>
       <aside className={'sidebar srd-sidebar-drawer !bg-[#0B1F3A] !border-r !border-white/10 !shadow-none' + (sidebarOpen ? ' open' : '')}>
         <div className="brand !border-white/10">
-          <div className="brand-box !rounded-xl !bg-white/10 !text-white !shadow-none ring-1 ring-white/10">ED</div>
+          <div className="brand-box !rounded-xl !bg-white/10 !text-white !shadow-none ring-1 ring-white/10">SRD</div>
           <div>
-            <strong>EDDOCK</strong>
-            <span>Materials & Operations</span>
+            <strong>SRD Warehouse</strong>
+            <span>Shipbuilding &amp; Repair · MTCC</span>
           </div>
         </div>
 
@@ -5166,7 +5166,7 @@ export default function App() {
             </button>
           </div>
           <div className="topbar-context !border-slate-200">
-            <span>SRD Warehouse</span>
+            <span>SRD Warehouse System</span>
             <strong>{NAV.find(([key]) => key === view)?.[1] || 'Workspace'}</strong>
           </div>
           <div className="search-wrap !min-h-[42px] !max-w-xl !rounded-xl !border-slate-200 !bg-slate-50 !px-3.5 transition focus-within:!border-blue-400 focus-within:!bg-white focus-within:!shadow-[0_0_0_3px_rgba(59,130,246,0.10)]">
@@ -5221,8 +5221,8 @@ export default function App() {
               <div className="home-dashboard-head">
                 <div>
                   <span className="eyebrow">SHIPBUILDING & REPAIR DIVISION · MATERIALS MANAGEMENT</span>
-                  <h1>Dashboard</h1>
-                  <p>Warehouse, procurement and inventory control overview.</p>
+                  <h1>SRD Warehouse System</h1>
+                  <p>Shipbuilding and Repair Division <span className="home-title-divider">|</span> MTCC</p>
                 </div>
 
                 <div className="home-dashboard-actions">
@@ -5266,7 +5266,7 @@ export default function App() {
               <div className="home-kpi-grid">
                 {[
                   {
-                    label: 'Total Items',
+                    label: 'Total Stock Items',
                     value: fmt(homeDashboard.totalItems),
                     helper: 'Items in current inventory list',
                     icon: 'stock',
@@ -5274,32 +5274,43 @@ export default function App() {
                     target: 'stock',
                   },
                   {
-                    label: 'High-Use Low Stock',
-                    value: fmt(homeDashboard.lowStockItems),
-                    helper: 'Top 100 consumption-value items at 5 units or less',
+                    label: 'On-Hand Value',
+                    value: mvr(homeSummary.stock_value),
+                    helper: 'Current SRD on-hand inventory value',
                     icon: 'stock',
                     tone: 'blue',
                     target: 'stock',
                   },
                   {
-                    label: 'High-Use Out of Stock',
-                    value: fmt(homeDashboard.outOfStockItems),
-                    helper: 'Top 100 consumption-value items with zero on-hand',
-                    icon: 'prpo',
+                    label: 'Stock Over 1 Year',
+                    value: mvr(homeSummary.aged_value),
+                    helper: Number(homeSummary.stock_value || 0) > 0
+                      ? fmt(Number(homeSummary.aged_value || 0) / Number(homeSummary.stock_value || 0) * 100, 1) + '% of total stock value'
+                      : 'Ageing value from latest snapshot',
+                    icon: 'history',
                     tone: 'orange',
                     target: 'stock',
                   },
                   {
-                    label: 'Inventory Value',
-                    value: mvr(homeSummary.stock_value),
-                    helper: 'Current SRD on-hand value',
-                    icon: 'stock',
+                    label: 'Open PR / PO',
+                    value: fmt(homeSummary.pending_count),
+                    helper: 'Current pending procurement records',
+                    icon: 'prpo',
                     tone: 'violet',
+                    target: 'prpo',
+                  },
+                  {
+                    label: 'High-Use Low Stock',
+                    value: fmt(homeDashboard.lowStockItems),
+                    helper: 'Top 100 high-use items with 5 or fewer units',
+                    icon: 'stock',
+                    tone: 'amber',
                     target: 'stock',
                   },
                 ].map((card) => (
                   <button
                     key={card.label}
+                    type="button"
                     className={'home-kpi-card tone-' + card.tone}
                     onClick={() => setView(card.target)}
                   >
@@ -5311,7 +5322,7 @@ export default function App() {
                       <strong>{card.value}</strong>
                       <small>{card.helper}</small>
                     </div>
-                    <span className="home-kpi-arrow">↗</span>
+                    <span className="home-kpi-arrow" aria-hidden="true">↗</span>
                   </button>
                 ))}
               </div>
