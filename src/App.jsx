@@ -5094,7 +5094,7 @@ export default function App() {
   if (access === false) return <AccessDenied email={session.user.email} />
 
   return (
-    <div className="app-shell srd-drawer-layout bg-slate-50" data-view={view}>
+    <div className={"app-shell srd-drawer-layout srd-collapsible-layout bg-slate-50" + (sidebarOpen ? " sidebar-expanded" : " sidebar-collapsed")} data-view={view}>
       <aside className={'sidebar srd-sidebar-drawer !bg-[#0B1F3A] !border-r !border-white/10 !shadow-none' + (sidebarOpen ? ' open' : '')}>
         <div className="brand !border-white/10">
           <div className="brand-box !rounded-xl !bg-white/10 !text-white !shadow-none ring-1 ring-white/10">SRD</div>
@@ -5120,6 +5120,8 @@ export default function App() {
                         ? '!bg-white/10 !text-white before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-blue-400'
                         : '!text-slate-300 hover:!bg-white/[0.06] hover:!text-white')
                     }
+                    title={label}
+                    aria-label={label}
                     onMouseEnter={() => preloadRoute(key)}
                     onFocus={() => preloadRoute(key)}
                     onClick={() => { setView(key); setSidebarOpen(false) }}
