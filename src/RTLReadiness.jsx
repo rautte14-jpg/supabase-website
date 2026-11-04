@@ -45,7 +45,7 @@ export function evaluateRtlGroup(group, stockByItem, fleetSize = 28, target = 1)
     const available = Object.hasOwn(stockByItem, item) ? checkedQty(stockByItem[item]) : checkedQty(original)
     const missing = available === null
     const cover = missing ? 0 : Math.floor(available / perVessel)
-    const shortage = missing ? null : Math.max(0, perVessel * target - available)
+    const shortage = Math.max(0, perVessel * target - (available ?? 0))
     return { group: g, item, perVessel, available, missing, cover, shortage,
       provisionalNeed: Math.max(0, perVessel * target - (available ?? 0)),
       name: ITEM_NAMES[item] || '' }
@@ -135,9 +135,9 @@ export default function RTLReadiness() {
     const lines = [
       ['Maintenance type', 'Item number', 'Item description', 'Per vessel', 'Available physical', 'Source record', 'Required for target', 'Additional quantity (confirmed)', 'Provisional need if missing'].join(','),
       ...current.rows.filter(row => row.missing || row.shortage > 0).map(row =>
-        [current.label, row.item, row.name, row.perVessel, row.missing ? '' : row.available,
+        [current.label, row.item, row.name, row.perVessel, row.missing ? '0*' : row.available,
           row.missing ? 'MISSING FROM EXPORT' : 'PRESENT',
-          row.perVessel * target, row.shortage ?? '', row.missing ? row.provisionalNeed : '']
+          row.perVessel * target, row.shortage, row.missing ? row.provisionalNeed : '']
           .map(value => '"' + String(value).replace(/"/g, '""') + '"').join(',')),
     ]
     const url = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' }))
@@ -163,7 +163,7 @@ export default function RTLReadiness() {
     {showNotes && <div className="rtl-method">
       <p><b>Independent coverage:</b> For each category, complete-vessel coverage is the smallest floor(available physical ÷ quantity required per two-engine vessel), capped at 28. Each category is calculated separately; the same item can appear in PM and overhaul sets, and stock is not double-allocated.</p>
       <p><b>Overhaul definitions:</b> Standard uses only the 114 “Over Haul spare” items. Full uses all 263 overhaul items, including condition-based parts. Full listed coverage is not a prediction of what Engineering will actually replace.</p>
-      <p><b>Missing vs zero:</b> A missing item is absent from the stock export and its balance is unknown. It is conservatively treated as unavailable for coverage, but its shortage is not included in confirmed shortage totals.</p>
+      <p><b>Missing vs zero:</b> An item missing from the supplied on-hand report is unavailable (zero usable stock) for planning. It remains marked as not listed, distinguishing it from a confirmed zero balance.</p>
       <p><b>Uploaded stock:</b> A new Dynamics export changes figures in this browser session only. It does not overwrite Supabase, ERP, or other warehouse dashboards.</p>
     </div>}
     <div className="rtl-kpis">
@@ -186,8 +186,8 @@ export default function RTLReadiness() {
         </div>
         <div className="rtl-stats">
           <div><small>Total required lines</small><strong>{current.rows.length}</strong></div>
-          <div><small>Confirmed short items</small><strong>{current.belowOne}</strong></div>
-          <div><small>Missing export records</small><strong>{current.missing}</strong></div>
+          <div><small>Items below 1 vessel</small><strong>{current.belowOne}</strong></div>
+          <div><small>Not in on-hand report</small><strong>{current.missing}</strong></div>
         </div>
       </section>
       <section className="rtl-panel rtl-plan-panel">
@@ -196,10 +196,10 @@ export default function RTLReadiness() {
           <input type="number" min="1" max="28" step="1" value={target} onChange={event => setTarget(Math.min(28, Math.max(1, Math.round(Number(event.target.value) || 1))))} />
         </label>
         <div className="rtl-calculator-results">
-          <div><small>Confirmed shortage units</small><strong>{fmt(current.confirmedShortage)}</strong></div>
-          <div><small>Missing stock records</small><strong>{current.missing}</strong></div>
+          <div><small>Additional units required</small><strong>{fmt(current.confirmedShortage)}</strong></div>
+          <div><small>Not in on-hand report</small><strong>{current.missing}</strong></div>
         </div>
-        <p className="rtl-calculator-note">Confirmed shortage totals exclude missing records. Missing items need stock verification before a complete procurement quantity can be finalized.</p>
+        <p className="rtl-calculator-note">Additional quantity includes items absent from the on-hand report (treated as zero usable stock). Confirm warehouse scope before procurement.</p>
       </section>
     </div>
     <section className="rtl-panel rtl-table-panel">
@@ -209,7 +209,7 @@ export default function RTLReadiness() {
       </div>
       <div className="rtl-controls">
         <div className="rtl-filters">
-          {[['blockers','Short / missing'],['short','Confirmed shortage'],['missing','Missing record'],['all','All items']].map(([key,label]) => <button key={key} type="button" className={filter===key?'active':''} onClick={() => setFilter(key)}>{label}</button>)}
+          {[['blockers','Short / missing'],['short','Shortage'],['missing','Not in report'],['all','All items']].map(([key,label]) => <button key={key} type="button" className={filter===key?'active':''} onClick={() => setFilter(key)}>{label}</button>)}
         </div>
         <input value={search} onChange={event => setSearch(event.target.value)} aria-label="Search RTL spare parts" placeholder="Search item number or description…" />
       </div>
@@ -218,11 +218,11 @@ export default function RTLReadiness() {
       </tr></thead><tbody>
         {visibleRows.map(row => <tr key={row.item}>
           <td><b>{row.item}</b>{row.name && <small>{row.name}</small>}</td>
-          <td>{fmt(row.perVessel)}</td><td>{row.missing ? '—' : fmt(row.available)}</td>
-          <td>{row.missing ? 'Unknown' : fmt(Math.min(28,row.cover))}</td>
+          <td>{fmt(row.perVessel)}</td><td>{row.missing ? '0*' : fmt(row.available)}</td>
+          <td>{fmt(Math.min(28,row.cover))}</td>
           <td>{fmt(row.perVessel * target)}</td>
-          <td>{row.missing ? 'Verify stock' : fmt(row.shortage)}</td>
-          <td><span className={'rtl-status ' + (row.missing?'missing': row.available < row.perVessel?'short':'ok')}>{row.missing ? 'Missing in export' : row.available < row.perVessel ? 'Below 1 vessel' : row.shortage > 0 ? 'Target shortfall' : 'Recorded'}</span></td>
+          <td>{fmt(row.shortage)}</td>
+          <td><span className={'rtl-status ' + (row.missing?'missing': row.available < row.perVessel?'short':'ok')}>{row.missing ? 'Not in on-hand report' : row.available < row.perVessel ? 'Below 1 vessel' : row.shortage > 0 ? 'Target shortfall' : 'Recorded'}</span></td>
         </tr>)}
         {!visibleRows.length && <tr><td colSpan="7" className="rtl-empty">No items match these filters.</td></tr>}
       </tbody></table></div>
