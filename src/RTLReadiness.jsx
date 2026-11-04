@@ -84,10 +84,12 @@ export default function RTLReadiness() {
   const [importError, setImportError] = useState('')
   const [importing, setImporting] = useState(false)
   const [showNotes, setShowNotes] = useState(false)
+  const [showQuantityHelp, setShowQuantityHelp] = useState(false)
   const coverage = useMemo(() => TYPES.map(type => ({
     ...type, ...evaluateRtlGroup(type.group, stockOverride, RTL_SOURCE.fleetSize, target),
   })), [stockOverride, target])
   const current = coverage.find(row => row.key === selected) || coverage[0]
+  const itemsBelowTarget = current.rows.filter(row => row.missing || row.shortage > 0).length
   const visibleRows = useMemo(() => current.rows
     .filter(row => {
       if (filter === 'missing') return row.missing
@@ -181,7 +183,7 @@ export default function RTLReadiness() {
         </div>
         <div className="rtl-stats">
           <div><small>Total required lines</small><strong>{current.rows.length}</strong></div>
-          <div><small>Items below 1 vessel</small><strong>{current.belowOne}</strong></div>
+          <div><small>Items below 1 vessel <button type="button" className="rtl-inline-help" aria-label="Explain items versus units" title="Explain items versus units" onClick={() => setShowQuantityHelp(true)}>ⓘ</button></small><strong>{current.belowOne}</strong></div>
           <div><small>Not in on-hand report</small><strong>{current.missing}</strong></div>
         </div>
       </section>
@@ -191,7 +193,7 @@ export default function RTLReadiness() {
           <input type="number" min="1" max="28" step="1" value={target} onChange={event => setTarget(Math.min(28, Math.max(1, Math.round(Number(event.target.value) || 1))))} />
         </label>
         <div className="rtl-calculator-results">
-          <div><small>Additional units required</small><strong>{fmt(current.confirmedShortage)}</strong></div>
+          <div><small>Additional units required <button type="button" className="rtl-inline-help" aria-label="Explain items versus units" title="Explain items versus units" onClick={() => setShowQuantityHelp(true)}>ⓘ</button></small><strong>{fmt(current.confirmedShortage)}</strong></div>
           <div><small>Not in on-hand report</small><strong>{current.missing}</strong></div>
         </div>
         <p className="rtl-calculator-note">Additional quantity includes items absent from the on-hand report (treated as zero usable stock). Confirm warehouse scope before procurement.</p>
@@ -229,6 +231,21 @@ export default function RTLReadiness() {
       {importLabel && <p className="rtl-upload-success">Temporary stock comparison loaded: {importLabel}</p>}
       {importError && <p role="alert" className="rtl-upload-error">{importError}</p>}
     </section>
+    {showQuantityHelp && <div className="rtl-help-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowQuantityHelp(false) }}>
+      <section className="rtl-help-dialog" role="dialog" aria-modal="true" aria-labelledby="rtl-items-units-title">
+        <button type="button" className="rtl-help-close" aria-label="Close explanation" onClick={() => setShowQuantityHelp(false)}>×</button>
+        <span className="rtl-eyebrow">HOW TO READ THE FIGURES</span>
+        <h2 id="rtl-items-units-title">Spare parts vs. units</h2>
+        <p><strong>Items</strong> counts the different spare-part lines that need more stock. <strong>Units</strong> adds up the actual quantities needed across those items.</p>
+        <div className="rtl-help-comparison">
+          <div><span>Spare-part items short for {target} {target === 1 ? 'vessel' : 'vessels'}</span><strong>{itemsBelowTarget}</strong><small>Different items with shortages</small></div>
+          <div><span>Additional units needed</span><strong>{fmt(current.confirmedShortage)}</strong><small>Total quantity across those items</small></div>
+        </div>
+        <p className="rtl-help-context">{current.label}: For the selected target of {target} {target === 1 ? 'vessel' : 'vessels'}, these figures use the shared on-hand report. Items not listed in that report are treated as unavailable (zero usable stock).</p>
+        {target !== 1 && <p className="rtl-help-context">The “Items below 1 vessel” card always uses a one-vessel requirement; the calculator and the figures above use your selected target of {target} vessels.</p>}
+        <button type="button" className="rtl-help-done" onClick={() => setShowQuantityHelp(false)}>Got it</button>
+      </section>
+    </div>}
     <footer className="rtl-footer">Planning interpretation: individual vessel “Ready” statuses require Engineering inspection and allocation priorities; category coverage alone does not identify specific vessels.</footer>
   </section>
 }
