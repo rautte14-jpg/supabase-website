@@ -85,3 +85,20 @@
 .rtl-table-scroll td:first-child { min-width: 275px; }
 .rtl-table-heading p { max-width: 690px; }
 .rtl-table-heading p b { color: #126b79; }
+
+
+/* Contextual item-vs-unit explanation, accessible from both dashboard figures. */
+.rtl-inline-help{display:inline-grid;place-items:center;vertical-align:middle;margin-left:4px;width:20px;height:20px;border:0;border-radius:50%;background:#def2f2;color:#056c77;font-size:15px;line-height:1;cursor:pointer}
+.rtl-inline-help:hover,.rtl-inline-help:focus-visible{background:#b9e8e7;outline:2px solid #0b8e93;outline-offset:1px}
+.rtl-help-overlay{position:fixed;inset:0;z-index:110;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(10,28,44,.46)}
+.rtl-help-dialog{position:relative;overflow:auto;max-height:min(90vh,750px);width:min(100%,530px);padding:28px;border:1px solid #d4e7e9;border-radius:18px;background:#fff;box-shadow:0 28px 75px #0a26354d}
+.rtl-help-dialog h2{font-size:24px;margin:10px 0 12px;color:#123348}
+.rtl-help-dialog p{font-size:13px;color:#465f70;line-height:1.65;margin:8px 0 14px}
+.rtl-help-close{position:absolute;right:15px;top:13px;border:0;background:transparent;color:#607785;font-size:28px;cursor:pointer;line-height:1;width:34px;height:34px}
+.rtl-help-comparison{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:17px 0}
+.rtl-help-comparison>div{background:#eef8f8;border:1px solid #d7ebeb;border-radius:12px;padding:15px}
+.rtl-help-comparison span,.rtl-help-comparison small{display:block;color:#537282;font-size:11px;line-height:1.45}
+.rtl-help-comparison strong{display:block;color:#085c69;font-size:32px;margin:8px 0 3px}
+.rtl-help-dialog .rtl-help-context{font-size:11px;color:#6a818c}
+.rtl-help-done{margin-top:7px;background:#057c85;border:0;border-radius:9px;padding:11px 19px;color:#fff;font-weight:750;cursor:pointer}
+@media(max-width:420px){.rtl-help-dialog{padding:21px}.rtl-help-comparison{grid-template-columns:1fr}}
