@@ -6617,3 +6617,54 @@ body.srd-sidebar-open{overflow:hidden}
 @media(max-width:640px){
   .table-progressive-footer{align-items:flex-start;flex-direction:column}
 }
+
+/* Keep warehouse presentation details readable on projector and laptop screens. */
+.warehouse-presentation-shell .meeting-slide {
+  height: auto;
+  min-width: 0;
+  overflow: visible;
+}
+.warehouse-presentation-shell .meeting-body {
+  min-width: 0;
+}
+.warehouse-presentation-shell .warehouse-receipt-detail,
+.warehouse-presentation-shell .warehouse-issue-detail {
+  max-width: 100%;
+  min-width: 0;
+}
+.warehouse-presentation-shell:fullscreen .meeting-slide {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.warehouse-presentation-shell:fullscreen .meeting-body {
+  min-height: 0;
+}
+@media (max-width: 900px) {
+  .warehouse-presentation-shell .meeting-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .warehouse-presentation-shell .meeting-agenda {
+    position: static;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .warehouse-presentation-shell .meeting-slide {
+    padding: 22px 18px;
+    min-height: 0;
+    aspect-ratio: auto;
+  }
+}
+@media print {
+  .warehouse-presentation-shell .meeting-agenda,
+  .warehouse-presentation-shell .meeting-controls,
+  .warehouse-presentation-shell .meeting-slide-topline {
+    display: none !important;
+  }
+  .warehouse-presentation-shell .meeting-workspace {
+    display: block;
+  }
+  .warehouse-presentation-shell .meeting-slide {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+}
