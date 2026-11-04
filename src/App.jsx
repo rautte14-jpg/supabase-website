@@ -1913,8 +1913,9 @@ export default function App() {
         supabase.from('warehouse_receipt_recovery').select('*').order('period_start', { ascending: false }).limit(24).abortSignal(signal),
       ])
 
-      if (receiptsResult.error) throw receiptsResult.error
-      if (!receiptsResult.data?.periods) throw new Error('Receipt summary unavailable')
+      if ((receiptsResult.error || !receiptsResult.data?.periods) && (recoveryResult.error || !recoveryResult.data?.length)) {
+        throw receiptsResult.error || new Error('Receipt summaries unavailable')
+      }
       if (mrnWeeksResult.error) throw mrnWeeksResult.error
       if (mrnMonthResult.error) throw mrnMonthResult.error
       if (issueWeeksResult.error) throw issueWeeksResult.error
@@ -1924,7 +1925,7 @@ export default function App() {
       if (recoveryResult.error) console.warn('Receipt recovery summary unavailable', recoveryResult.error)
       setWarehouseReceiptRecovery(recoveryResult.error ? [] : (recoveryResult.data || []))
       setWarehouseFast({
-        receipts: receiptsResult.data,
+        receipts: receiptsResult.data?.periods ? receiptsResult.data : { periods: { current: {}, previous: {}, month: {} }, rows: [] },
         mrnWeeks: mrnWeeksResult.data || [],
         mrnMonth: mrnMonthResult.data?.[0] || null,
         issueWeeks: issueWeeksResult.data || [],
@@ -4005,9 +4006,9 @@ export default function App() {
   const warehouseWeekStart = addDaysIso(warehouseCurrentWeekStart, -7)
   const warehouseWeekEnd = addDaysIso(warehouseWeekStart, 6)
 
-  const warehouseReceiptCurrent = warehouseFast.receipts?.periods.current || {}
-  const warehouseReceiptPrevious = warehouseFast.receipts?.periods.previous || {}
-  const warehouseReceiptMonth = warehouseFast.receipts?.periods.month || {}
+  const warehouseReceiptCurrent = warehouseFast.receipts?.periods?.current || {}
+  const warehouseReceiptPrevious = warehouseFast.receipts?.periods?.previous || {}
+  const warehouseReceiptMonth = warehouseFast.receipts?.periods?.month || {}
   const recoveredWeeklyCurrent = warehouseReceiptRecovery.find((row) => row.period_type === 'week' && row.period_start === warehouseWeekStart)
   const recoveredWeeklyPrevious = warehouseReceiptRecovery.find((row) => row.period_type === 'week' && row.period_start === addDaysIso(warehouseWeekStart, -7))
   const recoveredMonthly = warehouseReceiptRecovery.find((row) => row.period_type === 'month' && row.period_start === todayIso.slice(0, 7) + '-01' && row.period_end >= todayIso)
@@ -4102,7 +4103,7 @@ export default function App() {
           <div className="meeting-metrics">
             <MetricCard label="PRs Received This Month" value={fmt(receiptMonthDisplay.prs)} helper={recoveredMonthly ? "PR & PO Tracker · as of " + recoveredMonthly.source_date : "Distinct PRs with ERP receipt activity this month"} />
             <MetricCard label="Received Quantity This Month" value={recoveredMonthly ? fmt(recoveredMonthly.qty, 2) : "Unavailable"} helper={recoveredMonthly ? "Tracker quantity · as of " + recoveredMonthly.source_date : "ERP receipt events have no item quantities"} />
-            <MetricCard label="Received Value This Month" value={recoveredMonthly ? mvr(recoveredMonthly.value) : "Unavailable"} helper={recoveredMonthly ? "Estimated from tracker PO values · as of " + recoveredMonthly.source_date : "ERP receipt events have no received values"} />
+            <MetricCard label="Received Value This Month" value={recoveredMonthly ? mvr(recoveredMonthly.value) : "Unavailable"} helper={recoveredMonthly ? "Partial estimate: 2 of 13 lines had PO values · " + recoveredMonthly.source_date : "ERP receipt events have no received values"} />
             <MetricCard label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
             <MetricCard label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
             <MetricCard label="SR Issues This Month" value={fmt(warehouseIssueMonth.total)} helper={mvr(warehouseIssueMonth.value) + ' issue value · ' + fmt(warehouseIssueMonth.openOrder) + ' open'} />
@@ -4132,14 +4133,14 @@ export default function App() {
               <b>{fmt(receiptCurrentDisplay.prs)}</b>
               <div>
                 <small>Previous period: {fmt(receiptPreviousDisplay.prs)}</small>
-                <strong>Click to list receipt records</strong>
+                <strong>{recoveredWeeklyCurrent ? "View ERP-synced events (different source)" : "Click to list receipt records"}</strong>
               </div>
             </button>
 
             <div className="meeting-change-card"><span>Fully received PRs</span><b>{recoveredWeeklyCurrent ? fmt(recoveredWeeklyCurrent.full_prs) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "PR status across tracker lines" : "Requires item-level received quantities"}</small></div>
             <div className="meeting-change-card"><span>Part received PRs</span><b>{recoveredWeeklyCurrent ? fmt(recoveredWeeklyCurrent.partial_prs) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "PRs with remaining quantities" : "Requires item-level received quantities"}</small></div>
             <div className="meeting-change-card"><span>Received quantity</span><b>{recoveredWeeklyCurrent ? fmt(recoveredWeeklyCurrent.qty, 2) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "Previous: " + fmt(receiptPreviousDisplay.qty, 2) + " · Tracker snapshot" : "Not supplied in synced ERP receipt details"}</small></div>
-            <div className="meeting-change-card"><span>Received value</span><b>{recoveredWeeklyCurrent ? mvr(recoveredWeeklyCurrent.value) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "Estimated from tracker PO values · snapshot " + recoveredWeeklyCurrent.source_date : "Not supplied in synced ERP receipt details"}</small></div>
+            <div className="meeting-change-card"><span>Received value</span><b>{recoveredWeeklyCurrent ? mvr(recoveredWeeklyCurrent.value) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "Partial estimate: 3 of 28 lines had PO values · " + recoveredWeeklyCurrent.source_date : "Not supplied in synced ERP receipt details"}</small></div>
           </div>
           <p>{recoveredWeeklyCurrent ? fmt(recoveredWeeklyCurrent.lines) + " tracker receipt lines in this period. Snapshot: " + recoveredWeeklyCurrent.source_date + ". " : fmt(warehouseReceiptCurrent.entries) + " PR-linked ERP receipt records in this period. " }
             {warehouseFast.receipts?.synced_at && <> Last ERP detail sync: {new Date(warehouseFast.receipts.synced_at).toLocaleString()}.</>}
