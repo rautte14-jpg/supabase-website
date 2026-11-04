@@ -1461,8 +1461,10 @@ export default function App() {
   const [warehouseIssueDetailOpen, setWarehouseIssueDetailOpen] = useState(false)
   const [warehouseIssueDetailRows, setWarehouseIssueDetailRows] = useState([])
   const [warehouseIssueDetailLoading, setWarehouseIssueDetailLoading] = useState(false)
+  const [warehouseIssueDetailError, setWarehouseIssueDetailError] = useState('')
   const warehouseRequestId = useRef(0)
   const [warehouseLoadState, setWarehouseLoadState] = useState('loading')
+  const [warehouseReceiptRecovery, setWarehouseReceiptRecovery] = useState([])
   const [warehouseFast, setWarehouseFast] = useState({
     mrnWeeks: [],
     mrnMonth: null,
@@ -1886,7 +1888,7 @@ export default function App() {
       const today = maldivesDateIso()
       const signal = AbortSignal.timeout(20000)
       const monthStart = today.slice(0, 7) + '-01'
-      const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult, receiptsResult] = await Promise.all([
+      const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult, receiptsResult, recoveryResult] = await Promise.all([
         supabase
           .from('warehouse_mrn_weekly_summary')
           .select('*')
@@ -1908,18 +1910,22 @@ export default function App() {
           .eq('month_start', monthStart)
           .limit(1).abortSignal(signal),
         supabase.rpc('warehouse_receipt_summary', { p_today: today }).abortSignal(signal),
+        supabase.from('warehouse_receipt_recovery').select('*').order('period_start', { ascending: false }).limit(24).abortSignal(signal),
       ])
 
-      if (receiptsResult.error) throw receiptsResult.error
-      if (!receiptsResult.data?.periods) throw new Error('Receipt summary unavailable')
+      if ((receiptsResult.error || !receiptsResult.data?.periods) && (recoveryResult.error || !recoveryResult.data?.length)) {
+        throw receiptsResult.error || new Error('Receipt summaries unavailable')
+      }
       if (mrnWeeksResult.error) throw mrnWeeksResult.error
       if (mrnMonthResult.error) throw mrnMonthResult.error
       if (issueWeeksResult.error) throw issueWeeksResult.error
       if (issueMonthResult.error) throw issueMonthResult.error
 
       if (requestId !== warehouseRequestId.current) return
+      if (recoveryResult.error) console.warn('Receipt recovery summary unavailable', recoveryResult.error)
+      setWarehouseReceiptRecovery(recoveryResult.error ? [] : (recoveryResult.data || []))
       setWarehouseFast({
-        receipts: receiptsResult.data,
+        receipts: receiptsResult.data?.periods ? receiptsResult.data : { periods: { current: {}, previous: {}, month: {} }, rows: [] },
         mrnWeeks: mrnWeeksResult.data || [],
         mrnMonth: mrnMonthResult.data?.[0] || null,
         issueWeeks: issueWeeksResult.data || [],
@@ -1934,6 +1940,7 @@ export default function App() {
 
   async function loadWarehouseIssueDetails(weekStart) {
     setWarehouseIssueDetailLoading(true)
+    setWarehouseIssueDetailError('')
     try {
       const weekEnd = addDaysIso(weekStart, 6)
       const { data: rows, error } = await supabase
@@ -1944,7 +1951,10 @@ export default function App() {
         .order('requested_receipt_date', { ascending: false })
         .limit(120)
       if (error) throw error
-      setWarehouseIssueDetailRows(rows || [])
+      if (weekStart === warehouseIssueWeekFilter) setWarehouseIssueDetailRows(rows || [])
+    } catch (error) {
+      console.error('Failed to load warehouse issue details', error)
+      setWarehouseIssueDetailError('Unable to load issue items. Please retry.')
     } finally {
       setWarehouseIssueDetailLoading(false)
     }
@@ -1955,8 +1965,8 @@ export default function App() {
       setWarehouseIssueDetailOpen(false)
       return
     }
-    await loadWarehouseIssueDetails(warehouseIssueWeekFilter)
     setWarehouseIssueDetailOpen(true)
+    await loadWarehouseIssueDetails(warehouseIssueWeekFilter)
   }
 
   async function loadInventoryPresentationFast() {
@@ -3996,9 +4006,15 @@ export default function App() {
   const warehouseWeekStart = addDaysIso(warehouseCurrentWeekStart, -7)
   const warehouseWeekEnd = addDaysIso(warehouseWeekStart, 6)
 
-  const warehouseReceiptCurrent = warehouseFast.receipts?.periods.current || {}
-  const warehouseReceiptPrevious = warehouseFast.receipts?.periods.previous || {}
-  const warehouseReceiptMonth = warehouseFast.receipts?.periods.month || {}
+  const warehouseReceiptCurrent = warehouseFast.receipts?.periods?.current || {}
+  const warehouseReceiptPrevious = warehouseFast.receipts?.periods?.previous || {}
+  const warehouseReceiptMonth = warehouseFast.receipts?.periods?.month || {}
+  const recoveredWeeklyCurrent = warehouseReceiptRecovery.find((row) => row.period_type === 'week' && row.period_start === warehouseWeekStart)
+  const recoveredWeeklyPrevious = warehouseReceiptRecovery.find((row) => row.period_type === 'week' && row.period_start === addDaysIso(warehouseWeekStart, -7))
+  const recoveredMonthly = warehouseReceiptRecovery.find((row) => row.period_type === 'month' && row.period_start === todayIso.slice(0, 7) + '-01' && row.period_end >= todayIso)
+  const receiptCurrentDisplay = recoveredWeeklyCurrent || warehouseReceiptCurrent
+  const receiptPreviousDisplay = recoveredWeeklyPrevious || warehouseReceiptPrevious
+  const receiptMonthDisplay = recoveredMonthly || warehouseReceiptMonth
   const warehouseMonthStart = todayIso.slice(0, 7) + '-01'
   const warehouseMonthLabel = new Date(todayIso + 'T12:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
 
@@ -4085,9 +4101,9 @@ export default function App() {
             <small>{formatShortDate(warehouseMonthStart)} – {formatShortDate(todayIso)}</small>
           </div>
           <div className="meeting-metrics">
-            <MetricCard label="PRs Received This Month" value={fmt(warehouseReceiptMonth.prs)} helper="Distinct PRs with receipt activity this month" />
-            <MetricCard label="Received Quantity This Month" value="Unavailable" helper="ERP receipt details do not include quantities" />
-            <MetricCard label="Received Value This Month" value="Unavailable" helper="ERP receipt details do not include values" />
+            <MetricCard label="PRs Received This Month" value={fmt(receiptMonthDisplay.prs)} helper={recoveredMonthly ? "PR & PO Tracker · as of " + recoveredMonthly.source_date : "Distinct PRs with ERP receipt activity this month"} />
+            <MetricCard label="Received Quantity This Month" value={recoveredMonthly ? fmt(recoveredMonthly.qty, 2) : "Unavailable"} helper={recoveredMonthly ? "Tracker quantity · as of " + recoveredMonthly.source_date : "ERP receipt events have no item quantities"} />
+            <MetricCard label="Received Value This Month" value={recoveredMonthly ? mvr(recoveredMonthly.value) : "Unavailable"} helper={recoveredMonthly ? "Partial estimate: 2 of 13 lines had PO values · " + recoveredMonthly.source_date : "ERP receipt events have no received values"} />
             <MetricCard label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
             <MetricCard label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
             <MetricCard label="SR Issues This Month" value={fmt(warehouseIssueMonth.total)} helper={mvr(warehouseIssueMonth.value) + ' issue value · ' + fmt(warehouseIssueMonth.openOrder) + ' open'} />
@@ -4105,7 +4121,7 @@ export default function App() {
               <span>REPORTING PERIOD RECEIPTS</span>
               <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
             </div>
-            <small>Based on synced ERP product receipt dates</small>
+            <small>{recoveredWeeklyCurrent ? "PR & PO Tracker recovery · snapshot " + recoveredWeeklyCurrent.source_date : "Based on synced ERP product receipt dates"}</small>
           </div>
 
           <div className="meeting-change-grid warehouse-receipt-cards">
@@ -4114,19 +4130,19 @@ export default function App() {
               onClick={() => setWarehouseReceiptDetail((current) => current === 'ALL' ? 'NONE' : 'ALL')}
             >
               <span>PRs received</span>
-              <b>{fmt(warehouseReceiptCurrent.prs)}</b>
+              <b>{fmt(receiptCurrentDisplay.prs)}</b>
               <div>
-                <small>Previous period: {fmt(warehouseReceiptPrevious.prs)}</small>
-                <strong>Click to list receipt records</strong>
+                <small>Previous period: {fmt(receiptPreviousDisplay.prs)}</small>
+                <strong>{recoveredWeeklyCurrent ? "View ERP-synced events (different source)" : "Click to list receipt records"}</strong>
               </div>
             </button>
 
-            <div className="meeting-change-card"><span>Fully received PRs</span><b>Unavailable</b><small>Requires item-level received quantities</small></div>
-            <div className="meeting-change-card"><span>Part received PRs</span><b>Unavailable</b><small>Requires item-level received quantities</small></div>
-            <div className="meeting-change-card"><span>Received quantity</span><b>Unavailable</b><small>Not supplied in synced ERP receipt details</small></div>
-            <div className="meeting-change-card"><span>Received value</span><b>Unavailable</b><small>Not supplied in synced ERP receipt details</small></div>
+            <div className="meeting-change-card"><span>Fully received PRs</span><b>{recoveredWeeklyCurrent ? fmt(recoveredWeeklyCurrent.full_prs) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "PR status across tracker lines" : "Requires item-level received quantities"}</small></div>
+            <div className="meeting-change-card"><span>Part received PRs</span><b>{recoveredWeeklyCurrent ? fmt(recoveredWeeklyCurrent.partial_prs) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "PRs with remaining quantities" : "Requires item-level received quantities"}</small></div>
+            <div className="meeting-change-card"><span>Received quantity</span><b>{recoveredWeeklyCurrent ? fmt(recoveredWeeklyCurrent.qty, 2) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "Previous: " + fmt(receiptPreviousDisplay.qty, 2) + " · Tracker snapshot" : "Not supplied in synced ERP receipt details"}</small></div>
+            <div className="meeting-change-card"><span>Received value</span><b>{recoveredWeeklyCurrent ? mvr(recoveredWeeklyCurrent.value) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "Partial estimate: 3 of 28 lines had PO values · " + recoveredWeeklyCurrent.source_date : "Not supplied in synced ERP receipt details"}</small></div>
           </div>
-          <p>{fmt(warehouseReceiptCurrent.entries)} PR-linked receipt records in this period. Counts reflect synced ERP data.
+          <p>{recoveredWeeklyCurrent ? fmt(recoveredWeeklyCurrent.lines) + " tracker receipt lines in this period. Snapshot: " + recoveredWeeklyCurrent.source_date + ". " : fmt(warehouseReceiptCurrent.entries) + " PR-linked ERP receipt records in this period. " }
             {warehouseFast.receipts?.synced_at && <> Last ERP detail sync: {new Date(warehouseFast.receipts.synced_at).toLocaleString()}.</>}
           </p>
           {warehouseFast.receipts?.invalid_dates > 0 && <p role="status">{warehouseFast.receipts.invalid_dates} receipt records have missing or invalid dates and are excluded from period totals.</p>}
@@ -4134,7 +4150,7 @@ export default function App() {
             <section className="warehouse-receipt-detail">
               <div className="warehouse-receipt-detail-head">
                 <h4>ERP Receipt Records</h4>
-                <span>Showing {warehouseFast.receipts?.rows.length || 0} of {warehouseReceiptCurrent.entries} records</span>
+                <span>{recoveredWeeklyCurrent ? "ERP event detail only — tracker item-level detail is not yet restored" : "Showing " + (warehouseFast.receipts?.rows?.length || 0) + " of " + warehouseReceiptCurrent.entries + " records"}</span>
                 <button onClick={() => setWarehouseReceiptDetail('NONE')}>Close</button>
               </div>
               <div style={{ overflowX: 'auto', maxHeight: 360 }}>
@@ -4143,7 +4159,7 @@ export default function App() {
                     <tr key={index}><td>{row.pr_no}</td><td>{row.po_no || '—'}</td><td>{row.receipt_no || '—'}</td><td>{row.received_date}</td></tr>
                   ))}</tbody>
                 </table>
-                {!warehouseFast.receipts?.rows.length && <p>No synced receipt records in this period.</p>}
+                {!warehouseFast.receipts?.rows?.length && <p>No synced receipt records in this period.</p>}
               </div>
             </section>
           )}
@@ -4213,6 +4229,7 @@ export default function App() {
                 setWarehouseIssueWeekFilter(e.target.value)
                 setWarehouseIssueDetailOpen(false)
                 setWarehouseIssueDetailRows([])
+                setWarehouseIssueDetailError('')
               }}
             >
               {warehouseIssueWeekOptions.map((week) => (
@@ -4253,6 +4270,7 @@ export default function App() {
                 </div>
               </div>
 
+              {warehouseIssueDetailError && <div role="alert" className="meeting-no-exceptions">{warehouseIssueDetailError} <button type="button" onClick={() => loadWarehouseIssueDetails(warehouseIssueWeekFilter)}>Retry</button></div>}
               <div className="warehouse-issue-table">
                 <div className="warehouse-issue-row warehouse-receipt-head">
                   <span>Date</span>
@@ -4278,7 +4296,7 @@ export default function App() {
                     <em>{row.issue_stage || row.issue_state || '—'}</em>
                   </div>
                 ))}
-                {!warehouseIssueWeek.rows.length && (
+                {!warehouseIssueDetailLoading && !warehouseIssueDetailError && !warehouseIssueWeek.rows.length && (
                   <div className="meeting-no-exceptions">No issue item records found for the selected week.</div>
                 )}
               </div>
@@ -6985,7 +7003,7 @@ export default function App() {
                           </div>}</div>
                       <footer>
                         <span>Shipbuilding & Repair Division · Materials Management</span>
-                        <span>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</span>
+                        <span>{slide === 2 ? formatShortDate(warehouseMrnWeekFilter) + ' – ' + formatShortDate(addDaysIso(warehouseMrnWeekFilter, 6)) : slide === 3 ? formatShortDate(warehouseIssueWeekFilter) + ' – ' + formatShortDate(addDaysIso(warehouseIssueWeekFilter, 6)) : formatShortDate(warehouseWeekStart) + ' – ' + formatShortDate(warehouseWeekEnd)}</span>
                       </footer>
                     </div>
 
