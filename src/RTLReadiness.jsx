@@ -128,11 +128,11 @@ export default function RTLReadiness() {
   }
   function downloadShortages() {
     const lines = [
-      ['Maintenance type', 'Item number', 'Manufacturer part number', 'Item description', 'Per vessel', 'Available physical', 'Source record', 'Required for target', 'Additional quantity (confirmed)', 'Provisional need if missing'].join(','),
+      ['Maintenance type', 'Item number', 'Manufacturer part number', 'Item description', 'Per vessel', 'Available physical', 'Source record', 'Required for target', 'Additional units required (unlisted stock = 0)'].join(','),
       ...current.rows.filter(row => row.missing || row.shortage > 0).map(row =>
-        [current.label, row.item, row.partNumber, row.name, row.perVessel, row.missing ? '0*' : row.available,
+        [current.label, row.item, row.partNumber, row.name, row.perVessel, row.missing ? 0 : row.available,
           row.missing ? 'NOT IN ON-HAND REPORT - UNAVAILABLE' : 'PRESENT',
-          row.perVessel * target, row.shortage, row.missing ? row.provisionalNeed : '']
+          row.perVessel * target, row.shortage]
           .map(value => '"' + String(value).replace(/"/g, '""') + '"').join(',')),
     ]
     const url = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' }))
@@ -152,7 +152,7 @@ export default function RTLReadiness() {
       <div className="rtl-hero-mark">RTL <span>MAINTENANCE CONTROL</span></div>
     </header>
     <div className="rtl-warning">
-      <div><strong>Planning snapshot — warehouse scope not verified.</strong><span> Figures use Available physical from {importLabel || RTL_SOURCE.source}. The export does not identify warehouse/site or stock date. Do not treat coverage as confirmed vessel allocation.</span></div>
+      <div><strong>Planning snapshot — warehouse scope not verified.</strong><span> Figures use Available physical from {importLabel || RTL_SOURCE.source}. The export does not identify warehouse/site or stock date. Items not listed are treated as unavailable (zero usable stock). Do not treat coverage as confirmed vessel allocation.</span></div>
       <button type="button" onClick={() => setShowNotes(!showNotes)}>{showNotes ? 'Hide' : 'Method'}</button>
     </div>
     {showNotes && <div className="rtl-method">
@@ -213,7 +213,7 @@ export default function RTLReadiness() {
       </tr></thead><tbody>
         {visibleRows.map(row => <tr key={row.item}>
           <td><b>{row.item}</b>{row.name && <small>{row.name}</small>}</td><td className="rtl-part-number">{row.partNumber || '—'}</td>
-          <td>{fmt(row.perVessel)}</td><td>{row.missing ? '0*' : fmt(row.available)}</td>
+          <td>{fmt(row.perVessel)}</td><td>{row.missing ? '0 (not listed)' : fmt(row.available)}</td>
           <td>{fmt(Math.min(28,row.cover))}</td>
           <td>{fmt(row.perVessel * target)}</td>
           <td>{fmt(row.shortage)}</td>
