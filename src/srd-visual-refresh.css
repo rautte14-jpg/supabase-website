@@ -230,37 +230,3 @@ input:focus-visible, button:focus-visible, select:focus-visible, textarea:focus-
 @media(max-width:420px) {
   .home-kpi-grid { grid-template-columns: 1fr !important; }
 }
-
-
-/* Desktop navigation: the sidebar is part of the layout, never a dimming drawer.
-   Keep the existing drawer interaction only on smaller screens. */
-@media (min-width: 1000px) {
-  .app-shell.srd-drawer-layout {
-    display: grid;
-    grid-template-columns: 246px minmax(0, 1fr) !important;
-  }
-  .app-shell.srd-drawer-layout > .workspace {
-    grid-column: 2 !important;
-    min-width: 0;
-  }
-  .app-shell.srd-drawer-layout > .sidebar.srd-sidebar-drawer,
-  .app-shell.srd-drawer-layout > .sidebar.srd-sidebar-drawer.open {
-    position: sticky !important;
-    top: 0 !important;
-    left: auto !important;
-    bottom: auto !important;
-    grid-column: 1;
-    grid-row: 1;
-    height: 100vh !important;
-    width: 246px !important;
-    transform: none !important;
-    box-shadow: none !important;
-    z-index: 15;
-    overflow-y: auto;
-  }
-  .app-shell.srd-drawer-layout .srd-sidebar-backdrop,
-  .app-shell.srd-drawer-layout .srd-sidebar-toggle-host {
-    display: none !important;
-  }
-  body.srd-sidebar-open { overflow: auto !important; }
-}
