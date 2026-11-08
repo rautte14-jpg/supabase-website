@@ -28,6 +28,13 @@ scripts\run-simplix-pr-lines.bat --limit=25 --year=2026
 scripts\run-simplix-pr-lines.bat --limit=500 --year=2026
 ```
 
+Resume behavior (default for bulk runs):
+- Previously saved PRs are skipped automatically; their records remain in Supabase.
+- If the Simplix token expires, the script prompts for a replacement and retries the same PR once.
+- Use `--limit=890 --year=2026` to cover the entire currently known 2026 header list; previously saved PRs are skipped.
+- `--refresh-all` intentionally re-fetches already saved PRs when required. This is not necessary for resuming after a token expiry.
+- PRs returning zero item lines are not represented in the item-line table and can be retried on a subsequent run.
+
 The pilot requires the Supabase email/password because the command uses RLS and editor permissions. The test token is kept in memory; never share tokens or paste them into ChatGPT. Do not run bulk mode until the pilot is verified.
 
 Important limitations:
