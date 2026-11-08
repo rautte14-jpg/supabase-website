@@ -40,8 +40,12 @@ function prompt(message, hidden = false) {
 async function main() {
   const year = Number(arg('year', String(new Date().getFullYear())))
   if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error('Invalid --year.')
-  const refreshAllDetails = flag('refresh-all-details')
-  const refreshAllLines = flag('refresh-all-lines')
+  // Every PR may change status, RFQ, PO or receipts at any time, including older PRs.
+  // A normal daily run therefore refreshes ALL details and item lines.
+  // Use --incremental only when intentionally doing a faster limited catch-up.
+  const incremental = flag('incremental')
+  const refreshAllDetails = !incremental || flag('refresh-all-details')
+  const refreshAllLines = !incremental || flag('refresh-all-lines')
   const lineRecentDays = Number(arg('line-recent-days', '120'))
   const lineStaleHours = Number(arg('line-stale-hours', '20'))
   if (!Number.isFinite(lineRecentDays) || lineRecentDays < 0 || lineRecentDays > 3650) throw new Error('Invalid --line-recent-days.')
@@ -50,7 +54,8 @@ async function main() {
   console.log('\nSRD Warehouse System — Daily Simplix Sync')
   console.log('Stage 1: PR headers, approvals, RFQs, POs and receipt events')
   console.log('Stage 2: PR item lines and requested quantities/prices')
-  console.log('Year: ' + year + (refreshAllDetails ? ' · FULL historical detail refresh' : ' · incremental detail refresh'))
+  console.log('Year: ' + year + (incremental ? ' · LIMITED incremental sync (explicit)' : ' · FULL daily status refresh for all PRs'))
+  if (!incremental) console.log('Every PR and item line is checked even when it was previously synced.')
   console.log('Credentials are not written to disk.\n')
 
   let bearer = process.env.SIMPLIX_BEARER_TOKEN || await prompt('Production Simplix bearer token (hidden): ', true)
