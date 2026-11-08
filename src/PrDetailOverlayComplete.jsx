@@ -1,4 +1,4 @@
-import { requestedQty, receivedQty, receiptTone, summarizeReceiptLines } from './lib/receipts.js'
+import { receiptTone } from './lib/receipts.js'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabase'
 
@@ -10,30 +10,6 @@ function fmtDate(v) {
   if (!v) return '—'
   const d = new Date(v)
   return Number.isNaN(d.valueOf()) ? clean(v) || '—' : d.toLocaleString()
-}
-
-function rawField(row, names) {
-  const raw = row?.raw_source
-  if (!raw || typeof raw !== 'object') return ''
-  const entries = Object.entries(raw)
-  for (const name of names) {
-    const wanted = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '')
-    const hit = entries.find(([key]) => String(key).toLowerCase().replace(/[^a-z0-9]+/g, '') === wanted)
-    if (hit && clean(hit[1])) return hit[1]
-  }
-  return ''
-}
-
-function poNumber(row) {
-  return clean(row?.po_no || rawField(row, ['PO Number', 'PO No', 'Purchase Order']))
-}
-
-function lineStatus(row) {
-  const req = requestedQty(row)
-  const rec = receivedQty(row)
-  if (req > 0 && rec >= req) return 'Fully Received'
-  if (rec > 0) return 'Part Received'
-  return 'Not Received'
 }
 
 function tone(status) {
@@ -143,6 +119,7 @@ export default function PrDetailOverlayComplete() {
   const [header, setHeader] = useState(null)
   const [details, setDetails] = useState(null)
   const [prItems, setPrItems] = useState([])
+  const [prItemSyncError, setPrItemSyncError] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [retry, setRetry] = useState(0)
@@ -158,7 +135,7 @@ export default function PrDetailOverlayComplete() {
       if (prIndex < 0) return
       const cells = [...row.querySelectorAll(':scope > td')]
       const value = clean(cells[prIndex]?.textContent).replace(/\s+/g, '').toUpperCase()
-      if (!/^PR\d+$/.test(value)) return
+      if (!/^PR\d+(?:-\d+)?$/.test(value)) return
       event.preventDefault()
       setPrNo(value)
     }
@@ -169,17 +146,25 @@ export default function PrDetailOverlayComplete() {
   useEffect(() => {
     if (!prNo) return
     let active = true
-    setLoading(true); setError(''); setHeader(null); setDetails(null); setPrItems([])
+    setLoading(true); setError(''); setHeader(null); setDetails(null); setPrItems([]); setPrItemSyncError('')
     Promise.all([
       supabase.from('erp_pr_headers').select('*').eq('purch_req_id', prNo).maybeSingle(),
       supabase.from('erp_pr_details').select('*').eq('purch_req_id', prNo).maybeSingle(),
-      supabase.from('procurement_records').select('*').eq('source_type', 'PR').eq('pr_no', prNo),
+      supabase.from('erp_pr_line_items').select('purch_req_id,line_key,item_code,item_name,line_description,requested_qty,unit_price,line_amount,currency_code,line_status,synced_at').eq('purch_req_id', prNo).order('line_key'),
     ]).then(([h, d, items]) => {
       if (!active) return
       setLoading(false)
-      const failure = h.error || d.error || items.error
+      const failure = h.error || d.error
       if (failure) { setError(failure.message || 'Could not load PR details.'); return }
-      setHeader(h.data || null); setDetails(d.data || null); setPrItems(items.error ? [] : (items.data || []))
+      setHeader(h.data || null)
+      setDetails(d.data || null)
+      if (items.error) {
+        setPrItemSyncError(items.error.message || 'Could not retrieve synchronized PR items.')
+        setPrItems([])
+      } else {
+        setPrItemSyncError('')
+        setPrItems(items.data || [])
+      }
     }).catch((e) => { if (active) { setLoading(false); setError(e?.message || 'Could not load PR.') } })
     return () => { active = false }
   }, [prNo, retry])
@@ -196,24 +181,29 @@ export default function PrDetailOverlayComplete() {
   const rfqs = useMemo(() => arr(details?.rfqs), [details])
   const pos = useMemo(() => arr(details?.purchase_orders), [details])
   const receipts = useMemo(() => arr(details?.product_receipts), [details])
-  const itemRows = useMemo(() => prItems.map((row) => {
-    const requested = requestedQty(row)
-    const received = Math.min(requested || Number.MAX_SAFE_INTEGER, receivedQty(row))
-    return { ...row, _requested: requested, _received: received, _balance: Math.max(0, requested - received), _lineStatus: lineStatus(row), _po: poNumber(row) }
-  }), [prItems])
+  const itemRows = useMemo(() => prItems.map(row => ({
+    ...row,
+    _requested: row.requested_qty == null ? null : Number(row.requested_qty),
+    _description: clean(row.line_description || row.item_name) || '—',
+    _unitPrice: row.unit_price == null ? null : Number(row.unit_price),
+    _lineAmount: row.line_amount == null ? null : Number(row.line_amount),
+  })), [prItems])
+
   const itemSummary = useMemo(() => {
-    const { requested, received, balance } = summarizeReceiptLines(prItems)
-    const poNos = new Set(itemRows.map((r) => r._po).filter(Boolean))
-    const simplixPo = Number(details?.po_count || 0) > 0
-    const simplixReceipt = Number(details?.receipt_count || 0) > 0
-    const erpPo = poNos.size > 0
-    const erpReceipt = received > 0
-    let check = 'Matched'
-    if (!itemRows.length) check = 'No ERP item lines'
-    else if (simplixPo !== erpPo || simplixReceipt !== erpReceipt) check = 'Needs Review'
-    const receiptStatus = !itemRows.length ? 'Unavailable — no ERP lines' : requested > 0 && received >= requested ? 'Fully Received' : received > 0 ? 'Part Received' : 'Not Received'
-    return { requested, received, balance, poNos, check, receiptStatus }
-  }, [itemRows, prItems, details])
+    const requested = itemRows.reduce((total, row) =>
+      total + (Number.isFinite(row._requested) ? row._requested : 0), 0)
+    const currencyCodes = [...new Set(itemRows.map(row => clean(row.currency_code)).filter(Boolean))]
+    const receiptEvents = arr(details?.product_receipts).length
+    const check = prItemSyncError
+      ? 'Sync read failed'
+      : itemRows.length
+        ? 'Simplix PR lines available'
+        : 'No synced PR lines'
+    const receiptStatus = receiptEvents > 0
+      ? receiptEvents + (receiptEvents === 1 ? ' receipt event' : ' receipt events') + ' · Qty unverified'
+      : 'No receipt event'
+    return { requested, check, receiptStatus, currencyCodes }
+  }, [itemRows, details, prItemSyncError])
 
   if (!prNo) return null
 
@@ -233,29 +223,38 @@ export default function PrDetailOverlayComplete() {
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>Loading PR details…</div> : error ? <div style={{ padding: 18, borderRadius: 12, background: '#fee2e2', color: '#b91c1c' }}>{error} <button onClick={() => setRetry(value => value + 1)}>Retry</button></div> : !header ? <div style={{ padding: 18, border: '1px dashed #cbd5e1', borderRadius: 12, color: '#64748b' }}>This PR is not available in the Simplix header sync.</div> : <>
           <TimelineCard details={details} receipts={receipts} />
 
-          <SectionCard title="Procurement Snapshot" dot="#0f172a" note="Simplix + uploaded ERP PR Lines">
+          <SectionCard title="Procurement Snapshot" dot="#0f172a" note="Production Simplix PR line sync · receipt events separate">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0,1fr))', gap: 10, padding: '14px 0 16px' }}>
               <Stat label="ITEM LINES" value={itemRows.length.toLocaleString()} />
-              <Stat label="REQUESTED QTY" value={itemRows.length ? itemSummary.requested.toLocaleString(undefined, { maximumFractionDigits: 3 }) : '—'} />
-              <Stat label="RECEIVED QTY" value={itemRows.length ? itemSummary.received.toLocaleString(undefined, { maximumFractionDigits: 3 }) : '—'} color="#166534" />
-              <Stat label="BALANCE QTY" value={itemRows.length ? itemSummary.balance.toLocaleString(undefined, { maximumFractionDigits: 3 }) : '—'} color={itemSummary.balance > 0 ? '#b45309' : '#166534'} />
+              <Stat label="REQUESTED QTY" value={itemRows.length ? itemSummary.requested.toLocaleString(undefined, { maximumFractionDigits: 3 }) : '—'} note="Total across PR lines; units may differ" />
+              <Stat label="RECEIVED QTY" value="—" note="Not included in PR line sync" />
+              <Stat label="BALANCE QTY" value="—" note="Requires verified received quantities" />
               <Stat label="RECEIPT POSITION" value={itemSummary.receiptStatus} />
-              <Stat label="DATA CHECK" value={itemSummary.check} color={itemSummary.check === 'Needs Review' ? '#b91c1c' : itemSummary.check === 'Matched' ? '#166534' : '#64748b'} />
+              <Stat label="DATA CHECK" value={itemSummary.check} color={prItemSyncError ? '#b91c1c' : itemRows.length ? '#166534' : '#64748b'} />
             </div>
           </SectionCard>
 
-          <SectionCard title="PR Items" dot="#3b82f6" note="From uploaded ERP PR Lines">
-            {!itemRows.length ? <EmptyText>No item lines were found in the uploaded ERP PR Lines file for this PR.</EmptyText> : <DataTable rows={itemRows} columns={[
-              { key: 'priority', label: 'Priority', render: (v) => <span style={{ fontWeight: 700 }}>{clean(v) || '—'}</span> },
-              { key: 'item_code', label: 'Item ID', render: (v) => <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{clean(v) || '—'}</span> },
-              { key: 'item_description', label: 'Item Description' },
-              { key: '_requested', label: 'Requested', align: 'right', render: (v) => Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 3 }) },
-              { key: '_received', label: 'Received', align: 'right', render: (v) => Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 3 }) },
-              { key: '_balance', label: 'Balance', align: 'right', render: (v) => Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 3 }) },
-              { key: 'unit', label: 'UOM' },
-              { key: '_po', label: 'PO' },
-              { key: '_lineStatus', label: 'Receipt Status', render: (v) => <span style={{ fontWeight: 700, color: tone(v) === 'good' ? '#166534' : tone(v) === 'pending' ? '#92400e' : '#64748b' }}>{v}</span> },
-            ]} />}
+          <SectionCard title="PR Items" dot="#3b82f6" note="From synchronized production Simplix PR lines">
+            {prItemSyncError
+              ? <div style={{ padding: '16px 2px', fontSize: 13, color: '#b91c1c' }}>
+                  Could not load synchronized PR items: {prItemSyncError}
+                  {' '}<button onClick={() => setRetry(value => value + 1)}>Retry</button>
+                </div>
+              : !itemRows.length
+                ? <EmptyText>No synchronized Simplix PR item lines are currently available for this PR.</EmptyText>
+                : <DataTable rows={itemRows} columns={[
+                    { key: 'item_code', label: 'Item ID', render: v => <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{clean(v) || '—'}</span> },
+                    { key: '_description', label: 'Item Description' },
+                    { key: '_requested', label: 'Requested Qty', align: 'right', render: v => v == null ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: 3 }) },
+                    { key: '_unitPrice', label: 'PR Unit Price', align: 'right', render: v => v == null ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: 2 }) },
+                    { key: '_lineAmount', label: 'PR Line Amount', align: 'right', render: v => v == null ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: 2 }) },
+                    { key: 'currency_code', label: 'Currency' },
+                    { key: 'line_status', label: 'PR Line Status' },
+                    { key: 'synced_at', label: 'Last Synced', render: fmtDate },
+                  ]} />}
+            {!!itemRows.length && <div style={{ padding: '0 0 15px', fontSize: 11, color: '#64748b' }}>
+              Values above describe requisition lines only. They do not establish the actual PO receipt quantities or goods received value.
+            </div>}
           </SectionCard>
 
           <SectionCard title="Requests for Quotation">
