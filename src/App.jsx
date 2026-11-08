@@ -1459,6 +1459,7 @@ export default function App() {
     currentPayments: [],
   })
   const [inventoryMtrDetailRows, setInventoryMtrDetailRows] = useState([])
+  const [inventoryReceiptRecovery, setInventoryReceiptRecovery] = useState([])
   const [inventoryProcurementDetailRows, setInventoryProcurementDetailRows] = useState([])
   const [inventoryDetailLoading, setInventoryDetailLoading] = useState(false)
   const [warehouseIssueWeekFilter, setWarehouseIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(maldivesDateIso()), -7))
@@ -1974,7 +1975,7 @@ export default function App() {
   }
 
   async function loadInventoryPresentationFast() {
-    const [mtrResult, stockResult, topStockResult, procurementResult, paymentSummaryResult, currentPaymentsResult] = await Promise.all([
+    const [mtrResult, stockResult, topStockResult, procurementResult, paymentSummaryResult, currentPaymentsResult, recoveryResult] = await Promise.all([
       supabase.from('inventory_presentation_mtr_summary').select('*').limit(1),
       supabase.from('inventory_presentation_stock_summary').select('*').limit(1),
       supabase
@@ -1988,6 +1989,7 @@ export default function App() {
         .from('current_pending_payment_records')
         .select('po_no,po_date,supplier,status,priority,po_value')
         .order('po_value', { ascending: false }),
+      supabase.from('warehouse_receipt_recovery').select('*').order('period_start', { ascending: false }).limit(24),
     ])
 
     if (mtrResult.error) throw mtrResult.error
@@ -1997,6 +1999,8 @@ export default function App() {
     if (paymentSummaryResult.error) throw paymentSummaryResult.error
     if (currentPaymentsResult.error) throw currentPaymentsResult.error
 
+    if (recoveryResult.error) console.warn('Inventory presentation receipt snapshot unavailable', recoveryResult.error)
+    setInventoryReceiptRecovery(recoveryResult.error ? [] : (recoveryResult.data || []))
     setInventoryFast({
       mtr: mtrResult.data?.[0] || null,
       stock: stockResult.data?.[0] || null,
@@ -4437,6 +4441,12 @@ export default function App() {
     }
   }, [inventoryFast.procurement])
 
+  // The ERP PR/PO detail imports were deliberately removed. Receipt quantities
+  // must come from the dated tracker recovery, never default to a fabricated zero.
+  const inventoryMonthRecovery = inventoryReceiptRecovery.find((r) => r.period_type === 'month' && r.period_start === todayIso.slice(0, 7) + '-01' && r.period_end <= todayIso)
+  const inventoryWeekRecovery = inventoryReceiptRecovery.find((r) => r.period_type === 'week' && r.period_start === warehouseWeekStart)
+  const inventoryPreviousWeekRecovery = inventoryReceiptRecovery.find((r) => r.period_type === 'week' && r.period_start === addDaysIso(warehouseWeekStart, -7))
+
   const inventoryReceiptCurrent = useMemo(() => {
     const row = inventoryFast.procurement || {}
     return {
@@ -4639,8 +4649,8 @@ export default function App() {
           </div>
           <div className="meeting-metrics">
             <MetricCard label="PRs Submitted This Month" value={fmt(inventoryPresentationProcurement.submittedThisMonth)} helper="Distinct purchase requisitions submitted" />
-            <MetricCard label="PRs Received This Month" value={fmt(inventoryReceiptMonth.prs)} helper={fmt(inventoryReceiptMonth.qty, 2) + ' quantity received'} />
-            <MetricCard label="Received Value This Month" value={mvr(inventoryReceiptMonth.value)} helper="Receipt value recorded this month" />
+            <MetricCard label="PRs Received This Month" value={inventoryMonthRecovery ? fmt(inventoryMonthRecovery.prs) : "—"} helper={inventoryMonthRecovery ? fmt(inventoryMonthRecovery.qty, 2) + " received quantity · tracker through " + inventoryMonthRecovery.period_end : "No verified item-level receipt summary"} />
+            <MetricCard label="Received Value This Month" value="Not verified" helper={inventoryMonthRecovery ? "Value incomplete; source currencies not converted · snapshot " + inventoryMonthRecovery.period_end : "ERP receipt records have no validated received value"} />
             <MetricCard label="Pending Payment POs" value={fmt(inventoryPresentationPayments.total)} tone="warn" helper={mvr(inventoryPresentationPayments.totalValue) + ' pending value'} />
             <MetricCard label="High-Use Low Stock" value={fmt(inventoryHighUseLowStock.length)} helper="Top 100 consumption-value items at 1–5 on hand" />
             <MetricCard label="High-Use Out of Stock" value={fmt(inventoryHighUseOutOfStock.length)} tone="bad" helper="Top 100 consumption-value items with zero stock" />
@@ -4689,32 +4699,32 @@ export default function App() {
               <span>LAST COMPLETED WEEK</span>
               <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
             </div>
-            <small>Compared with the previous Wednesday–Tuesday period</small>
+            <small>{inventoryWeekRecovery ? "Tracker receipt snapshot through " + inventoryWeekRecovery.period_end + " · values not currency-converted" : "Tracker receipt summary unavailable for this week"}</small>
           </div>
           <div className="meeting-change-grid warehouse-receipt-cards">
             <div className="meeting-change-card">
               <span>PRs received</span>
-              <b>{fmt(inventoryReceiptCurrent.prs)}</b>
-              <div><small>Previous: {fmt(inventoryReceiptPrevious.prs)}</small><strong>{deltaText(inventoryReceiptCurrent.prs, inventoryReceiptPrevious.prs)}</strong></div>
+              <b>{inventoryWeekRecovery ? fmt(inventoryWeekRecovery.prs) : "—"}</b>
+              <div><small>Previous: {inventoryPreviousWeekRecovery ? fmt(inventoryPreviousWeekRecovery.prs) : "—"}</small><strong>{inventoryWeekRecovery && inventoryPreviousWeekRecovery ? deltaText(inventoryWeekRecovery.prs, inventoryPreviousWeekRecovery.prs) : "Tracker comparison"}</strong></div>
             </div>
             <div className="meeting-change-card">
               <span>Received quantity</span>
-              <b>{fmt(inventoryReceiptCurrent.qty, 2)}</b>
-              <div><small>Previous: {fmt(inventoryReceiptPrevious.qty, 2)}</small><strong>{deltaText(inventoryReceiptCurrent.qty, inventoryReceiptPrevious.qty)}</strong></div>
+              <b>{inventoryWeekRecovery ? fmt(inventoryWeekRecovery.qty, 2) : "—"}</b>
+              <div><small>Previous: {inventoryPreviousWeekRecovery ? fmt(inventoryPreviousWeekRecovery.qty, 2) : "—"}</small><strong>{inventoryWeekRecovery && inventoryPreviousWeekRecovery ? deltaText(inventoryWeekRecovery.qty, inventoryPreviousWeekRecovery.qty) : "Tracker comparison"}</strong></div>
             </div>
             <div className="meeting-change-card">
               <span>Received value</span>
-              <b>{mvr(inventoryReceiptCurrent.value)}</b>
-              <div><small>Previous: {mvr(inventoryReceiptPrevious.value)}</small><strong>{deltaText(inventoryReceiptCurrent.value, inventoryReceiptPrevious.value)}</strong></div>
+              <b>Not verified</b>
+              <div><small>PO values incomplete; mixed source currencies</small><strong>No confirmed received-value total</strong></div>
             </div>
             <div className="meeting-change-card">
               <span>Fully received PRs</span>
-              <b>{fmt(inventoryReceiptCompletion.full)}</b>
+              <b>{inventoryWeekRecovery ? fmt(inventoryWeekRecovery.full_prs) : "—"}</b>
               <div><small>Completed receipt position</small></div>
             </div>
             <div className="meeting-change-card">
               <span>Part received PRs</span>
-              <b>{fmt(inventoryReceiptCompletion.partial)}</b>
+              <b>{inventoryWeekRecovery ? fmt(inventoryWeekRecovery.partial_prs) : "—"}</b>
               <div><small>PRs still carrying balance</small></div>
             </div>
           </div>
