@@ -10,8 +10,10 @@ scripts\run-simplix-daily.bat
 
 The launcher finds the already installed portable Node.js and runs **two stages sequentially**:
 
-1. `scripts/sync-simplix-prs.mjs` — new/updated PR headers and stale PR detail records: approvals, RFQs, PO workflows and references, goods-receiving references/dates.
-2. `scripts/sync-simplix-pr-lines.mjs` — all new PR item lines and rechecks saved PR item lines from the most recent **120 days** if they were last synchronized **20+ hours** ago.
+1. `scripts/sync-simplix-prs.mjs` — all PR headers and **every** 2026 PR detail: approvals, RFQs, PO workflows, PO status/references and goods-receiving references/dates.
+2. `scripts/sync-simplix-pr-lines.mjs` — **every** 2026 PR item line: item code/description, requested quantities, prices and PR line statuses.
+
+**Daily runs use full refresh by default** because statuses, purchase orders and receipts can change on older PRs at any time. This is more API work than an incremental sync; expect the output to process all eligible PRs. An optional `--incremental` mode limits this when you only need a faster catch-up.
 
 The requested quantity, price and line amount are requisition quantities and values, **not** PO goods-received quantities or receipt values. This process does not change Excel PO-item mappings or receipt quantity data.
 
@@ -27,17 +29,15 @@ If PR details fail, stage 2 does not run and the launcher returns a failure stat
 :: Run both syncs for a different year
 scripts\run-simplix-daily.bat --year=2025
 
-:: Occasionally force a full historical PR detail refresh
-scripts\run-simplix-daily.bat --year=2026 --refresh-all-details
+:: Optional faster catch-up: skip PR details that are not due and
+:: only refresh recent item lines when their stale threshold is reached
+scripts\run-simplix-daily.bat --year=2026 --incremental
 
-:: Occasionally force a full PR item-line refresh (more ERP requests)
-scripts\run-simplix-daily.bat --year=2026 --refresh-all-lines
-
-:: Change the daily recent item-line window/stale threshold
-scripts\run-simplix-daily.bat --year=2026 --line-recent-days=90 --line-stale-hours=20
+:: Customize the limited incremental refresh window
+scripts\run-simplix-daily.bat --year=2026 --incremental --line-recent-days=90 --line-stale-hours=20
 ```
 
-No daily historical full refresh is required. Once an ERP year is over, its PRs are not included unless explicitly selected.
+A full historical refresh **is the default daily behavior** for the selected year, so all statuses and item changes can be captured. Once an ERP year is over, its PRs are not included unless explicitly selected. A run that is interrupted preserves records already saved, but because full-refresh mode intentionally checks every PR again, the next full run also revisits already-synced records.
 
 This remains **manual daily execution** because the Simplix bearer token and portal credentials are interactive. No unattended Windows scheduled task is installed or implied.
 
