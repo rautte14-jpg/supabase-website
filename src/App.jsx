@@ -1320,6 +1320,11 @@ export default function App() {
   const [prSubmissionYear, setPrSubmissionYear] = useState(() => Number(maldivesDateIso().slice(0, 4)))
   const [prSubmissionActivity, setPrSubmissionActivity] = useState({ headers: [], loading: true, error: false })
   const [prSubmissionRefreshKey, setPrSubmissionRefreshKey] = useState(0)
+  const [prItemSearch, setPrItemSearch] = useState('')
+  const [prItemAppliedSearch, setPrItemAppliedSearch] = useState('')
+  const [prItemPage, setPrItemPage] = useState(0)
+  const [prItemFast, setPrItemFast] = useState({ rows: [], total: 0, loading: false, error: '', latestSync: null })
+  const prItemRequestId = useRef(0)
   const [data, setData] = useState({
     procurement: [],
     material: [],
@@ -1457,6 +1462,7 @@ export default function App() {
     procurement: null,
     payments: null,
     currentPayments: [],
+    prLineSummary: { lines: null, syncedAt: null },
   })
   const [inventoryMtrDetailRows, setInventoryMtrDetailRows] = useState([])
   const [inventoryReceiptRecovery, setInventoryReceiptRecovery] = useState([])
@@ -1975,7 +1981,7 @@ export default function App() {
   }
 
   async function loadInventoryPresentationFast() {
-    const [mtrResult, stockResult, topStockResult, procurementResult, paymentSummaryResult, currentPaymentsResult, recoveryResult] = await Promise.all([
+    const [mtrResult, stockResult, topStockResult, procurementResult, paymentSummaryResult, currentPaymentsResult, recoveryResult, prLineCountResult, prLineLatestResult] = await Promise.all([
       supabase.from('inventory_presentation_mtr_summary').select('*').limit(1),
       supabase.from('inventory_presentation_stock_summary').select('*').limit(1),
       supabase
@@ -1990,6 +1996,8 @@ export default function App() {
         .select('po_no,po_date,supplier,status,priority,po_value')
         .order('po_value', { ascending: false }),
       supabase.from('warehouse_receipt_recovery').select('*').order('period_start', { ascending: false }).limit(24),
+      supabase.from('erp_pr_line_items').select('purch_req_id', { count: 'exact', head: true }),
+      supabase.from('erp_pr_line_items').select('synced_at').order('synced_at', { ascending: false }).limit(1),
     ])
 
     if (mtrResult.error) throw mtrResult.error
@@ -2008,6 +2016,10 @@ export default function App() {
       procurement: procurementResult.data?.[0] || null,
       payments: paymentSummaryResult.data?.[0] || null,
       currentPayments: currentPaymentsResult.data || [],
+      prLineSummary: {
+        lines: prLineCountResult.error ? null : prLineCountResult.count,
+        syncedAt: prLineLatestResult.error ? null : prLineLatestResult.data?.[0]?.synced_at || null,
+      },
     })
   }
 
@@ -2127,6 +2139,33 @@ export default function App() {
     }
   }
 
+  async function loadSimplixPrItems(page = prItemPage, term = prItemAppliedSearch) {
+    const requestId = ++prItemRequestId.current
+    setPrItemFast(current => ({ ...current, loading: true, error: '' }))
+    try {
+      const pageSize = 100
+      let query = supabase
+        .from('erp_pr_line_items')
+        .select('purch_req_id,line_key,item_code,item_name,line_description,requested_qty,unit_price,line_amount,currency_code,line_status,synced_at', { count: 'exact' })
+        .order('purch_req_id', { ascending: false })
+        .order('line_key', { ascending: true })
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+      const searchTerm = String(term || '').trim()
+      if (searchTerm) {
+        const sanitized = searchTerm.replace(/[%(),*]/g, '').slice(0, 80)
+        if (sanitized) query = query.or('purch_req_id.ilike.%' + sanitized + '%,item_code.ilike.%' + sanitized + '%,line_description.ilike.%' + sanitized + '%')
+      }
+      const { data: rows, count, error } = await query
+      if (error) throw error
+      if (requestId !== prItemRequestId.current) return
+      setPrItemFast({ rows: rows || [], total: count || 0, loading: false, error: '' })
+    } catch (error) {
+      if (requestId !== prItemRequestId.current) return
+      console.error('Simplix PR item retrieval failed', error)
+      setPrItemFast(current => ({ ...current, loading: false, error: 'Unable to load synchronized Simplix PR lines.' }))
+    }
+  }
+
   async function loadForView(targetView = view, force = false) {
     if (!session || !access) return
     if (targetView === 'warehouse' && force) clearSupabaseReadCache()
@@ -2173,6 +2212,11 @@ export default function App() {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
           loadWarehousePresentationFast(),
+        ])
+      } else if (targetView === 'prpo') {
+        await Promise.all([
+          loadTables(VIEW_TABLES[targetView] || [], force),
+          loadSimplixPrItems(prItemPage, prItemAppliedSearch),
         ])
       } else if (targetView === 'inventoryPresentation') {
         await Promise.all([
@@ -4678,6 +4722,11 @@ export default function App() {
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('AGED6')}><span>PRs Aged 6+ Months</span><b>{fmt(inventoryPresentationProcurement.agedSixPlus)}</b><small>View list</small></button>
             <div><span>Oldest Open PR</span><b>{fmt(inventoryPresentationProcurement.oldestOpenDays)} days</b></div>
             <div><span>Payment Pending POs</span><b>{fmt(inventoryPresentationProcurement.paymentPendingPos)}</b></div>
+            <div>
+              <span>Simplix PR Item Lines Synced</span>
+              <b>{inventoryFast.prLineSummary?.lines == null ? '—' : fmt(inventoryFast.prLineSummary.lines)}</b>
+              <small>Requested PR items only · {inventoryFast.prLineSummary?.syncedAt ? 'last synced ' + new Date(inventoryFast.prLineSummary.syncedAt).toLocaleString('en-GB') : 'sync not available'}</small>
+            </div>
           </div>
           <div className="meeting-period-banner" style={{ marginTop: 18 }}>
             <div>
@@ -6107,7 +6156,7 @@ export default function App() {
             <>
               <PageHeader
                 title="PR & PO Tracker"
-                subtitle="Live Simplix PR submissions combined with the current PR/PO procurement and receipt position."
+                subtitle="Production Simplix PR headers and requested item lines, with separate legacy tracker open-position and receipt sections."
               />
 
               <section className="prpo-section-card">
@@ -6178,15 +6227,89 @@ export default function App() {
                 <div id="prpo-monthly-host" className="pr-month-chart-host" />
               </section>
 
+              <section className="prpo-section-card" id="prpo-simplix-requested-items">
+                <div className="prpo-section-title">
+                  <div>
+                    <span className="eyebrow">SIMPLIX PRODUCTION · REQUESTED ITEM LINES</span>
+                    <h3>PR Item Details</h3>
+                    <p>Item-level requisition quantities and line prices synchronized directly from Simplix. These are <b>requested quantities and PR line amounts</b>, not confirmed PO receipts or goods-received values.</p>
+                  </div>
+                  <span className="prpo-date-basis live">AUTHORIZED ERP SYNC</span>
+                </div>
+                <form className="flex flex-wrap items-center gap-2" onSubmit={event => {
+                  event.preventDefault()
+                  setPrItemAppliedSearch(prItemSearch)
+                  setPrItemPage(0)
+                  loadSimplixPrItems(0, prItemSearch)
+                }}>
+                  <input
+                    className="min-w-[220px] flex-1 rounded-md border border-slate-200 bg-white p-2 text-sm text-slate-900"
+                    aria-label="Search synced PR item lines"
+                    placeholder="Search PR number, item ID or description"
+                    value={prItemSearch}
+                    onChange={event => setPrItemSearch(event.target.value)}
+                  />
+                  <button className="mini-button" type="submit">Search</button>
+                  <button className="mini-button" type="button" onClick={() => {
+                    setPrItemSearch('')
+                    setPrItemAppliedSearch('')
+                    setPrItemPage(0)
+                    loadSimplixPrItems(0, '')
+                  }}>Clear</button>
+                  <button className="mini-button" type="button" onClick={() => loadSimplixPrItems(prItemPage, prItemAppliedSearch)}>Refresh</button>
+                </form>
+                <div className="prpo-receipt-detail-head">
+                  <div>
+                    <span className="eyebrow">LIVE DATABASE · SIMPLIX-IMPORTED</span>
+                    <h4>{prItemFast.loading ? 'Loading requested items…' : prItemFast.error ? 'Requested items unavailable' : fmt(prItemFast.total) + ' item lines matching'}</h4>
+                  </div>
+                  <div>
+                    <strong>Page {prItemPage + 1} of {Math.max(1, Math.ceil(prItemFast.total / 100))}</strong>
+                    <span>100 lines per page · last ERP sync per row</span>
+                  </div>
+                </div>
+                {prItemFast.error && <div className="notice" role="alert">{prItemFast.error} <button type="button" onClick={() => loadSimplixPrItems(prItemPage, prItemAppliedSearch)}>Retry</button></div>}
+                <DataTable
+                  rows={prItemFast.rows}
+                  limit={100}
+                  loading={prItemFast.loading}
+                  error={Boolean(prItemFast.error)}
+                  onRetry={() => loadSimplixPrItems(prItemPage, prItemAppliedSearch)}
+                  columns={[
+                    { key: 'purch_req_id', label: 'PR No.' },
+                    { key: 'item_code', label: 'Item ID' },
+                    { key: 'line_description', label: 'Description', render: (v, r) => v || r.item_name || '—' },
+                    { key: 'requested_qty', label: 'PR Qty', render: v => v == null ? '—' : fmt(Number(v), 2) },
+                    { key: 'unit_price', label: 'PR Unit Price', render: v => v == null ? '—' : fmt(Number(v), 2) },
+                    { key: 'line_amount', label: 'PR Line Amount', render: (v, r) => v == null ? '—' : fmt(Number(v), 2) + ' ' + (r.currency_code || '') },
+                    { key: 'line_status', label: 'PR Line Status', render: v => <StatusPill value={v} /> },
+                    { key: 'synced_at', label: 'Last Synced', render: v => v ? new Date(v).toLocaleString('en-GB') : '—' },
+                  ]}
+                />
+                <div className="flex items-center justify-end gap-3 pt-3">
+                  <button className="mini-button" type="button" disabled={prItemFast.loading || prItemPage === 0} onClick={() => {
+                    const next = Math.max(0, prItemPage - 1)
+                    setPrItemPage(next)
+                    loadSimplixPrItems(next, prItemAppliedSearch)
+                  }}>Previous</button>
+                  <span className="text-xs text-slate-500">{fmt(prItemFast.total)} matching lines</span>
+                  <button className="mini-button" type="button" disabled={prItemFast.loading || (prItemPage + 1) * 100 >= prItemFast.total} onClick={() => {
+                    const next = prItemPage + 1
+                    setPrItemPage(next)
+                    loadSimplixPrItems(next, prItemAppliedSearch)
+                  }}>Next</button>
+                </div>
+              </section>
+
               <div id="prpo-open-position-host" className="opv2-host" />
               <section className="prpo-section-card" id="prpo-open-position-base">
                 <div className="prpo-section-title">
                   <div>
                     <span className="eyebrow">02 · CURRENT OPEN POSITION</span>
                     <h3>What needs attention now?</h3>
-                    <p>These are <b>live status metrics</b>. They are not limited to the PR submission week selected above.</p>
+                    <p>These are <b>legacy tracker-based</b> open-position estimates, not the newly synced Simplix PR requested-line dataset. Refresh source data before relying on them for purchasing decisions.</p>
                   </div>
-                  <span className="prpo-date-basis live">LIVE POSITION</span>
+                  <span className="prpo-date-basis">LEGACY TRACKER · NOT LIVE ERP</span>
                 </div>
 
                 <div className="metric-grid prpo-metrics prpo-operational-metrics">
@@ -6269,9 +6392,9 @@ export default function App() {
                   <div>
                     <span className="eyebrow">03 · RECEIPT ACTIVITY</span>
                     <h3>What was actually received?</h3>
-                    <p>This section uses <b>Received Date</b>, independently from the PR submission filter above.</p>
+                    <p>This legacy tracker section uses <b>Received Date</b>, independently from the PR submission filter above. Simplix requested quantities are not actual received quantities; receipt figures here are not a verified current ERP total.</p>
                   </div>
-                  <span className="prpo-date-basis receipt">DATE BASIS · RECEIVED DATE</span>
+                  <span className="prpo-date-basis receipt">LEGACY TRACKER · RECEIVED DATE</span>
                 </div>
 
                 <div className="prpo-receipt-week-grid">
