@@ -298,7 +298,7 @@ async function main() {
       maxDetails,
       attempted,
       forceRefresh: refreshAllDetails,
-      onTokenChange: (freshToken) => { bearerToken = freshToken },
+      onTokenChange: (freshToken) => { bearerToken = freshToken; if (process.send) process.send({ type: 'simplix-token-refreshed', token: freshToken }) },
     })
 
     bearerToken = detailResult.bearerToken || bearerToken
@@ -316,7 +316,7 @@ async function main() {
       headers: rows.filter(row => deferred.has(row.purch_req_id)), promptHidden,
       maxDetails: deferred.size,
       forceRefresh: refreshAllDetails,
-      onTokenChange: freshToken => { bearerToken = freshToken },
+      onTokenChange: freshToken => { bearerToken = freshToken; if (process.send) process.send({ type: 'simplix-token-refreshed', token: freshToken }) },
     })
     totalDetailSynced += retry.synced
     deferred.clear()
