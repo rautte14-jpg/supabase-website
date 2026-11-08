@@ -112,7 +112,7 @@ async function getPRLines(pr, token) {
   throw new Error('More than 5000 lines for ' + pr + ': limit reached; no data saved')
 }
 
-async function loadPRNumbers(supabase, year, limit) {
+async function loadPRHeaders(supabase, year, limit) {
   const numbers = []
   const pageSize = 1000
   for (let offset = 0; ; offset += pageSize) {
@@ -124,23 +124,26 @@ async function loadPRNumbers(supabase, year, limit) {
       .range(offset, offset + pageSize - 1)
     if (error) throw error
     const rows = data || []
-    for (const row of rows) if (/^PR\d+(?:-\d+)?$/i.test(row.purch_req_id || '')) numbers.push(row.purch_req_id)
+    for (const row of rows) if (/^PR\d+(?:-\d+)?$/i.test(row.purch_req_id || '')) numbers.push({ pr: row.purch_req_id, createdAt: row.created_at })
     if (rows.length < pageSize) break
   }
-  return [...new Set(numbers)].slice(0, limit)
+  return [...new Map(numbers.map(row => [row.pr, row])).values()].slice(0, limit)
 }
 
 async function loadPreviouslySyncedPRs(supabase) {
-  const seen = new Set()
+  const seen = new Map()
   const pageSize = 1000
   for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await supabase.from('erp_pr_line_items')
-      .select('purch_req_id')
+      .select('purch_req_id,synced_at')
       .order('purch_req_id')
       .order('line_key')
       .range(offset, offset + pageSize - 1)
     if (error) throw new Error('Failed to load saved PR lines: ' + error.message)
-    for (const row of data || []) seen.add(row.purch_req_id)
+    for (const row of data || []) {
+      const previous = seen.get(row.purch_req_id)
+      if (!previous || (row.synced_at && row.synced_at > previous)) seen.set(row.purch_req_id, row.synced_at || '')
+    }
     if (!data || data.length < pageSize) break
   }
   return seen
@@ -152,9 +155,13 @@ async function main() {
   const limit = Number(arg('limit', '25'))
   const dryRun = flag('dry-run')
   const refreshAll = flag('refresh-all')
+  const recentDays = Number(arg('refresh-recent-days', '0'))
+  const staleHours = Number(arg('stale-hours', '24'))
   if (explicit && !/^PR\d{4,12}(?:-\d+)?$/.test(explicit)) throw new Error('Expected --pr=PR104021')
   if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error('Invalid --year')
   if (!Number.isInteger(limit) || limit < 1 || limit > 5000) throw new Error('Use --limit between 1 and 5000')
+  if (!Number.isFinite(recentDays) || recentDays < 0 || recentDays > 3650) throw new Error('Invalid --refresh-recent-days')
+  if (!Number.isFinite(staleHours) || staleHours < 0 || staleHours > 87600) throw new Error('Invalid --stale-hours')
 
   let token = process.env.SIMPLIX_BEARER_TOKEN || await prompt('Paste authorized production Simplix bearer token (hidden): ', true)
   if (!token) throw new Error('Simplix bearer token required')
@@ -167,15 +174,24 @@ async function main() {
   const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
   if (authError) throw new Error('SRD portal sign-in failed: ' + authError.message)
 
-  const candidates = explicit ? [explicit] : await loadPRNumbers(supabase, year, limit)
+  const candidates = explicit
+    ? [{ pr: explicit, createdAt: null }]
+    : await loadPRHeaders(supabase, year, limit)
   if (!candidates.length) { console.log('No PR headers found for the selected year.'); return }
   const previouslySynced = (!explicit && !refreshAll)
-    ? await loadPreviouslySyncedPRs(supabase) : new Set()
-  const numbers = candidates.filter(pr => !previouslySynced.has(pr))
+    ? await loadPreviouslySyncedPRs(supabase) : new Map()
+  const recentCutoff = Date.now() - recentDays * 86400000
+  const staleCutoff = Date.now() - staleHours * 3600000
+  const numbers = candidates.filter(({ pr, createdAt }) => {
+    if (explicit || refreshAll || !previouslySynced.has(pr)) return true
+    if (!recentDays || !createdAt || new Date(createdAt).valueOf() < recentCutoff) return false
+    const lastSync = new Date(previouslySynced.get(pr)).valueOf()
+    return !Number.isFinite(lastSync) || lastSync <= staleCutoff
+  }).map(row => row.pr)
   const skipped = candidates.length - numbers.length
-  if (skipped) console.log('Resume mode: skipping ' + skipped + ' PRs with item lines already saved in Supabase.')
+  if (skipped) console.log('Resume mode: skipped ' + skipped + ' saved PRs not due for item-line refresh.')
   if (!numbers.length) {
-    console.log('All selected PRs have existing saved lines. Use --refresh-all to explicitly refresh their data.')
+    console.log('All selected PR lines are already saved and current for the configured refresh window.')
     return
   }
   console.log('\nRead-only ERP fetch for ' + numbers.length + ' remaining PR(s). ' +
@@ -192,6 +208,7 @@ async function main() {
         console.log('Simplix token expired at ' + pr + '. Already saved PRs remain safe.')
         console.log('Refresh the live Simplix PR Tracking page and obtain a fresh authorized bearer token.')
         token = await prompt('Paste FRESH production Simplix bearer token (hidden): ', true)
+        if (token && process.send) process.send({ type: 'simplix-token-refreshed', token })
         if (!token) throw new Error('No replacement token provided')
         // Retry this exact PR only once; no previously saved PRs are repeated.
         lines = await getPRLines(pr, token)
