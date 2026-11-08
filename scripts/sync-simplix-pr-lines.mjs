@@ -130,16 +130,33 @@ async function loadPRNumbers(supabase, year, limit) {
   return [...new Set(numbers)].slice(0, limit)
 }
 
+async function loadPreviouslySyncedPRs(supabase) {
+  const seen = new Set()
+  const pageSize = 1000
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase.from('erp_pr_line_items')
+      .select('purch_req_id')
+      .order('purch_req_id')
+      .order('line_key')
+      .range(offset, offset + pageSize - 1)
+    if (error) throw new Error('Failed to load saved PR lines: ' + error.message)
+    for (const row of data || []) seen.add(row.purch_req_id)
+    if (!data || data.length < pageSize) break
+  }
+  return seen
+}
+
 async function main() {
   const explicit = arg('pr').trim().toUpperCase()
   const year = Number(arg('year', String(new Date().getFullYear())))
   const limit = Number(arg('limit', '25'))
   const dryRun = flag('dry-run')
+  const refreshAll = flag('refresh-all')
   if (explicit && !/^PR\d{4,12}$/.test(explicit)) throw new Error('Expected --pr=PR104021')
   if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error('Invalid --year')
   if (!Number.isInteger(limit) || limit < 1 || limit > 5000) throw new Error('Use --limit between 1 and 5000')
 
-  const token = process.env.SIMPLIX_BEARER_TOKEN || await prompt('Paste authorized production Simplix bearer token (hidden): ', true)
+  let token = process.env.SIMPLIX_BEARER_TOKEN || await prompt('Paste authorized production Simplix bearer token (hidden): ', true)
   if (!token) throw new Error('Simplix bearer token required')
   const email = process.env.SRD_PORTAL_EMAIL || await prompt('SRD portal email: ')
   const password = process.env.SRD_PORTAL_PASSWORD || await prompt('SRD portal password (hidden): ', true)
@@ -150,15 +167,35 @@ async function main() {
   const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
   if (authError) throw new Error('SRD portal sign-in failed: ' + authError.message)
 
-  const numbers = explicit ? [explicit] : await loadPRNumbers(supabase, year, limit)
-  if (!numbers.length) { console.log('No PR headers found for the selected year.'); return }
-  console.log('\nRead-only ERP fetch for ' + numbers.length + ' PR(s). ' +
+  const candidates = explicit ? [explicit] : await loadPRNumbers(supabase, year, limit)
+  if (!candidates.length) { console.log('No PR headers found for the selected year.'); return }
+  const previouslySynced = (!explicit && !refreshAll)
+    ? await loadPreviouslySyncedPRs(supabase) : new Set()
+  const numbers = candidates.filter(pr => !previouslySynced.has(pr))
+  const skipped = candidates.length - numbers.length
+  if (skipped) console.log('Resume mode: skipping ' + skipped + ' PRs with item lines already saved in Supabase.')
+  if (!numbers.length) {
+    console.log('All selected PRs have existing saved lines. Use --refresh-all to explicitly refresh their data.')
+    return
+  }
+  console.log('\nRead-only ERP fetch for ' + numbers.length + ' remaining PR(s). ' +
     (dryRun ? 'DRY RUN — NO database writes.' : 'Saving lines to separate erp_pr_line_items table.'))
   let success = 0, failed = 0, savedLines = 0
   const failedPRs = []
   for (const [index, pr] of numbers.entries()) {
     try {
-      const lines = await getPRLines(pr, token)
+      let lines
+      try {
+        lines = await getPRLines(pr, token)
+      } catch (error) {
+        if (!/UNAUTHENTICATED|Unauthorized|ERP HTTP 401/i.test(error.message)) throw error
+        console.log('Simplix token expired at ' + pr + '. Already saved PRs remain safe.')
+        console.log('Refresh the live Simplix PR Tracking page and obtain a fresh authorized bearer token.')
+        token = await prompt('Paste FRESH production Simplix bearer token (hidden): ', true)
+        if (!token) throw new Error('No replacement token provided')
+        // Retry this exact PR only once; no previously saved PRs are repeated.
+        lines = await getPRLines(pr, token)
+      }
       const now = new Date().toISOString()
       const rows = lines.map((line, i) => databaseLine(pr, line, i, now))
       // Protect against invalid or duplicate IDs silently overwriting items.
@@ -178,14 +215,15 @@ async function main() {
       failed++
       failedPRs.push(pr)
       console.error('[' + (index + 1) + '/' + numbers.length + '] ' + pr + ': ' + error.message)
-      if (/UNAUTHENTICATED|FORBIDDEN|Supabase write rejected/.test(error.message)) {
+      if (/UNAUTHENTICATED|FORBIDDEN|Supabase write rejected|replacement token|Unauthorized/i.test(error.message)) {
         console.error('Stopping to avoid repeated unauthorized requests.')
         break
       }
     }
   }
-  console.log('\nFinished. PRs successful: ' + success +
-    ' | Failed: ' + failed + ' | Lines ' + (dryRun ? 'checked: ' : 'saved: ') + savedLines)
+  console.log('\nFinished. Already saved PRs skipped: ' + skipped +
+    ' | New PRs successful: ' + success + ' | Failed: ' + failed +
+    ' | Lines ' + (dryRun ? 'checked: ' : 'saved: ') + savedLines)
   if (failedPRs.length) {
     console.log('Failed PRs (no tokens included): ' + failedPRs.join(', '))
     process.exitCode = 1
