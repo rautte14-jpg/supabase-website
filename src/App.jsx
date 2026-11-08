@@ -1462,6 +1462,7 @@ export default function App() {
     procurement: null,
     payments: null,
     currentPayments: [],
+    prLineSummary: { lines: null, syncedAt: null },
   })
   const [inventoryMtrDetailRows, setInventoryMtrDetailRows] = useState([])
   const [inventoryReceiptRecovery, setInventoryReceiptRecovery] = useState([])
@@ -1980,7 +1981,7 @@ export default function App() {
   }
 
   async function loadInventoryPresentationFast() {
-    const [mtrResult, stockResult, topStockResult, procurementResult, paymentSummaryResult, currentPaymentsResult, recoveryResult] = await Promise.all([
+    const [mtrResult, stockResult, topStockResult, procurementResult, paymentSummaryResult, currentPaymentsResult, recoveryResult, prLineCountResult, prLineLatestResult] = await Promise.all([
       supabase.from('inventory_presentation_mtr_summary').select('*').limit(1),
       supabase.from('inventory_presentation_stock_summary').select('*').limit(1),
       supabase
@@ -1995,6 +1996,8 @@ export default function App() {
         .select('po_no,po_date,supplier,status,priority,po_value')
         .order('po_value', { ascending: false }),
       supabase.from('warehouse_receipt_recovery').select('*').order('period_start', { ascending: false }).limit(24),
+      supabase.from('erp_pr_line_items').select('purch_req_id', { count: 'exact', head: true }),
+      supabase.from('erp_pr_line_items').select('synced_at').order('synced_at', { ascending: false }).limit(1),
     ])
 
     if (mtrResult.error) throw mtrResult.error
@@ -2013,6 +2016,10 @@ export default function App() {
       procurement: procurementResult.data?.[0] || null,
       payments: paymentSummaryResult.data?.[0] || null,
       currentPayments: currentPaymentsResult.data || [],
+      prLineSummary: {
+        lines: prLineCountResult.error ? null : prLineCountResult.count,
+        syncedAt: prLineLatestResult.error ? null : prLineLatestResult.data?.[0]?.synced_at || null,
+      },
     })
   }
 
@@ -4715,6 +4722,11 @@ export default function App() {
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('AGED6')}><span>PRs Aged 6+ Months</span><b>{fmt(inventoryPresentationProcurement.agedSixPlus)}</b><small>View list</small></button>
             <div><span>Oldest Open PR</span><b>{fmt(inventoryPresentationProcurement.oldestOpenDays)} days</b></div>
             <div><span>Payment Pending POs</span><b>{fmt(inventoryPresentationProcurement.paymentPendingPos)}</b></div>
+            <div>
+              <span>Simplix PR Item Lines Synced</span>
+              <b>{inventoryFast.prLineSummary?.lines == null ? '—' : fmt(inventoryFast.prLineSummary.lines)}</b>
+              <small>Requested PR items only · {inventoryFast.prLineSummary?.syncedAt ? 'last synced ' + new Date(inventoryFast.prLineSummary.syncedAt).toLocaleString('en-GB') : 'sync not available'}</small>
+            </div>
           </div>
           <div className="meeting-period-banner" style={{ marginTop: 18 }}>
             <div>
