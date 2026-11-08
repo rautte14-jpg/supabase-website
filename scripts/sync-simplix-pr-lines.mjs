@@ -80,32 +80,36 @@ function databaseLine(pr, item, index, time) {
 }
 
 async function getPRLines(pr, token) {
-  const { response, bodyText } = await requestSimplix(GRAPHQL_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: /^bearer /i.test(token) ? token : 'Bearer ' + token,
-    },
-    body: JSON.stringify({
-      operationName: 'SRDSyncPRLines',
-      query: PR_LINES_QUERY,
-      variables: { query: { requisitionNumber: pr, skip: 0, top: 100 } },
-    }),
-  })
+  const all = []
+  const pageSize = 100
+  for (let offset = 0; offset < 5000; offset += pageSize) {
+    const { response, bodyText } = await requestSimplix(GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: /^bearer /i.test(token) ? token : 'Bearer ' + token,
+      },
+      body: JSON.stringify({
+        operationName: 'SRDSyncPRLines',
+        query: PR_LINES_QUERY,
+        variables: { query: { requisitionNumber: pr, skip: offset, top: pageSize } },
+      }),
+    })
 
-  let result
-  try { result = JSON.parse(bodyText) } catch { throw new Error('Non-JSON response HTTP ' + response.status) }
-  if (result?.errors?.length) {
-    const codes = result.errors.map(e => e.extensions?.code || '').filter(Boolean).join(', ')
-    const safe = result.errors.map(e => String(e.message || '').slice(0, 150)).join('; ')
-    throw new Error('GraphQL ' + (codes || 'error') + ': ' + safe)
+    let result
+    try { result = JSON.parse(bodyText) } catch { throw new Error('Non-JSON response HTTP ' + response.status) }
+    if (result?.errors?.length) {
+      const codes = result.errors.map(e => e.extensions?.code || '').filter(Boolean).join(', ')
+      const safe = result.errors.map(e => String(e.message || '').slice(0, 150)).join('; ')
+      throw new Error('GraphQL ' + (codes || 'error') + ': ' + safe)
+    }
+    if (!response.ok) throw new Error('ERP HTTP ' + response.status)
+    const lines = result?.data?.purchaseRequisitionLines
+    if (!Array.isArray(lines)) throw new Error('Unexpected response: PR lines are not an array')
+    all.push(...lines)
+    if (lines.length < pageSize) return all
   }
-  if (!response.ok) throw new Error('ERP HTTP ' + response.status)
-  const lines = result?.data?.purchaseRequisitionLines
-  if (!Array.isArray(lines)) throw new Error('Unexpected response: PR lines are not an array')
-  // The API defaults to 100 lines. For larger PRs, do not silently save only a partial set.
-  if (lines.length === 100) throw new Error('100 lines returned: pagination required; skipped to avoid partial PR')
-  return lines
+  throw new Error('More than 5000 lines for ' + pr + ': limit reached; no data saved')
 }
 
 async function loadPRNumbers(supabase, year, limit) {
