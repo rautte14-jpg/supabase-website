@@ -92,7 +92,7 @@ echo ==========================================
 echo   SRD Warehouse - Simplix PR Sync
 echo ==========================================
 echo.
-call "%NPM_CMD%" run sync:simplix-prs
+call "%NPM_CMD%" run sync:simplix-prs -- %*
 
 echo.
 echo Results above are saved for each successful PR.
