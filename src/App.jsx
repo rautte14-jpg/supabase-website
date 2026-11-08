@@ -6156,7 +6156,7 @@ export default function App() {
             <>
               <PageHeader
                 title="PR & PO Tracker"
-                subtitle="Live Simplix PR submissions combined with the current PR/PO procurement and receipt position."
+                subtitle="Production Simplix PR headers and requested item lines, with separate legacy tracker open-position and receipt sections."
               />
 
               <section className="prpo-section-card">
@@ -6307,9 +6307,9 @@ export default function App() {
                   <div>
                     <span className="eyebrow">02 · CURRENT OPEN POSITION</span>
                     <h3>What needs attention now?</h3>
-                    <p>These are <b>live status metrics</b>. They are not limited to the PR submission week selected above.</p>
+                    <p>These are <b>legacy tracker-based</b> open-position estimates, not the newly synced Simplix PR requested-line dataset. Refresh source data before relying on them for purchasing decisions.</p>
                   </div>
-                  <span className="prpo-date-basis live">LIVE POSITION</span>
+                  <span className="prpo-date-basis">LEGACY TRACKER · NOT LIVE ERP</span>
                 </div>
 
                 <div className="metric-grid prpo-metrics prpo-operational-metrics">
@@ -6392,9 +6392,9 @@ export default function App() {
                   <div>
                     <span className="eyebrow">03 · RECEIPT ACTIVITY</span>
                     <h3>What was actually received?</h3>
-                    <p>This section uses <b>Received Date</b>, independently from the PR submission filter above.</p>
+                    <p>This legacy tracker section uses <b>Received Date</b>, independently from the PR submission filter above. Simplix requested quantities are not actual received quantities; receipt figures here are not a verified current ERP total.</p>
                   </div>
-                  <span className="prpo-date-basis receipt">DATE BASIS · RECEIVED DATE</span>
+                  <span className="prpo-date-basis receipt">LEGACY TRACKER · RECEIVED DATE</span>
                 </div>
 
                 <div className="prpo-receipt-week-grid">
