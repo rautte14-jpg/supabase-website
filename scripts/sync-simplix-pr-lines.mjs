@@ -124,7 +124,7 @@ async function loadPRNumbers(supabase, year, limit) {
       .range(offset, offset + pageSize - 1)
     if (error) throw error
     const rows = data || []
-    for (const row of rows) if (/^PR\d+$/i.test(row.purch_req_id || '')) numbers.push(row.purch_req_id)
+    for (const row of rows) if (/^PR\d+(?:-\d+)?$/i.test(row.purch_req_id || '')) numbers.push(row.purch_req_id)
     if (rows.length < pageSize) break
   }
   return [...new Set(numbers)].slice(0, limit)
@@ -152,7 +152,7 @@ async function main() {
   const limit = Number(arg('limit', '25'))
   const dryRun = flag('dry-run')
   const refreshAll = flag('refresh-all')
-  if (explicit && !/^PR\d{4,12}$/.test(explicit)) throw new Error('Expected --pr=PR104021')
+  if (explicit && !/^PR\d{4,12}(?:-\d+)?$/.test(explicit)) throw new Error('Expected --pr=PR104021')
   if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error('Invalid --year')
   if (!Number.isInteger(limit) || limit < 1 || limit > 5000) throw new Error('Use --limit between 1 and 5000')
 
