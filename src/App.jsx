@@ -4015,7 +4015,7 @@ export default function App() {
   const warehouseReceiptMonth = warehouseFast.receipts?.periods?.month || {}
   const recoveredWeeklyCurrent = warehouseReceiptRecovery.find((row) => row.period_type === 'week' && row.period_start === warehouseWeekStart)
   const recoveredWeeklyPrevious = warehouseReceiptRecovery.find((row) => row.period_type === 'week' && row.period_start === addDaysIso(warehouseWeekStart, -7))
-  const recoveredMonthly = warehouseReceiptRecovery.find((row) => row.period_type === 'month' && row.period_start === todayIso.slice(0, 7) + '-01' && row.period_end >= todayIso)
+  const recoveredMonthly = warehouseReceiptRecovery.find((row) => row.period_type === 'month' && row.period_start === todayIso.slice(0, 7) + '-01' && row.period_end <= todayIso)
   const receiptCurrentDisplay = recoveredWeeklyCurrent || warehouseReceiptCurrent
   const receiptPreviousDisplay = recoveredWeeklyPrevious || warehouseReceiptPrevious
   const receiptMonthDisplay = recoveredMonthly || warehouseReceiptMonth
@@ -4102,12 +4102,12 @@ export default function App() {
               <span>MONTH-TO-DATE</span>
               <b>{warehouseMonthLabel}</b>
             </div>
-            <small>{formatShortDate(warehouseMonthStart)} – {formatShortDate(todayIso)}</small>
+            <small>{recoveredMonthly ? "Receipts snapshot: " + formatShortDate(warehouseMonthStart) + " – " + formatShortDate(recoveredMonthly.period_end) + " (other cards are live)" : formatShortDate(warehouseMonthStart) + " – " + formatShortDate(todayIso)}</small>
           </div>
           <div className="meeting-metrics">
             <MetricCard label="PRs Received This Month" value={fmt(receiptMonthDisplay.prs)} helper={recoveredMonthly ? "PR & PO Tracker · as of " + recoveredMonthly.source_date : "Distinct PRs with ERP receipt activity this month"} />
             <MetricCard label="Received Quantity This Month" value={recoveredMonthly ? fmt(recoveredMonthly.qty, 2) : "Unavailable"} helper={recoveredMonthly ? "Tracker quantity · as of " + recoveredMonthly.source_date : "ERP receipt events have no item quantities"} />
-            <MetricCard label="Received Value This Month" value={recoveredMonthly ? mvr(recoveredMonthly.value) : "Unavailable"} helper={recoveredMonthly ? "Partial estimate: 2 of 13 lines had PO values · " + recoveredMonthly.source_date : "ERP receipt events have no received values"} />
+            <MetricCard label="Received Value This Month" value={recoveredMonthly ? fmt(recoveredMonthly.value, 2) : "Unavailable"} helper={recoveredMonthly ? "Partial PO-value estimate; currencies not converted · as of " + recoveredMonthly.source_date : "ERP receipt events have no received values"} />
             <MetricCard label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
             <MetricCard label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
             <MetricCard label="SR Issues This Month" value={fmt(warehouseIssueMonth.total)} helper={mvr(warehouseIssueMonth.value) + ' issue value · ' + fmt(warehouseIssueMonth.openOrder) + ' open'} />
