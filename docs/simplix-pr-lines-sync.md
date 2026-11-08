@@ -32,7 +32,7 @@ The pilot requires the Supabase email/password because the command uses RLS and 
 
 Important limitations:
 - An empty result could mean no lines or authorization filtering; verify before treating it as a zero-line PR.
-- For safety, a PR returning 100 lines is skipped rather than silently truncating it. Pagination for exceptional long PRs should be implemented before bulk production use.
+- PR lines are paginated in groups of 100 and capped at 5,000 per PR. If the cap is reached, that PR is skipped rather than silently truncating data.
 - Lines removed from ERP are not automatically deleted in Supabase; data is upserted idempotently and tagged with `synced_at`.
 - This operation does not return PO line quantities or actual goods-received values.
 - No scheduled, background, or automatic sync is configured yet. This is a manually run, authenticated module.
