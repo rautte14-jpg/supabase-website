@@ -217,6 +217,7 @@ async function main() {
   const detailLimit = Number.isFinite(detailLimitRaw) && detailLimitRaw > 0 ? detailLimitRaw : null
   const syncYear = Number(argValue('year', String(new Date().getFullYear())))
   const dryRun = hasFlag('dry-run')
+  const refreshAllDetails = hasFlag('refresh-all-details')
 
   let bearerToken = process.env.SIMPLIX_BEARER_TOKEN || await promptHidden('Paste Simplix Authorization bearer token: ')
   if (!bearerToken) throw new Error('Simplix bearer token is required')
@@ -270,6 +271,7 @@ async function main() {
 
   console.log('\nLoading workflow, RFQ, PO and receipt details for ' + syncYear + ' PRs only...')
   console.log('Detail batch size: ' + detailBatchSize)
+  if (refreshAllDetails) console.log('FULL DETAIL REFRESH: refreshing EVERY eligible PR, including previously synced and historical records.')
   if (detailLimit) console.log('Detail run limit: ' + detailLimit + ' PRs')
   else console.log('Detail run limit: ALL eligible ' + syncYear + ' PRs (processed in resumable batches)')
 
@@ -295,6 +297,7 @@ async function main() {
       promptHidden,
       maxDetails,
       attempted,
+      forceRefresh: refreshAllDetails,
       onTokenChange: (freshToken) => { bearerToken = freshToken },
     })
 
@@ -312,6 +315,7 @@ async function main() {
     const retry = await syncPrDetails({ supabase, url: graphqlUrl, bearerToken,
       headers: rows.filter(row => deferred.has(row.purch_req_id)), promptHidden,
       maxDetails: deferred.size,
+      forceRefresh: refreshAllDetails,
       onTokenChange: freshToken => { bearerToken = freshToken },
     })
     totalDetailSynced += retry.synced
@@ -327,7 +331,9 @@ async function main() {
   console.log('\nDetail sync finished.')
   console.log('PR detail records synced this run: ' + totalDetailSynced)
   console.log('Only PRs requested in ' + syncYear + ' are refreshed by this tool.')
-  console.log('You can safely stop and run this tool again later; already-synced PRs are skipped until refresh is due.')
+  console.log(refreshAllDetails
+    ? 'All eligible PRs in the selected year were attempted. A future --refresh-all-details run refreshes them again.'
+    : 'You can safely stop and run this tool again later; already-synced PRs are skipped until refresh is due.')
   console.log('\nSync complete.')
 }
 

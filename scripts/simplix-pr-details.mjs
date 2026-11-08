@@ -63,7 +63,7 @@ function sortNewestFirst(rows) {
   return [...rows].sort((a, b) => (parseHeaderDate(b)?.valueOf() || 0) - (parseHeaderDate(a)?.valueOf() || 0))
 }
 
-function detailCandidates(headers, syncedMap, recentDays, staleHours, historicalRefreshHours, maxDetails) {
+function detailCandidates(headers, syncedMap, recentDays, staleHours, historicalRefreshHours, maxDetails, forceRefresh = false) {
   const now = Date.now()
   const recentCutoff = now - recentDays * 86400000
   const activeStaleCutoff = now - staleHours * 3600000
@@ -78,6 +78,13 @@ function detailCandidates(headers, syncedMap, recentDays, staleHours, historical
     const recent = created ? created.valueOf() >= recentCutoff : false
     const active = recent || isOpenStatus(row.status)
     const previous = syncedMap.get(prNo)
+
+    // Explicit full-refresh mode includes previously synced PRs, but keeps
+    // the regular unsynced/newest-first priority and resumable batching.
+    if (forceRefresh) {
+      ;(active ? staleActive : staleHistorical).push(row)
+      continue
+    }
 
     if (!previous) {
       ;(active ? unsyncedActive : unsyncedHistorical).push(row)
@@ -144,9 +151,9 @@ async function loadExistingDetailSyncs(supabase) {
   return map
 }
 
-export async function syncPrDetails({ supabase, url, bearerToken, headers, promptHidden, recentDays = 180, staleHours = 6, historicalRefreshHours = 168, maxDetails = 100, dryRun = false, attempted = new Set(), onTokenChange = null }) {
+export async function syncPrDetails({ supabase, url, bearerToken, headers, promptHidden, recentDays = 180, staleHours = 6, historicalRefreshHours = 168, maxDetails = 100, dryRun = false, attempted = new Set(), onTokenChange = null, forceRefresh = false }) {
   const syncedMap = await loadExistingDetailSyncs(supabase)
-  const { candidates, stats } = detailCandidates(headers.filter(row => !attempted.has(String(row.purch_req_id || row.purchReqId || '').trim())), syncedMap, recentDays, staleHours, historicalRefreshHours, maxDetails)
+  const { candidates, stats } = detailCandidates(headers.filter(row => !attempted.has(String(row.purch_req_id || row.purchReqId || '').trim())), syncedMap, recentDays, staleHours, historicalRefreshHours, maxDetails, forceRefresh)
   const validHeaderCount = headers.filter((row) => String(row.purch_req_id || row.purchReqId || '').trim() && (row.rec_id ?? row.recId)).length
   console.log('\nPR detail coverage: ' + syncedMap.size + ' / ' + validHeaderCount + ' previously synced')
   console.log('Eligible now: ' + stats.eligible + ' · syncing up to ' + candidates.length + ' this run')
