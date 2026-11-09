@@ -8,6 +8,16 @@ const number = value => {
   const n = Number(String(value).replace(/,/g, ''))
   return Number.isFinite(n) ? n : null
 }
+const excelReceivedDate = value => {
+  if (value === null || value === undefined || trim(value) === '') return null
+  if (typeof value === 'number') {
+    const d = XLSX.SSF.parse_date_code(value)
+    if (!d || !d.y || !d.m || !d.d) return null
+    return [d.y, String(d.m).padStart(2, '0'), String(d.d).padStart(2, '0')].join('-')
+  }
+  // Preserve manually entered text exactly; do not guess whether 05/06 is May or June.
+  return trim(value)
+}
 const norm = value => trim(value).replace(/\s+/g, ' ').toLowerCase()
 const code = value => trim(value).toUpperCase().replace(/\s/g, '')
 const headerFind = (head, wanted) => head.findIndex(value => wanted.includes(norm(value)))
@@ -23,6 +33,7 @@ function extractRows(workbook) {
     item: headerFind(headers, ['item id', 'item code']),
     description: headerFind(headers, ['product name','item description']),
     qty: headerFind(headers, ['quantity','qty']),
+    receivedDate: headerFind(headers, ['received date','receipt date']),
     received: headerFind(headers, ['received qty','received quantity']),
     balance: headerFind(headers, ['balance qty','balance quantity']),
     unit: headerFind(headers, ['unit','uom']),
@@ -50,6 +61,7 @@ function extractRows(workbook) {
       item_description: trim(get('description')) || null,
       source_qty: number(get('qty')),
       received_qty: number(get('received')),
+      excel_received_date: excelReceivedDate(get('receivedDate')),
       balance_qty: number(get('balance')),
       unit: trim(get('unit')) || null,
       supplier: trim(get('supplier')) || null,
@@ -130,7 +142,7 @@ export default function PrPoExcelUpload() {
           : 'No completed PO-to-item workbook imported yet.'}
       </div>
       <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
-        Excel Quantity is shown as tracked quantity, not independently verified PO-ordered quantity. Receipt dates remain Simplix-only.
+        Received Qty, Balance Qty and Received All are confirmed by the uploaded Excel tracker. Excel Received Date is shown separately from Simplix ERP receipt events.
       </div>
       {preview && <div style={{ fontSize: 11, marginTop: 5, color: '#475569' }}>Workbook: {preview.total} items · {preview.mapped} PR/PO matches · {preview.missingPo} without PO · {preview.duplicates} repeated PR–PO–item groups (flagged)</div>}
       {status && <div role="status" style={{ fontSize: 11, marginTop: 5, color: '#166534' }}>{status}</div>}

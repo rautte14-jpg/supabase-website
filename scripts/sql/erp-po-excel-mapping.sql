@@ -19,6 +19,7 @@ create table if not exists public.erp_po_excel_rows (
   source_qty numeric,
   received_qty numeric,
   balance_qty numeric,
+  excel_received_date text,
   unit text,
   supplier text,
   excel_delivery_status text,
@@ -69,3 +70,6 @@ begin
 end $$;
 revoke all on function public.complete_po_excel_batch(uuid) from public,anon;
 grant execute on function public.complete_po_excel_batch(uuid) to authenticated;
+
+-- Safe upgrade for existing imports; reupload the workbook to populate this field.
+alter table public.erp_po_excel_rows add column if not exists excel_received_date text;
