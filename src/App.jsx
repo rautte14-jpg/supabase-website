@@ -7,6 +7,7 @@ import { buildPrSubmissionWeeks, maldivesDateIso, submissionDateIso, submissionW
 import { SOURCE_OPTIONS, detectSource, entityKey, humanSource, mapRows, normalizeSheetRows } from './importers'
 
 const PrDetailOverlayComplete = lazy(() => import('./PrDetailOverlayComplete.jsx'))
+const PrPoExcelUpload = lazy(() => import('./PrPoExcelUpload.jsx'))
 const PrTrackerCompleteV2 = lazy(() => import('./PrTrackerCompleteV2.jsx'))
 const PrOpenPositionV2 = lazy(() => import('./PrOpenPositionV2.jsx'))
 const PrMonthlyChart = lazy(() => import('./PrMonthlyChart.jsx'))
@@ -18,6 +19,7 @@ const RTLReadiness = lazy(() => import('./RTLReadiness.jsx'))
 const ROUTE_PRELOADERS = {
   prpo: () => Promise.all([
     import('./PrDetailOverlayComplete.jsx'),
+    import('./PrPoExcelUpload.jsx'),
     import('./PrTrackerCompleteV2.jsx'),
     import('./PrOpenPositionV2.jsx'),
     import('./PrMonthlyChart.jsx'),
@@ -6099,8 +6101,10 @@ export default function App() {
             <>
               <PageHeader
                 title="PR & PO Tracker"
-                subtitle="Production Simplix PR headers and requested item lines, with separate legacy tracker open-position and receipt sections."
+                subtitle="Production Simplix PR headers and requested item lines, with separate Excel PO-to-item mapping and legacy tracker sections."
               />
+
+              <Suspense fallback={null}><PrPoExcelUpload /></Suspense>
 
               <section className="prpo-section-card">
                 <div className="prpo-section-title">
