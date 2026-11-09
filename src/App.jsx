@@ -6101,11 +6101,6 @@ export default function App() {
 
           {view === 'prpo' && (
             <>
-              <PageHeader
-                title="PR & PO Tracker"
-                subtitle="PR submissions, purchase orders, monthly trends and operational follow-up — organized into four views."
-              />
-
               <nav aria-label="PR and PO Tracker views" className="prpo-tabs" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '14px 0', padding: '9px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12 }}>
                 {[
                   ['pr', 'PR Tracker'],
