@@ -113,6 +113,7 @@ export default function PrPoOrdersTab({ active, selectedYear, refreshKey = 0 }) 
   const [poStatus, setPoStatus] = useState('ALL')
   const [receiptFilter, setReceiptFilter] = useState('ALL')
   const [page, setPage] = useState(1)
+  const [reload, setReload] = useState(0)
   useEffect(() => { setHost(document.getElementById('prpo-po-host')) }, [])
   useEffect(() => {
     if (!active || !host) return
@@ -122,7 +123,7 @@ export default function PrPoOrdersTab({ active, selectedYear, refreshKey = 0 }) 
       .catch(e => { if (live) setError(e?.message || String(e)) })
       .finally(() => { if (live) setLoading(false) })
     return () => { live = false }
-  }, [active, host, selectedYear, refreshKey])
+  }, [active, host, selectedYear, refreshKey, reload])
   useEffect(() => { setPage(1) }, [query, poStatus, receiptFilter, selectedYear])
   const rows = data?.year === selectedYear ? data.rows : []
   const filtered = useMemo(() => rows.filter(r => {
@@ -142,7 +143,7 @@ export default function PrPoOrdersTab({ active, selectedYear, refreshKey = 0 }) 
     <div className="potab-header">
       <div><div className="potab-kicker">PURCHASE ORDER TRACKING</div><h3>PO Tracker</h3>
         <p>Each PO is shown separately. Simplix supplies the PO and receipt events; the uploaded Excel tracker confirms item-level received quantities.</p></div>
-      <span className="potab-source">{data?.batch ? `Excel: ${data.batch.source_file}` : 'No Excel mapping uploaded'}</span>
+      <div className="potab-actions"><span className="potab-source">{data?.batch ? `Excel: ${data.batch.source_file}` : 'No Excel mapping uploaded'}</span><button type="button" disabled={loading} onClick={()=>setReload(n=>n+1)}>{loading ? 'Refreshing…' : 'Refresh PO data'}</button></div>
     </div>
     <div className="potab-kpis">
       <div><small>Linked POs</small><strong>{rows.length.toLocaleString()}</strong></div>
@@ -180,7 +181,7 @@ export default function PrPoOrdersTab({ active, selectedYear, refreshKey = 0 }) 
     <div className="potab-footnote">Excel status reflects recorded receipt quantities per item, not inferred PO-level receipts. Quantities with different units are not added together. POs that exist only in Excel are marked as missing from Simplix PR detail.</div>
     <style>{`
       .potab-shell{margin-top:12px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px;color:#0f172a}
-      .potab-header{display:flex;justify-content:space-between;gap:16px;align-items:start}.potab-header h3{font-size:21px;margin:3px 0 5px}.potab-header p{font-size:12px;color:#64748b;margin:0;max-width:750px}.potab-kicker{font-size:10px;letter-spacing:.12em;color:#1d4ed8;font-weight:800}.potab-source{font-size:11px;color:#475569;border-radius:8px;border:1px solid #e2e8f0;padding:7px 10px}
+      .potab-header{display:flex;justify-content:space-between;gap:16px;align-items:start}.potab-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.potab-actions button{border:1px solid #93c5fd;background:#eff6ff;border-radius:8px;padding:8px 11px;color:#1d4ed8;cursor:pointer;font-size:11px;font-weight:800}.potab-actions button:disabled{opacity:.5}.potab-header h3{font-size:21px;margin:3px 0 5px}.potab-header p{font-size:12px;color:#64748b;margin:0;max-width:750px}.potab-kicker{font-size:10px;letter-spacing:.12em;color:#1d4ed8;font-weight:800}.potab-source{font-size:11px;color:#475569;border-radius:8px;border:1px solid #e2e8f0;padding:7px 10px}
       .potab-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0}.potab-kpis>div{background:#f8fafc;border:1px solid #dbe5f0;border-radius:10px;padding:12px}.potab-kpis small{display:block;color:#64748b;font-size:10px}.potab-kpis strong{font-size:22px;display:block;margin-top:6px}
       .potab-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:10px 0 15px}.potab-filters label{display:flex;flex-direction:column;gap:5px;font-size:10px;color:#64748b;font-weight:800;flex:1 1 160px}.potab-filters label:first-child{flex:2 1 270px}.potab-filters input,.potab-filters select{height:37px;width:100%;padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font-size:12px}.potab-filters>button,.potab-pager button{background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:9px 12px;font-size:11px;font-weight:700;cursor:pointer}.potab-pager button:disabled{opacity:.45;cursor:default}
       .potab-scroll{overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px}.potab-scroll table{border-collapse:collapse;width:100%;min-width:1160px;font-size:11px}.potab-scroll th{background:#f1f5f9;color:#64748b;text-transform:uppercase;text-align:left;font-size:10px;white-space:nowrap;padding:11px 10px}.potab-scroll td{border-top:1px solid #eef2f7;padding:11px 10px;vertical-align:middle}.potab-scroll tr:hover td{background:#f8fafc}.potab-pr-link{border:0;background:none;padding:0;color:#1d4ed8;font-weight:800;text-decoration:underline;cursor:pointer}.potab-pill{background:#eff6ff;color:#1e40af;border-radius:20px;padding:4px 7px;white-space:nowrap}.potab-ok{color:#166534;font-weight:700}.potab-balance{color:#b45309;font-weight:700}.potab-muted{color:#64748b}
