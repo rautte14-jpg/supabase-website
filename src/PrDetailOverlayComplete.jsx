@@ -1,4 +1,5 @@
 import { receiptTone } from './lib/receipts.js'
+import { excelItemReceiptPosition, summarizeExcelReceiptPositions } from './lib/excelReceiptPosition.js'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabase'
 
@@ -172,7 +173,7 @@ export default function PrDetailOverlayComplete() {
       else if (excel.data) {
         setExcelBatch(excel.data)
         const mapped = await supabase.from('erp_po_excel_rows')
-          .select('source_row,pr_no,po_no,item_code,item_description,source_qty,received_qty,balance_qty,unit,supplier,excel_delivery_status,excel_po_status')
+          .select('source_row,pr_no,po_no,item_code,item_description,source_qty,received_qty,balance_qty,excel_received_date,unit,supplier,excel_delivery_status,excel_po_status')
           .eq('batch_id', excel.data.id).eq('pr_no', prNo).order('source_row').limit(1000)
         if (!active) return
         if (mapped.error) setExcelError(mapped.error.message || 'Could not load Excel PO-to-item mapping.')
@@ -214,8 +215,8 @@ export default function PrDetailOverlayComplete() {
         ? 'Simplix PR lines available'
         : 'No synced PR lines'
     const receiptStatus = receiptEvents > 0
-      ? receiptEvents + (receiptEvents === 1 ? ' receipt event' : ' receipt events') + ' · Qty unverified'
-      : 'No receipt event'
+      ? receiptEvents + (receiptEvents === 1 ? ' Simplix PO receipt' : ' Simplix PO receipts')
+      : 'No Simplix receipt event'
     return { requested, check, receiptStatus, currencyCodes }
   }, [itemRows, details, prItemSyncError])
 
@@ -236,11 +237,18 @@ export default function PrDetailOverlayComplete() {
       if (row.po_no && !poRefs.has(clean(row.po_no).toUpperCase())) flags.push('PO not in Simplix PR detail')
       if (!lineCodes.has(clean(row.item_code).toUpperCase())) flags.push('Item not in Simplix PR lines')
       if ((keyCounts.get(key) || 0) > 1) flags.push('Repeated PR/PO/item: review rows')
-      if (row.po_no && receiptPos.has(clean(row.po_no).toUpperCase())) flags.push('Simplix PO receipt event exists; item qty unverified')
+      if (row.po_no && receiptPos.has(clean(row.po_no).toUpperCase())) flags.push('Simplix PO receipt event recorded')
       if (row.received_qty != null && row.source_qty != null && Number(row.received_qty) > Number(row.source_qty)) flags.push('Received exceeds Excel tracked qty')
-      return { ...row, _flags: flags, _description: clean(row.item_description) || '—' }
+      const position = excelItemReceiptPosition(row)
+      if (position.conflict) flags.push('Excel Received All conflicts with quantities')
+      return { ...row, _flags: flags, _description: clean(row.item_description) || '—', _receiptStatus: position.status, _receiptKind: position.kind, _received: position.received, _balance: position.balance }
     })
   }, [excelItems, prItems, pos, receipts])
+
+  const excelSummary = useMemo(() => summarizeExcelReceiptPositions(excelItems), [excelItems])
+  const excelReceiptLabel = excelBatch && excelSummary.total
+    ? `${excelSummary.full} fully received · ${excelSummary.partial} partial · ${excelSummary.pending} pending · ${excelSummary.cancelled} cancelled${excelSummary.review || excelSummary.unknown ? ' · ' + (excelSummary.review + excelSummary.unknown) + ' to review' : ''}`
+    : itemSummary.receiptStatus
 
   if (!prNo) return null
 
@@ -260,13 +268,13 @@ export default function PrDetailOverlayComplete() {
         {loading ? <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>Loading PR details…</div> : error ? <div style={{ padding: 18, borderRadius: 12, background: '#fee2e2', color: '#b91c1c' }}>{error} <button onClick={() => setRetry(value => value + 1)}>Retry</button></div> : !header ? <div style={{ padding: 18, border: '1px dashed #cbd5e1', borderRadius: 12, color: '#64748b' }}>This PR is not available in the Simplix header sync.</div> : <>
           <TimelineCard details={details} receipts={receipts} />
 
-          <SectionCard title="Procurement Snapshot" dot="#0f172a" note="Production Simplix PR line sync · receipt events separate">
+          <SectionCard title="Procurement Snapshot" dot="#0f172a" note="PR lines: Simplix · item receipts: Excel tracker · receipt events: Simplix">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0,1fr))', gap: 10, padding: '14px 0 16px' }}>
               <Stat label="ITEM LINES" value={itemRows.length.toLocaleString()} />
               <Stat label="REQUESTED QTY" value={itemRows.length ? itemSummary.requested.toLocaleString(undefined, { maximumFractionDigits: 3 }) : '—'} note="Total across PR lines; units may differ" />
-              <Stat label="RECEIVED QTY" value="—" note="Not included in PR line sync" />
-              <Stat label="BALANCE QTY" value="—" note="Requires verified received quantities" />
-              <Stat label="RECEIPT POSITION" value={itemSummary.receiptStatus} />
+              <Stat label="FULLY RECEIVED" value={excelBatch && excelSummary.total ? excelSummary.full + ' / ' + excelSummary.total : '—'} note="Excel-confirmed item rows" color="#166534" />
+              <Stat label="ACTIVE OUTSTANDING" value={excelBatch && excelSummary.total ? excelSummary.activeOutstanding.toLocaleString() + ' lines' : '—'} note="Cancelled lines excluded; not quantity sum" />
+              <Stat label="RECEIPT POSITION" value={excelReceiptLabel} note={excelBatch && excelSummary.total ? itemSummary.receiptStatus : 'Awaiting Excel item mapping'} />
               <Stat label="DATA CHECK" value={itemSummary.check} color={prItemSyncError ? '#b91c1c' : itemRows.length ? '#166534' : '#64748b'} />
             </div>
           </SectionCard>
@@ -304,14 +312,16 @@ export default function PrDetailOverlayComplete() {
                   { key: '_description', label: 'Item Description' },
                   { key: 'po_no', label: 'Mapped PO', render: v => v || <span style={{ color: '#b45309' }}>Not mapped</span> },
                   { key: 'source_qty', label: 'Excel Tracked Qty', align: 'right', render: v => v == null ? '—' : Number(v).toLocaleString() },
-                  { key: 'received_qty', label: 'Excel Received Qty', align: 'right', render: v => v == null ? 'Unknown' : Number(v).toLocaleString() },
-                  { key: 'balance_qty', label: 'Excel Balance Qty', align: 'right', render: v => v == null ? 'Unknown' : Number(v).toLocaleString() },
+                  { key: '_receiptStatus', label: 'Item Receipt Status', render: (v,row) => <strong style={{ color: row._receiptKind === 'full' ? '#166534' : row._receiptKind === 'cancelled' ? '#64748b' : row._receiptKind === 'review' ? '#b91c1c' : '#92400e' }}>{v}</strong> },
+                  { key: '_received', label: 'Excel Received Qty', align: 'right', render: v => v == null ? '—' : Number(v).toLocaleString() },
+                  { key: '_balance', label: 'Excel Balance Qty', align: 'right', render: v => v == null ? '—' : Number(v).toLocaleString() },
+                  { key: 'excel_received_date', label: 'Excel Received Date', render: v => clean(v) || '—' },
                   { key: 'unit', label: 'Unit' },
                   { key: 'excel_po_status', label: 'Excel PO Status' },
                   { key: '_flags', label: 'Reconciliation', render: flags => flags.length ? <span style={{ color: '#92400e', lineHeight: 1.5 }}>{flags.join(' · ')}</span> : <span style={{ color: '#166534' }}>Item and PO match Simplix</span> },
                 ]} />}
             {mappedRows.length > 0 && <div style={{ padding: '0 0 15px', fontSize: 11, color: '#64748b' }}>
-              Each row is retained separately from the source workbook. Quantities are Excel-reported and not independently verified PO order/receipt quantities. Repeated PO/item rows are not added together. Receipt references and dates are from Simplix in the Goods Receiving section, not assigned to individual item rows.
+              Received All, Received Qty and Balance Qty in the Excel tracker confirm item-level receipt positions. Excel Received Date is displayed as a separate tracker field; Simplix receipt events and their official dates/references remain in the Goods Receiving section. Repeated PR/PO/item rows are not automatically summed.
             </div>}
           </SectionCard>
 
