@@ -35,10 +35,21 @@ function elapsed(step) {
   return '0 h'
 }
 
-function WorkflowStep({ step }) {
+function approvalGap(step, previous) {
+  const now = new Date(step?.ApprovedDateTime || step?.ApprovedDate || '')
+  const before = new Date(previous?.ApprovedDateTime || previous?.ApprovedDate || '')
+  if (!previous || Number.isNaN(now.valueOf()) || Number.isNaN(before.valueOf())) return '—'
+  const minutes = Math.round((now.valueOf() - before.valueOf()) / 60000)
+  if (minutes < 0) return '—'
+  if (minutes < 60) return minutes + ' min'
+  const hours = Math.floor(minutes / 60)
+  return hours + ' h' + (minutes % 60 ? ' ' + (minutes % 60) + ' min' : '')
+}
+
+function WorkflowStep({ step, timeLabel }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '42px 12px 1fr', alignItems: 'start', gap: 10 }}>
-      <div style={{ fontSize: 12, color: '#6b7280', paddingTop: 2, textAlign: 'right' }}>{elapsed(step)}</div>
+      <div style={{ fontSize: 12, color: '#6b7280', paddingTop: 2, textAlign: 'right' }}>{timeLabel ?? elapsed(step)}</div>
       <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}><span style={{ width: 9, height: 9, borderRadius: 999, background: statusColor(step?.Status), display: 'block' }} /></div>
       <div style={{ paddingBottom: 16, fontSize: 12, lineHeight: 1.55, color: '#111827' }}>
         <div><span style={{ color: '#7c8595' }}>Approver:</span> <strong>{clean(step?.UserName) || '—'}</strong></div>
@@ -69,7 +80,8 @@ function ReceiptSummary({ receipts }) {
 
 function TimelineCard({ details, receipts }) {
   const prFlow = arr(details?.pr_workflow)
-  const poSteps = arr(details?.po_workflow).flatMap((g) => arr(g?.Workflow))
+  const poGroups = arr(details?.po_workflow)
+  const poStatuses = new Map(arr(details?.purchase_orders).map(po => [clean(po.PurchId).toUpperCase(), clean(po.PurchStatus) || 'Status unknown']))
   return (
     <section style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 16, boxShadow: '0 2px 12px rgba(15,23,42,.05)', overflow: 'hidden' }}>
       <div style={{ minHeight: 50, borderBottom: '1px solid #e5e7eb', padding: '0 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -77,7 +89,24 @@ function TimelineCard({ details, receipts }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr 1.15fr', gap: 44, padding: '22px 52px 26px' }}>
         <div><h3 style={{ margin: '0 0 12px', fontSize: 14 }}>PR Workflow</h3>{prFlow.length ? prFlow.map((s, i) => <WorkflowStep key={s?.RecId ?? i} step={s} />) : <EmptyText>No PR Workflow data available.</EmptyText>}</div>
-        <div><h3 style={{ margin: '0 0 12px', fontSize: 14 }}>PO Workflow</h3>{poSteps.length ? poSteps.map((s, i) => <WorkflowStep key={s?.RecId ?? i} step={s} />) : <div style={{ color: '#f59e0b', fontSize: 13, paddingTop: 4 }}>No PO Workflow data available.</div>}</div>
+        <div><h3 style={{ margin: '0 0 12px', fontSize: 14 }}>PO Workflow</h3>
+          {poGroups.length ? <div style={{ display: 'grid', gap: 10 }}>
+            {poGroups.map((group, groupIndex) => {
+              const steps = arr(group?.Workflow)
+              const poNo = clean(group?.PurchId).toUpperCase()
+              const poStatus = poStatuses.get(poNo) || 'Status unknown'
+              return <details key={poNo || groupIndex} open={groupIndex === 0} style={{ border: '1px solid #e2e8f0', borderRadius: 9, background: '#fff', overflow: 'hidden' }}>
+                <summary style={{ padding: '10px 12px', background: '#f8fafc', cursor: 'pointer', fontSize: 12, color: '#0f172a' }}>
+                  <strong>{poNo || 'PO number unavailable'}</strong> <span style={{ color: '#64748b', marginLeft: 6 }}>· {poStatus} · {steps.length} steps</span>
+                </summary>
+                <div style={{ padding: '12px 9px 0' }}>
+                  {steps.length ? steps.map((s, i) => <WorkflowStep key={s?.RecId ?? i} step={s} timeLabel={approvalGap(s, i > 0 ? steps[i - 1] : null)} />) : <EmptyText>No approval steps recorded for this PO.</EmptyText>}
+                  <div style={{ fontSize: 10, color: '#64748b', paddingBottom: 10 }}>Durations show time between recorded PO approvals; the first step has no earlier PO approval timestamp.</div>
+                </div>
+              </details>
+            })}
+          </div> : <div style={{ color: '#f59e0b', fontSize: 13, paddingTop: 4 }}>No PO Workflow data available.</div>}
+        </div>
         <div><h3 style={{ margin: '0 0 12px', fontSize: 14 }}>Goods Receiving</h3><ReceiptSummary receipts={receipts} /></div>
       </div>
     </section>
