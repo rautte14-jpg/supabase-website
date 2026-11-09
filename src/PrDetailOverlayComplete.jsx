@@ -119,6 +119,9 @@ export default function PrDetailOverlayComplete() {
   const [header, setHeader] = useState(null)
   const [details, setDetails] = useState(null)
   const [prItems, setPrItems] = useState([])
+  const [excelItems, setExcelItems] = useState([])
+  const [excelBatch, setExcelBatch] = useState(null)
+  const [excelError, setExcelError] = useState('')
   const [prItemSyncError, setPrItemSyncError] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -146,16 +149,16 @@ export default function PrDetailOverlayComplete() {
   useEffect(() => {
     if (!prNo) return
     let active = true
-    setLoading(true); setError(''); setHeader(null); setDetails(null); setPrItems([]); setPrItemSyncError('')
+    setLoading(true); setError(''); setHeader(null); setDetails(null); setPrItems([]); setPrItemSyncError(''); setExcelItems([]); setExcelBatch(null); setExcelError('')
     Promise.all([
       supabase.from('erp_pr_headers').select('*').eq('purch_req_id', prNo).maybeSingle(),
       supabase.from('erp_pr_details').select('*').eq('purch_req_id', prNo).maybeSingle(),
       supabase.from('erp_pr_line_items').select('purch_req_id,line_key,item_code,item_name,line_description,requested_qty,unit_price,line_amount,currency_code,line_status,synced_at').eq('purch_req_id', prNo).order('line_key'),
-    ]).then(([h, d, items]) => {
+      supabase.from('erp_po_excel_batches').select('id,source_file,completed_at').eq('status','complete').order('completed_at', { ascending: false }).limit(1).maybeSingle(),
+    ]).then(async ([h, d, items, excel]) => {
       if (!active) return
-      setLoading(false)
       const failure = h.error || d.error
-      if (failure) { setError(failure.message || 'Could not load PR details.'); return }
+      if (failure) { setError(failure.message || 'Could not load PR details.'); setLoading(false); return }
       setHeader(h.data || null)
       setDetails(d.data || null)
       if (items.error) {
@@ -165,6 +168,17 @@ export default function PrDetailOverlayComplete() {
         setPrItemSyncError('')
         setPrItems(items.data || [])
       }
+      if (excel.error) setExcelError(excel.error.message || 'Excel mapping unavailable.')
+      else if (excel.data) {
+        setExcelBatch(excel.data)
+        const mapped = await supabase.from('erp_po_excel_rows')
+          .select('source_row,pr_no,po_no,item_code,item_description,source_qty,received_qty,balance_qty,unit,supplier,excel_delivery_status,excel_po_status')
+          .eq('batch_id', excel.data.id).eq('pr_no', prNo).order('source_row').limit(1000)
+        if (!active) return
+        if (mapped.error) setExcelError(mapped.error.message || 'Could not load Excel PO-to-item mapping.')
+        else setExcelItems(mapped.data || [])
+      }
+      setLoading(false)
     }).catch((e) => { if (active) { setLoading(false); setError(e?.message || 'Could not load PR.') } })
     return () => { active = false }
   }, [prNo, retry])
@@ -204,6 +218,29 @@ export default function PrDetailOverlayComplete() {
       : 'No receipt event'
     return { requested, check, receiptStatus, currencyCodes }
   }, [itemRows, details, prItemSyncError])
+
+  const mappedRows = useMemo(() => {
+    const lineCodes = new Set(prItems.map(item => clean(item.item_code).toUpperCase()).filter(Boolean))
+    const keyCounts = new Map()
+    excelItems.forEach(row => {
+      if (!row.po_no || !row.pr_no) return
+      const key = [row.pr_no, row.po_no, row.item_code].map(v => clean(v).toUpperCase()).join('|')
+      keyCounts.set(key, (keyCounts.get(key) || 0) + 1)
+    })
+    const poRefs = new Set(pos.map(po => clean(po.PurchId).toUpperCase()).filter(Boolean))
+    const receiptPos = new Set(receipts.map(receipt => clean(receipt.po).toUpperCase()).filter(Boolean))
+    return excelItems.map(row => {
+      const key = [row.pr_no, row.po_no, row.item_code].map(v => clean(v).toUpperCase()).join('|')
+      const flags = []
+      if (!row.po_no) flags.push('PO not mapped')
+      if (row.po_no && !poRefs.has(clean(row.po_no).toUpperCase())) flags.push('PO not in Simplix PR detail')
+      if (!lineCodes.has(clean(row.item_code).toUpperCase())) flags.push('Item not in Simplix PR lines')
+      if ((keyCounts.get(key) || 0) > 1) flags.push('Repeated PR/PO/item: review rows')
+      if (row.po_no && receiptPos.has(clean(row.po_no).toUpperCase())) flags.push('Simplix PO receipt event exists; item qty unverified')
+      if (row.received_qty != null && row.source_qty != null && Number(row.received_qty) > Number(row.source_qty)) flags.push('Received exceeds Excel tracked qty')
+      return { ...row, _flags: flags, _description: clean(row.item_description) || '—' }
+    })
+  }, [excelItems, prItems, pos, receipts])
 
   if (!prNo) return null
 
@@ -254,6 +291,27 @@ export default function PrDetailOverlayComplete() {
                   ]} />}
             {!!itemRows.length && <div style={{ padding: '0 0 15px', fontSize: 11, color: '#64748b' }}>
               Values above describe requisition lines only. They do not establish the actual PO receipt quantities or goods received value.
+            </div>}
+          </SectionCard>
+
+          <SectionCard title="Excel PO-to-Item Mapping" dot="#0ea5e9" note={excelBatch ? 'Excel: ' + excelBatch.source_file + ' · ' + fmtDate(excelBatch.completed_at) : 'Excel mapping is separate from Simplix'}>
+            {excelError ? <div style={{ padding: '14px 0', color: '#b91c1c', fontSize: 12 }}>Could not read Excel mappings: {excelError}</div>
+              : !excelBatch ? <EmptyText>No completed PR/PO Excel mapping upload yet. Upload the workbook from the PR & PO Tracker page.</EmptyText>
+              : !mappedRows.length ? <EmptyText>This PR has no item rows in the currently imported Excel workbook.</EmptyText>
+              : <DataTable rows={mappedRows} columns={[
+                  { key: 'source_row', label: 'Excel Row' },
+                  { key: 'item_code', label: 'Item ID', render: v => <strong style={{ fontFamily: 'monospace' }}>{v}</strong> },
+                  { key: '_description', label: 'Item Description' },
+                  { key: 'po_no', label: 'Mapped PO', render: v => v || <span style={{ color: '#b45309' }}>Not mapped</span> },
+                  { key: 'source_qty', label: 'Excel Tracked Qty', align: 'right', render: v => v == null ? '—' : Number(v).toLocaleString() },
+                  { key: 'received_qty', label: 'Excel Received Qty', align: 'right', render: v => v == null ? 'Unknown' : Number(v).toLocaleString() },
+                  { key: 'balance_qty', label: 'Excel Balance Qty', align: 'right', render: v => v == null ? 'Unknown' : Number(v).toLocaleString() },
+                  { key: 'unit', label: 'Unit' },
+                  { key: 'excel_po_status', label: 'Excel PO Status' },
+                  { key: '_flags', label: 'Reconciliation', render: flags => flags.length ? <span style={{ color: '#92400e', lineHeight: 1.5 }}>{flags.join(' · ')}</span> : <span style={{ color: '#166534' }}>Item and PO match Simplix</span> },
+                ]} />}
+            {mappedRows.length > 0 && <div style={{ padding: '0 0 15px', fontSize: 11, color: '#64748b' }}>
+              Each row is retained separately from the source workbook. Quantities are Excel-reported and not independently verified PO order/receipt quantities. Repeated PO/item rows are not added together. Receipt references and dates are from Simplix in the Goods Receiving section, not assigned to individual item rows.
             </div>}
           </SectionCard>
 
