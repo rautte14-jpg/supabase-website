@@ -9,6 +9,7 @@ import { SOURCE_OPTIONS, detectSource, entityKey, humanSource, mapRows, normaliz
 const PrDetailOverlayComplete = lazy(() => import('./PrDetailOverlayComplete.jsx'))
 const PrPoExcelUpload = lazy(() => import('./PrPoExcelUpload.jsx'))
 const PrTrackerCompleteV2 = lazy(() => import('./PrTrackerCompleteV2.jsx'))
+const PrPoOrdersTab = lazy(() => import('./PrPoOrdersTab.jsx'))
 const PrOpenPositionV2 = lazy(() => import('./PrOpenPositionV2.jsx'))
 const PrMonthlyChart = lazy(() => import('./PrMonthlyChart.jsx'))
 const PendingPaymentsWorkspace = lazy(() => import('./PendingPaymentsWorkspace.jsx'))
@@ -1383,6 +1384,7 @@ export default function App() {
   const [prfStatusFilter, setPrfStatusFilter] = useState('ALL')
   const [prfWeekFilter, setPrfWeekFilter] = useState('ALL')
   const [prPoWeekFilter, setPrPoWeekFilter] = useState('ALL')
+  const [prPoTab, setPrPoTab] = useState('pr')
   const [prPoReceiptWeekFilter, setPrPoReceiptWeekFilter] = useState(() => weekStartWednesday(maldivesDateIso()))
   const [prPoAgeFilter, setPrPoAgeFilter] = useState('ALL')
   const [prPoUrgentFilter, setPrPoUrgentFilter] = useState(false)
@@ -6101,12 +6103,24 @@ export default function App() {
             <>
               <PageHeader
                 title="PR & PO Tracker"
-                subtitle="Production Simplix PR headers and requested item lines, with separate Excel PO-to-item mapping and legacy tracker sections."
+                subtitle="PR submissions, purchase orders, monthly trends and operational follow-up — organized into four views."
               />
 
-              <Suspense fallback={null}><PrPoExcelUpload /></Suspense>
+              <nav aria-label="PR and PO Tracker views" className="prpo-tabs" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '14px 0', padding: '9px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12 }}>
+                {[
+                  ['pr', 'PR Tracker'],
+                  ['po', 'PO Tracker'],
+                  ['monthly', 'Monthly Submission Trend'],
+                  ['attention', 'Operational Attention'],
+                ].map(([id, label]) => <button key={id} type="button" aria-current={prPoTab === id ? 'page' : undefined} onClick={() => setPrPoTab(id)} style={{ border: prPoTab === id ? '1px solid #1d4ed8' : '1px solid #cbd5e1', background: prPoTab === id ? '#1d4ed8' : '#fff', color: prPoTab === id ? '#fff' : '#334155', borderRadius: 9, padding: '11px 15px', fontWeight: 800, fontSize: 12, cursor: 'pointer', flex: '1 1 175px' }}>{label}</button>)}
+              </nav>
 
-              <section className="prpo-section-card">
+              <div style={{ display: prPoTab === 'po' ? 'block' : 'none' }}>
+                <Suspense fallback={null}><PrPoExcelUpload /></Suspense>
+                <div id="prpo-po-host" />
+              </div>
+
+              <section className="prpo-section-card" style={{ display: prPoTab === 'pr' ? undefined : 'none' }}>
                 <div className="prpo-section-title">
                   <div>
                     <span className="eyebrow">01 · PR SUBMISSION ACTIVITY</span>
@@ -6156,11 +6170,13 @@ export default function App() {
 
                 <div id="prpo-lifecycle-host" className="prv2-host" />
 
-                <div id="prpo-monthly-host" className="pr-month-chart-host" />
               </section>
 
-              <div id="prpo-open-position-host" className="opv2-host" />
-              <section className="prpo-section-card" id="prpo-open-position-base">
+              <div id="prpo-monthly-host" className="pr-month-chart-host" style={{ display: prPoTab === 'monthly' ? undefined : 'none' }} />
+              <div style={{ display: prPoTab === 'attention' ? undefined : 'none' }}>
+                <div id="prpo-open-position-host" className="opv2-host" />
+              </div>
+              <section className="prpo-section-card" id="prpo-open-position-base" style={{ display: prPoTab === 'attention' ? undefined : 'none' }}>
                 <div className="prpo-section-title">
                   <div>
                     <span className="eyebrow">02 · CURRENT OPEN POSITION</span>
@@ -7116,6 +7132,7 @@ export default function App() {
             />
             <PrOpenPositionV2 />
             <PrMonthlyChart />
+            <PrPoOrdersTab active={prPoTab === 'po'} selectedYear={prSubmissionYear} refreshKey={prSubmissionRefreshKey} />
           </>
         )}
         {view === 'updates' && <MtrFastUpload />}
