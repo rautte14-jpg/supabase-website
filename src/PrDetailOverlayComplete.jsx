@@ -237,11 +237,11 @@ export default function PrDetailOverlayComplete() {
       if (row.po_no && !poRefs.has(clean(row.po_no).toUpperCase())) flags.push('PO not in Simplix PR detail')
       if (!lineCodes.has(clean(row.item_code).toUpperCase())) flags.push('Item not in Simplix PR lines')
       if ((keyCounts.get(key) || 0) > 1) flags.push('Repeated PR/PO/item: review rows')
-      if (row.po_no && receiptPos.has(clean(row.po_no).toUpperCase())) flags.push('Simplix PO receipt event recorded')
+      const simplixReceipt = Boolean(row.po_no && receiptPos.has(clean(row.po_no).toUpperCase()))
       if (row.received_qty != null && row.source_qty != null && Number(row.received_qty) > Number(row.source_qty)) flags.push('Received exceeds Excel tracked qty')
       const position = excelItemReceiptPosition(row)
       if (position.conflict) flags.push('Excel Received All conflicts with quantities')
-      return { ...row, _flags: flags, _description: clean(row.item_description) || '—', _receiptStatus: position.status, _receiptKind: position.kind, _received: position.received, _balance: position.balance }
+      return { ...row, _flags: flags, _description: clean(row.item_description) || '—', _receiptStatus: position.status, _receiptKind: position.kind, _received: position.received, _balance: position.balance, _simplixReceipt: simplixReceipt ? 'Receipt recorded' : 'No receipt event' }
     })
   }, [excelItems, prItems, pos, receipts])
 
@@ -316,6 +316,7 @@ export default function PrDetailOverlayComplete() {
                   { key: '_received', label: 'Excel Received Qty', align: 'right', render: v => v == null ? '—' : Number(v).toLocaleString() },
                   { key: '_balance', label: 'Excel Balance Qty', align: 'right', render: v => v == null ? '—' : Number(v).toLocaleString() },
                   { key: 'excel_received_date', label: 'Excel Received Date', render: v => clean(v) || '—' },
+                  { key: '_simplixReceipt', label: 'Simplix PO Receipt' },
                   { key: 'unit', label: 'Unit' },
                   { key: 'excel_po_status', label: 'Excel PO Status' },
                   { key: '_flags', label: 'Reconciliation', render: flags => flags.length ? <span style={{ color: '#92400e', lineHeight: 1.5 }}>{flags.join(' · ')}</span> : <span style={{ color: '#166534' }}>Item and PO match Simplix</span> },
