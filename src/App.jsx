@@ -3,6 +3,7 @@ import { parseNumber } from './lib/numbers.js'
 import { requestedQty, receivedQty } from './lib/receipts.js'
 import { makeWarehouseExcelReceiptModel, formatWarehouseUnitQuantities } from './lib/warehouseExcelReceipts.js'
 import { warehousePoValueCoverage } from './lib/warehousePoValueCoverage.js'
+import { inventoryProcurementPosition } from './lib/inventoryProcurement.js'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { clearSupabaseReadCache, supabase } from './lib/supabase'
 import { buildPrSubmissionWeeks, maldivesDateIso, submissionDateIso, submissionWeekStart } from './lib/prSubmissionActivity'
@@ -1499,9 +1500,8 @@ export default function App() {
     prLineSummary: { lines: null, syncedAt: null },
   })
   const [inventoryMtrDetailRows, setInventoryMtrDetailRows] = useState([])
-  const [inventoryReceiptRecovery, setInventoryReceiptRecovery] = useState([])
-  const [inventoryProcurementDetailRows, setInventoryProcurementDetailRows] = useState([])
   const [inventoryDetailLoading, setInventoryDetailLoading] = useState(false)
+  const [inventoryDetailError, setInventoryDetailError] = useState('')
   const [warehouseIssueWeekFilter, setWarehouseIssueWeekFilter] = useState(() => addDaysIso(weekStartWednesday(maldivesDateIso()), -7))
   const [warehouseIssueDetailOpen, setWarehouseIssueDetailOpen] = useState(false)
   const [warehouseIssueDetailRows, setWarehouseIssueDetailRows] = useState([])
@@ -2036,7 +2036,9 @@ export default function App() {
   }
 
   async function loadInventoryPresentationFast() {
-    const [mtrResult, stockResult, topStockResult, procurementResult, paymentSummaryResult, currentPaymentsResult, recoveryResult, prLineCountResult, prLineLatestResult] = await Promise.all([
+    setInventoryMtrDetailRows([])
+    setInventoryDetail(null)
+    const [mtrResult, stockResult, topStockResult, procurementResult, paymentSummaryResult, currentPaymentsResult] = await Promise.all([
       supabase.from('inventory_presentation_mtr_summary').select('*').limit(1),
       supabase.from('inventory_presentation_stock_summary').select('*').limit(1),
       supabase
@@ -2050,9 +2052,6 @@ export default function App() {
         .from('current_pending_payment_records')
         .select('po_no,po_date,supplier,status,priority,po_value')
         .order('po_value', { ascending: false }),
-      supabase.from('warehouse_receipt_recovery').select('*').order('period_start', { ascending: false }).limit(24),
-      supabase.from('erp_pr_line_items').select('purch_req_id', { count: 'exact', head: true }),
-      supabase.from('erp_pr_line_items').select('synced_at').order('synced_at', { ascending: false }).limit(1),
     ])
 
     if (mtrResult.error) throw mtrResult.error
@@ -2062,8 +2061,6 @@ export default function App() {
     if (paymentSummaryResult.error) throw paymentSummaryResult.error
     if (currentPaymentsResult.error) throw currentPaymentsResult.error
 
-    if (recoveryResult.error) console.warn('Inventory presentation receipt snapshot unavailable', recoveryResult.error)
-    setInventoryReceiptRecovery(recoveryResult.error ? [] : (recoveryResult.data || []))
     setInventoryFast({
       mtr: mtrResult.data?.[0] || null,
       stock: stockResult.data?.[0] || null,
@@ -2071,10 +2068,7 @@ export default function App() {
       procurement: procurementResult.data?.[0] || null,
       payments: paymentSummaryResult.data?.[0] || null,
       currentPayments: currentPaymentsResult.data || [],
-      prLineSummary: {
-        lines: prLineCountResult.error ? null : prLineCountResult.count,
-        syncedAt: prLineLatestResult.error ? null : prLineLatestResult.data?.[0]?.synced_at || null,
-      },
+
     })
   }
 
@@ -2105,29 +2099,14 @@ export default function App() {
     }
   }
 
-  async function loadInventoryProcurementDetails(type) {
-    setInventoryDetailLoading(true)
-    try {
-      const { data: rows, error } = await supabase.rpc('inventory_procurement_details', {
-        p_type: type,
-        p_limit: 200,
-      })
-      if (error) throw error
-      setInventoryProcurementDetailRows(Array.isArray(rows) ? rows : [])
-      return rows || []
-    } finally {
-      setInventoryDetailLoading(false)
-    }
-  }
-
   async function openInventoryDetail(type) {
-    if (type === 'MTR_NOT_TRANSFERRED' || type === 'MTR_30') {
-      await loadInventoryMtrDetails()
-    }
-    if (type === 'URGENT_PR' || type === 'AGED6' || type === 'RECEIPT_PENDING') {
-      await loadInventoryProcurementDetails(type)
-    }
     setInventoryDetail(type)
+    setInventoryDetailError('')
+    try {
+      if (type === 'MTR_NOT_TRANSFERRED' || type === 'MTR_30') await loadInventoryMtrDetails()
+    } catch (error) {
+      setInventoryDetailError(error?.message || 'Could not load the supporting records.')
+    }
   }
 
   async function loadPrfPageFast(
@@ -2245,6 +2224,7 @@ export default function App() {
         await Promise.all([
           loadTables(VIEW_TABLES[targetView] || [], force),
           loadInventoryPresentationFast(),
+          loadWarehousePresentationFast(),
         ])
       } else {
         await loadTables(VIEW_TABLES[targetView] || [], force)
@@ -4508,61 +4488,10 @@ export default function App() {
     }
   }, [inventoryFast.payments])
 
-  const inventoryPresentationProcurement = useMemo(() => {
-    const row = inventoryFast.procurement || {}
-    return {
-      submittedThisMonth: Number(row.submitted_this_month || 0),
-      receiptPendingPos: Number(row.receipt_pending_pos || 0),
-      urgentPendingPrs: Number(row.urgent_pending_prs || 0),
-      agedThreeToSix: Number(row.aged_three_to_six || 0),
-      agedSixPlus: Number(row.aged_six_plus || 0),
-      oldestOpenDays: Number(row.oldest_open_days || 0),
-      paymentPendingPos: Number(row.payment_pending_pos || 0),
-    }
-  }, [inventoryFast.procurement])
-
-  // The ERP PR/PO detail imports were deliberately removed. Receipt quantities
-  // must come from the dated tracker recovery, never default to a fabricated zero.
-  const inventoryMonthRecovery = inventoryReceiptRecovery.find((r) => r.period_type === 'month' && r.period_start === todayIso.slice(0, 7) + '-01' && r.period_end <= todayIso)
-  const inventoryWeekRecovery = inventoryReceiptRecovery.find((r) => r.period_type === 'week' && r.period_start === warehouseWeekStart)
-  const inventoryPreviousWeekRecovery = inventoryReceiptRecovery.find((r) => r.period_type === 'week' && r.period_start === addDaysIso(warehouseWeekStart, -7))
-
-  const inventoryReceiptCurrent = useMemo(() => {
-    const row = inventoryFast.procurement || {}
-    return {
-      prs: Number(row.current_receipt_prs || 0),
-      lines: Number(row.current_receipt_lines || 0),
-      qty: Number(row.current_receipt_qty || 0),
-      value: Number(row.current_receipt_value || 0),
-    }
-  }, [inventoryFast.procurement])
-
-  const inventoryReceiptPrevious = useMemo(() => {
-    const row = inventoryFast.procurement || {}
-    return {
-      prs: Number(row.previous_receipt_prs || 0),
-      lines: Number(row.previous_receipt_lines || 0),
-      qty: Number(row.previous_receipt_qty || 0),
-      value: Number(row.previous_receipt_value || 0),
-    }
-  }, [inventoryFast.procurement])
-
-  const inventoryReceiptMonth = useMemo(() => {
-    const row = inventoryFast.procurement || {}
-    return {
-      prs: Number(row.month_received_prs || 0),
-      qty: Number(row.month_received_qty || 0),
-      value: Number(row.month_received_value || 0),
-    }
-  }, [inventoryFast.procurement])
-
-  const inventoryReceiptCompletion = useMemo(() => {
-    const row = inventoryFast.procurement || {}
-    return {
-      full: Number(row.fully_received_prs || 0),
-      partial: Number(row.part_received_prs || 0),
-    }
-  }, [inventoryFast.procurement])
+  const inventoryPresentationProcurement = useMemo(() => ({
+    ...inventoryProcurementPosition(warehouseExcel.rows, todayIso),
+    submittedThisMonth:Number(inventoryFast.procurement?.submitted_this_month || 0),
+  }), [warehouseExcel.rows, todayIso, inventoryFast.procurement])
 
   const inventoryPresentationMaterials = useMemo(() => {
     const row = inventoryFast.mtr || {}
@@ -4618,10 +4547,10 @@ export default function App() {
     const uniqueBy = (rows, keyFn) => [...new Map(rows.map((row) => [keyFn(row), row])).values()]
 
     if (inventoryDetail === 'URGENT_PR' || inventoryDetail === 'AGED6' || inventoryDetail === 'RECEIPT_PENDING') {
-      const rows = inventoryProcurementDetailRows
+      const rows = inventoryDetail === 'RECEIPT_PENDING' ? inventoryPresentationProcurement.pendingRows : inventoryDetail === 'URGENT_PR' ? inventoryPresentationProcurement.urgentRows : inventoryPresentationProcurement.agedRows
       if (inventoryDetail === 'RECEIPT_PENDING') {
         return {
-          title: 'POs Awaiting Receipt',
+          title: 'POs Awaiting Full Receipt',
           columns: ['PO', 'PR', 'Item', 'Description', 'Requested', 'Received'],
           rows: rows.map((row) => [
             row.po_no || '—',
@@ -4706,7 +4635,7 @@ export default function App() {
     return null
   }, [
     inventoryDetail,
-    inventoryProcurementDetailRows,
+    inventoryPresentationProcurement,
     pendingPaymentReconciliation.rows,
     inventoryMtrDetailRows,
     inventoryHighUseOutOfStock,
@@ -4729,11 +4658,11 @@ export default function App() {
           </div>
           <div className="meeting-metrics">
             <MetricCard label="PRs Submitted This Month" value={fmt(inventoryPresentationProcurement.submittedThisMonth)} helper="Distinct purchase requisitions submitted" />
-            <MetricCard label="PRs Received This Month" value={inventoryMonthRecovery ? fmt(inventoryMonthRecovery.prs) : "—"} helper={inventoryMonthRecovery ? fmt(inventoryMonthRecovery.qty, 2) + " received quantity · tracker through " + inventoryMonthRecovery.period_end : "No verified item-level receipt summary"} />
-            <MetricCard label="Received Value This Month" value="Not verified" helper={inventoryMonthRecovery ? "Value incomplete; source currencies not converted · snapshot " + inventoryMonthRecovery.period_end : "ERP receipt records have no validated received value"} />
+            <MetricCard label="Received Item Quantity This Month" value={warehouseExcel.loaded && warehouseMonthlyItems.available && !warehouseExcel.error ? fmt(warehouseMonthlyItemQuantity) : 'Unavailable'} helper={fmt(warehouseMonthlyItems.lines) + ' item lines received as of ' + warehouseReceiptAsOf} />
+            <MetricCard label="Purchase Order Total Value (MVR)" value={warehousePoAmounts.loaded && !warehouseExcel.linkError ? mvr(warehouseValueCoverage.amountMVR) : 'Unavailable'} helper={fmt(warehouseValueCoverage.matchedPOs) + ' POs with receipts this month' + (warehouseValueCoverage.unmatchedPOs ? ' · ' + fmt(warehouseValueCoverage.unmatchedPOs) + ' values unavailable' : '')} />
             <MetricCard label="Pending Payment POs" value={fmt(inventoryPresentationPayments.total)} tone="warn" helper={mvr(inventoryPresentationPayments.totalValue) + ' pending value'} />
             <MetricCard label="High-Use Low Stock" value={fmt(inventoryHighUseLowStock.length)} helper="Top 100 consumption-value items at 1–5 on hand" />
-            <MetricCard label="High-Use Out of Stock" value={fmt(inventoryHighUseOutOfStock.length)} tone="bad" helper="Top 100 consumption-value items with zero stock" />
+            <MetricCard label="High-Use Out of Stock" value={fmt(inventoryHighUseOutOfStock.length)} tone="bad" helper="Top 100 consumption-value items with zero or negative stock" />
           </div>
         </>
       ),
@@ -4746,30 +4675,24 @@ export default function App() {
           <div className="meeting-period-banner">
             <div>
               <span>OPEN PROCUREMENT FOLLOW-UP</span>
-              <b>{fmt(inventoryPresentationProcurement.receiptPendingPos)} POs awaiting receipt</b>
+              <b>{fmt(inventoryPresentationProcurement.receiptPendingPos)} POs awaiting full receipt</b>
             </div>
             <small>Ageing, urgency, receipts and payment follow-up</small>
           </div>
           <div className="meeting-exception-metrics">
             <div><span>PRs Submitted This Month</span><b>{fmt(inventoryPresentationProcurement.submittedThisMonth)}</b></div>
-            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('RECEIPT_PENDING')}><span>POs Receipt Not Done</span><b>{fmt(inventoryPresentationProcurement.receiptPendingPos)}</b><small>View list</small></button>
-            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('URGENT_PR')}><span>Urgent Pending PRs</span><b>{fmt(inventoryPresentationProcurement.urgentPendingPrs)}</b><small>View list</small></button>
+            <button className="inventory-ppt-click" onClick={() => openInventoryDetail('RECEIPT_PENDING')}><span>POs Awaiting Full Receipt</span><b>{fmt(inventoryPresentationProcurement.receiptPendingPos)}</b><small>View list</small></button>
+            <button className="inventory-ppt-click" onClick={() => openInventoryDetail('URGENT_PR')}><span>Urgent Pending PRs</span><b>{fmt(inventoryPresentationProcurement.urgentPendingPrs)}</b><small>View list</small></button>
             <div><span>PRs Aged 3–6 Months</span><b>{fmt(inventoryPresentationProcurement.agedThreeToSix)}</b></div>
-            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('AGED6')}><span>PRs Aged 6+ Months</span><b>{fmt(inventoryPresentationProcurement.agedSixPlus)}</b><small>View list</small></button>
+            <button className="inventory-ppt-click" onClick={() => openInventoryDetail('AGED6')}><span>PRs Aged 6+ Months</span><b>{fmt(inventoryPresentationProcurement.agedSixPlus)}</b><small>View list</small></button>
             <div><span>Oldest Open PR</span><b>{fmt(inventoryPresentationProcurement.oldestOpenDays)} days</b></div>
-            <div><span>Payment Pending POs</span><b>{fmt(inventoryPresentationProcurement.paymentPendingPos)}</b></div>
-            <div>
-              <span>Simplix PR Item Lines Synced</span>
-              <b>{inventoryFast.prLineSummary?.lines == null ? '—' : fmt(inventoryFast.prLineSummary.lines)}</b>
-              <small>Requested PR items only · {inventoryFast.prLineSummary?.syncedAt ? 'last synced ' + new Date(inventoryFast.prLineSummary.syncedAt).toLocaleString('en-GB') : 'sync not available'}</small>
-            </div>
           </div>
           <div className="meeting-period-banner" style={{ marginTop: 18 }}>
             <div>
               <span>PROCUREMENT PRIORITY</span>
-              <b>{fmt(inventoryPresentationProcurement.urgentPendingPrs + inventoryPresentationProcurement.agedSixPlus)} high-attention PRs</b>
+              <b>Review urgent and ageing PRs</b>
             </div>
-            <small>Urgent pending plus PRs aged six months or more</small>
+            <small>Current PR/PO tracker · categories may overlap · {inventoryPresentationProcurement.undatedOpenPrs} open PRs without submission dates excluded from ageing</small>
           </div>
         </>
       ),
@@ -4777,44 +4700,7 @@ export default function App() {
     {
       kicker: 'RECEIPTS & DELIVERY',
       title: 'Goods Receipt Performance',
-      body: (
-        <>
-          <div className="meeting-period-banner">
-            <div>
-              <span>LAST COMPLETED WEEK</span>
-              <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
-            </div>
-            <small>{inventoryWeekRecovery ? "Tracker receipt snapshot through " + inventoryWeekRecovery.period_end + " · values not currency-converted" : "Tracker receipt summary unavailable for this week"}</small>
-          </div>
-          <div className="meeting-change-grid warehouse-receipt-cards">
-            <div className="meeting-change-card">
-              <span>PRs received</span>
-              <b>{inventoryWeekRecovery ? fmt(inventoryWeekRecovery.prs) : "—"}</b>
-              <div><small>Previous: {inventoryPreviousWeekRecovery ? fmt(inventoryPreviousWeekRecovery.prs) : "—"}</small><strong>{inventoryWeekRecovery && inventoryPreviousWeekRecovery ? deltaText(inventoryWeekRecovery.prs, inventoryPreviousWeekRecovery.prs) : "Tracker comparison"}</strong></div>
-            </div>
-            <div className="meeting-change-card">
-              <span>Received quantity</span>
-              <b>{inventoryWeekRecovery ? fmt(inventoryWeekRecovery.qty, 2) : "—"}</b>
-              <div><small>Previous: {inventoryPreviousWeekRecovery ? fmt(inventoryPreviousWeekRecovery.qty, 2) : "—"}</small><strong>{inventoryWeekRecovery && inventoryPreviousWeekRecovery ? deltaText(inventoryWeekRecovery.qty, inventoryPreviousWeekRecovery.qty) : "Tracker comparison"}</strong></div>
-            </div>
-            <div className="meeting-change-card">
-              <span>Received value</span>
-              <b>Not verified</b>
-              <div><small>PO values incomplete; mixed source currencies</small><strong>No confirmed received-value total</strong></div>
-            </div>
-            <div className="meeting-change-card">
-              <span>Fully received PRs</span>
-              <b>{inventoryWeekRecovery ? fmt(inventoryWeekRecovery.full_prs) : "—"}</b>
-              <div><small>Completed receipt position</small></div>
-            </div>
-            <div className="meeting-change-card">
-              <span>Part received PRs</span>
-              <b>{inventoryWeekRecovery ? fmt(inventoryWeekRecovery.partial_prs) : "—"}</b>
-              <div><small>PRs still carrying balance</small></div>
-            </div>
-          </div>
-        </>
-      ),
+      body: warehouseSlides[1].body,
     },
     {
       kicker: 'PAYMENT CONTROL',
@@ -4826,30 +4712,31 @@ export default function App() {
               <span>CURRENT PAYMENT EXPOSURE</span>
               <b>{mvr(inventoryPresentationPayments.totalValue)}</b>
             </div>
-            <small>{fmt(inventoryPresentationPayments.total)} purchase orders awaiting payment action</small>
+            <small>{fmt(inventoryPresentationPayments.total)} purchase orders on the current payment follow-up list</small>
           </div>
           <div className="meeting-exception-metrics">
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('PAYMENT')}><span>Pending POs</span><b>{fmt(inventoryPresentationPayments.total)}</b><small>View list</small></button>
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('PAYMENT_URGENT')}><span>Urgent POs</span><b>{fmt(inventoryPresentationPayments.urgent)}</b><small>View list</small></button>
+            <div><span>Removed by Receipt Rule</span><b>{fmt(pendingPaymentReconciliation.clearedCount)}</b><small>From the uploaded payment list</small></div>
             {inventoryPresentationPayments.statusCounts.slice(0, 5).map(([status, count]) => (
               <div key={status}><span>{status}</span><b>{fmt(count)}</b></div>
             ))}
           </div>
           <div className="meeting-change-grid warehouse-receipt-cards" style={{ marginTop: 18 }}>
             <div className="meeting-change-card">
-              <span>Last Week Pending</span>
+              <span>Uploaded Payment List</span>
               <b>{fmt(pendingPaymentReconciliation.lastWeekCount)}</b>
-              <div><small>{mvr(pendingPaymentReconciliation.lastWeekValue)}</small><strong>Previous week baseline</strong></div>
+              <div><small>{mvr(pendingPaymentReconciliation.lastWeekValue)}</small><strong>Uploaded baseline before receipt rules</strong></div>
             </div>
             <div className="meeting-change-card">
-              <span>This Week Pending</span>
+              <span>Current Pending List</span>
               <b>{fmt(pendingPaymentReconciliation.currentCount)}</b>
               <div><small>{mvr(pendingPaymentReconciliation.currentValue)}</small><strong>{pendingPaymentReconciliation.countChange <= 0 ? 'Down ' : 'Up '}{fmt(Math.abs(pendingPaymentReconciliation.countChange))} POs</strong></div>
             </div>
             <div className="meeting-change-card">
-              <span>Cleared Since Last Week</span>
+              <span>Removed by Receipt Rule</span>
               <b>{fmt(pendingPaymentReconciliation.clearedCount)}</b>
-              <div><small>{mvr(pendingPaymentReconciliation.clearedThisWeekValue)}</small><strong>Advance / Credit receipts cleared</strong></div>
+              <div><small>{mvr(pendingPaymentReconciliation.clearedThisWeekValue)}</small><strong>Removed from this follow-up list; payment completion not confirmed</strong></div>
             </div>
           </div>
           <div className="meeting-period-banner" style={{ marginTop: 18 }}>
@@ -4857,7 +4744,7 @@ export default function App() {
               <span>MANAGEMENT FOCUS</span>
               <b>{fmt(inventoryPresentationPayments.urgent)} urgent payment POs</b>
             </div>
-            <small>Credit and advance cases are removed from pending once receipt is recorded</small>
+            <small>Receipt-based rules remove eligible credit and advance entries from this list</small>
           </div>
         </>
       ),
@@ -4870,9 +4757,9 @@ export default function App() {
           <div className="meeting-period-banner">
             <div>
               <span>INTER-DIVISION MATERIAL TRANSFER</span>
-              <b>Other Division Stock → MTR → Transfer → SRD Inventory</b>
+              <b>Transfers into SRD Inventory</b>
             </div>
-            <small>MTRs are requests to transfer materials from other MTCC divisions into SRD inventory when procurement is not raised</small>
+            <small>Current MTR register · weekly activity uses recorded transfer receipt dates</small>
           </div>
           <div className="meeting-exception-metrics">
             <div><span>Total MTRs</span><b>{fmt(inventoryPresentationMaterials.mtrTotal)}</b></div>
@@ -4885,7 +4772,7 @@ export default function App() {
 
           <div className="meeting-change-grid warehouse-receipt-cards" style={{ marginTop: 18 }}>
             <div className="meeting-change-card">
-              <span>Transferred Qty · Last Week</span>
+              <span>Transferred Qty · Previous Week</span>
               <b>{fmt(inventoryMtrWeeklyTransfer.previous.quantity, 2)}</b>
               <div>
                 <small>{formatShortDate(inventoryMtrWeeklyTransfer.previous.weekStart)} – {formatShortDate(inventoryMtrWeeklyTransfer.previous.weekEnd)}</small>
@@ -4901,7 +4788,7 @@ export default function App() {
               </div>
             </div>
             <div className="meeting-change-card">
-              <span>MTRs Received · Reporting Week</span>
+              <span>MTRs with Transfers · Reporting Week</span>
               <b>{fmt(inventoryMtrWeeklyTransfer.current.mtrs)}</b>
               <div>
                 <small>{fmt(inventoryMtrWeeklyTransfer.current.lines)} transferred item lines</small>
@@ -4917,7 +4804,7 @@ export default function App() {
               return (
                 <div className="mtr-weekly-trend-row" key={week.weekStart}>
                   <span>{formatShortDate(week.weekStart)} – {formatShortDate(week.weekEnd)}</span>
-                  <div><i style={{ width: Math.max(2, (week.quantity / maxQty) * 100) + '%' }} /></div>
+                  <div><i style={{ width: Math.max(0, (week.quantity / maxQty) * 100) + '%' }} /></div>
                   <strong>{fmt(week.quantity, 2)}</strong>
                   <small>{fmt(week.mtrs)} MTRs</small>
                 </div>
@@ -4937,33 +4824,34 @@ export default function App() {
               <span>TOP 100 ITEMS BY CONSUMPTION VALUE</span>
               <b>{fmt(inventoryHighUseLowStock.length + inventoryHighUseOutOfStock.length)} items require attention</b>
             </div>
-            <small>High-use inventory risk based on actual consumption value</small>
+            <small>Low stock: 1–5 on hand · out of stock: zero or below</small>
           </div>
           <div className="meeting-exception-metrics">
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_LOW')}><span>High-Use Low Stock</span><b>{fmt(inventoryHighUseLowStock.length)}</b><small>View list</small></button>
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_OOS')}><span>High-Use Out of Stock</span><b>{fmt(inventoryHighUseOutOfStock.length)}</b><small>View list</small></button>
             <div><span>YTD Consumption Value</span><b>{mvr(Number(inventoryFast.stock?.ytd_consumption_value || 0))}</b></div>
-            <div><span>Current Inventory Value</span><b>{mvr(Number(inventoryFast.stock?.current_inventory_value || 0))}</b></div>
+            <div><span>High-Use Items Reviewed</span><b>{fmt(inventoryHighUseTop100.length)}</b><small>Ranked by consumption value</small></div>
           </div>
-          <div className="warehouse-receipt-table" style={{ marginTop: 18 }}>
+          <div className="warehouse-receipt-table inventory-risk-table" style={{ marginTop: 18 }}>
             <div className="warehouse-receipt-row warehouse-receipt-head">
-              <span>Rank</span><span>Item</span><span>Description</span><span>Consumption Value</span><span>On Hand</span><span>Status</span><span></span><span></span>
+              <span>Rank</span><span>Item</span><span>Description</span><span>Consumption Value</span><span>On Hand</span><span>Status</span>
             </div>
             {inventoryHighUseTop100
               .filter((row) => row.on_hand <= 5)
               .slice(0, 10)
               .map((row, index) => (
                 <div className="warehouse-receipt-row" key={row.item_code || index}>
-                  <b>{inventoryHighUseTop100.findIndex((x) => x.item_code === row.item_code) + 1}</b>
+                  <b>{row.consumption_rank || inventoryHighUseTop100.findIndex((x) => x.item_code === row.item_code) + 1}</b>
                   <span>{row.item_code || '—'}</span>
                   <span title={row.item_description || ''}>{row.item_description || '—'}</span>
                   <strong>{mvr(row.value)}</strong>
                   <span>{fmt(row.on_hand, 2)}</span>
                   <em>{row.on_hand <= 0 ? 'OUT OF STOCK' : 'LOW STOCK'}</em>
-                  <span></span><span></span>
                 </div>
               ))}
+            {!inventoryHighUseLowStock.length && !inventoryHighUseOutOfStock.length && <p className="inventory-source-note">No low-stock or out-of-stock items among the reviewed items.</p>}
           </div>
+          <p className="inventory-source-note">Showing up to 10 items; click the stock cards for the full lists. The current on-hand upload supplies quantities only, so inventory valuation is not shown.</p>
         </>
       ),
     },
@@ -4975,26 +4863,17 @@ export default function App() {
           <div className="meeting-period-banner">
             <div>
               <span>ITEMS REQUIRING FOLLOW-UP</span>
-              <b>
-                {fmt(
-                  inventoryPresentationProcurement.urgentPendingPrs +
-                  inventoryPresentationProcurement.agedSixPlus +
-                  inventoryPresentationProcurement.receiptPendingPos +
-                  inventoryPresentationPayments.urgent +
-                  inventoryPresentationMaterials.mtrNotTransferred +
-                  inventoryHighUseOutOfStock.length
-                )} priority flags
-              </b>
+              <b>Review priorities and assign owners</b>
             </div>
-            <small>Focus the meeting on blockers that need an owner or next action</small>
+            <small>Categories may overlap; counts are shown separately</small>
           </div>
 
           <div className="meeting-control-grid">
             <section>
               <div className="meeting-control-head"><span>PROCUREMENT</span><b>Immediate Follow-Up</b></div>
-              <button className="meeting-control-row critical inventory-action-row" onClick={() => setInventoryDetail('URGENT_PR')}><span>Urgent pending PRs</span><strong>{fmt(inventoryPresentationProcurement.urgentPendingPrs)}</strong></button>
-              <button className="meeting-control-row critical inventory-action-row" onClick={() => setInventoryDetail('AGED6')}><span>PRs aged 6+ months</span><strong>{fmt(inventoryPresentationProcurement.agedSixPlus)}</strong></button>
-              <button className="meeting-control-row inventory-action-row" onClick={() => setInventoryDetail('RECEIPT_PENDING')}><span>POs awaiting receipt</span><strong>{fmt(inventoryPresentationProcurement.receiptPendingPos)}</strong></button>
+              <button className="meeting-control-row critical inventory-action-row" onClick={() => openInventoryDetail('URGENT_PR')}><span>Urgent pending PRs</span><strong>{fmt(inventoryPresentationProcurement.urgentPendingPrs)}</strong></button>
+              <button className="meeting-control-row critical inventory-action-row" onClick={() => openInventoryDetail('AGED6')}><span>PRs aged 6+ months</span><strong>{fmt(inventoryPresentationProcurement.agedSixPlus)}</strong></button>
+              <button className="meeting-control-row inventory-action-row" onClick={() => openInventoryDetail('RECEIPT_PENDING')}><span>POs awaiting full receipt</span><strong>{fmt(inventoryPresentationProcurement.receiptPendingPos)}</strong></button>
               <button className="meeting-control-row inventory-action-row" onClick={() => setInventoryDetail('PAYMENT_URGENT')}><span>Urgent payment POs</span><strong>{fmt(inventoryPresentationPayments.urgent)}</strong></button>
             </section>
 
@@ -7083,7 +6962,21 @@ export default function App() {
                   </>
                 }
               />
-              <section id="inventory-presentation-shell" className="meeting-shell warehouse-presentation-shell">
+              <style>{`
+                .inventory-presentation-shell .meeting-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+                .inventory-presentation-shell .meeting-metrics .metric-card{min-width:0;min-height:130px}
+                .inventory-presentation-shell .meeting-exception-metrics{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+                .inventory-presentation-shell .meeting-exception-metrics>div,.inventory-presentation-shell .inventory-ppt-click{min-height:96px;padding:15px;min-width:0}
+                .inventory-presentation-shell .meeting-exception-metrics b{font-size:clamp(22px,2vw,30px);overflow-wrap:anywhere}
+                .inventory-presentation-shell .meeting-exception-metrics small{display:block;font-size:10px;color:#9fb1cc;margin-top:6px;line-height:1.5}
+                .inventory-presentation-shell .meeting-change-card{min-width:0;min-height:120px}
+                .inventory-presentation-shell .inventory-risk-table .warehouse-receipt-row{grid-template-columns:45px 120px minmax(180px,2fr) minmax(120px,1fr) 85px 110px}
+                .inventory-presentation-shell .inventory-source-note{font-size:11px;line-height:1.6;color:#9fb1cc;margin:14px 0}
+                .inventory-presentation-shell .meeting-period-banner b{overflow-wrap:anywhere}
+                @media(max-width:900px){.inventory-presentation-shell .meeting-metrics,.inventory-presentation-shell .meeting-exception-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.inventory-presentation-shell .inventory-risk-table{overflow-x:auto}.inventory-presentation-shell .inventory-risk-table .warehouse-receipt-row{min-width:800px}}
+                @media(max-width:600px){.inventory-presentation-shell .meeting-metrics,.inventory-presentation-shell .meeting-exception-metrics,.inventory-presentation-shell .meeting-change-grid{grid-template-columns:1fr}}
+              `}</style>
+              <section id="inventory-presentation-shell" className="meeting-shell warehouse-presentation-shell inventory-presentation-shell">
                 <div className="meeting-workspace">
                   <aside className="meeting-agenda">
                     <div className="meeting-agenda-head">
@@ -7125,10 +7018,10 @@ export default function App() {
                         </div>
                         <div className="meeting-slide-mark">SRD</div>
                       </div>
-                      <div className="meeting-body">{inventoryPresentationSlides[Math.min(inventorySlide, inventoryPresentationSlides.length - 1)].body}</div>
+                      <div className="meeting-body">{loading || !inventoryFast.procurement ? <p role="status">{viewLoadError || 'Loading the current inventory review…'} <button onClick={refreshCurrentView}>Refresh</button></p> : viewLoadError ? <p role="alert">{viewLoadError} <button onClick={refreshCurrentView}>Retry</button></p> : inventoryPresentationSlides[Math.min(inventorySlide, inventoryPresentationSlides.length - 1)].body}</div>
                       <footer>
                         <span>Shipbuilding & Repair Division · Materials Management</span>
-                        <span>Inventory Review</span>
+                        <span>As of {warehouseReceiptAsOf} · Week {formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</span>
                       </footer>
                     </div>
 
@@ -7152,6 +7045,7 @@ export default function App() {
                       </div>
                       <div className="inventory-ppt-detail-table">
                         {inventoryDetailLoading && <div className="meeting-no-exceptions">Loading current detail…</div>}
+                        {inventoryDetailError && <div role="alert" className="meeting-no-exceptions">{inventoryDetailError} <button onClick={() => openInventoryDetail(inventoryDetail)}>Retry</button></div>}
                         <table>
                           <thead>
                             <tr>{inventoryPresentationDetail.columns.map((column) => <th key={column}>{column}</th>)}</tr>
@@ -7160,7 +7054,7 @@ export default function App() {
                             {inventoryPresentationDetail.rows.slice(0, 150).map((row, rowIndex) => (
                               <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>
                             ))}
-                            {!inventoryPresentationDetail.rows.length && (
+                            {!inventoryPresentationDetail.rows.length && !inventoryDetailLoading && !inventoryDetailError && (
                               <tr><td colSpan={inventoryPresentationDetail.columns.length}>No matching records.</td></tr>
                             )}
                           </tbody>

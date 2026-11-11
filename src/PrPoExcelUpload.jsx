@@ -35,6 +35,8 @@ function extractRows(workbook) {
     qty: headerFind(headers, ['quantity','qty']),
     poValue: headerFind(headers, ['po value','purchase order value']),
     currency: headerFind(headers, ['currency']),
+    submitted: headerFind(headers, ['submitted date']),
+    priority: headerFind(headers, ['priority']),
     receivedDate: headerFind(headers, ['received date','receipt date']),
     received: headerFind(headers, ['received qty','received quantity']),
     balance: headerFind(headers, ['balance qty','balance quantity']),
@@ -69,7 +71,7 @@ function extractRows(workbook) {
       supplier: trim(get('supplier')) || null,
       excel_delivery_status: trim(get('status')) || null,
       excel_po_status: trim(get('poStatus')) || null,
-      source_raw: { worksheet: 'Purchase Requisitions', excel_row: index0 + 1, po_value: number(get('poValue')), currency: trim(get('currency')).toUpperCase() || 'MVR' },
+      source_raw: { worksheet: 'Purchase Requisitions', excel_row: index0 + 1, po_value: number(get('poValue')), currency: trim(get('currency')).toUpperCase() || 'MVR', submitted_date: excelReceivedDate(get('submitted')), priority: trim(get('priority')) },
     })
   }
   if (!rows.length) throw Error('No item records found in this workbook.')
