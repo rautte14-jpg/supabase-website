@@ -1,6 +1,6 @@
 // A PO's purchase value is NOT the actual monetary value of goods received.
 // This calculates the subset of receipt-dated POs for which an MVR PO amount
-// is present in the pending-payment tracker. Never label this as receipt value.
+// is present in the uploaded PR/PO tracker. Never label this as receipt value.
 const norm = x => String(x ?? '').trim().toUpperCase()
 
 export function warehousePoValueCoverage(receiptLinks = [], poValues = [], periodStart, periodEnd) {
@@ -10,6 +10,9 @@ export function warehousePoValueCoverage(receiptLinks = [], poValues = [], perio
     if (!po) continue
     const dates = Array.isArray(link.receipt_dates) ? link.receipt_dates : []
     if (dates.some(d => typeof d === 'string' && d >= periodStart && d <= periodEnd)) datedPOs.add(po)
+  }
+  for (const row of poValues || []) {
+    if (norm(row.excel_po_status).includes('CANCEL')) datedPOs.delete(norm(row.po_no))
   }
   const values = new Map()
   const ambiguous = new Set()
