@@ -3,6 +3,7 @@ import { parseNumber } from './lib/numbers.js'
 import { requestedQty, receivedQty } from './lib/receipts.js'
 import { makeWarehouseExcelReceiptModel, formatWarehouseUnitQuantities } from './lib/warehouseExcelReceipts.js'
 import { warehousePoValueCoverage } from './lib/warehousePoValueCoverage.js'
+import { warehouseMonthlyReceivedItemQuantity } from './lib/warehouseReceivedItemQuantity.js'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { clearSupabaseReadCache, supabase } from './lib/supabase'
 import { buildPrSubmissionWeeks, maldivesDateIso, submissionDateIso, submissionWeekStart } from './lib/prSubmissionActivity'
@@ -4073,6 +4074,7 @@ export default function App() {
   const warehouseExcelWeek = warehouseExcelModel.period(warehouseWeekStart, warehouseWeekEnd)
   const warehouseExcelPrevWeek = warehouseExcelModel.period(addDaysIso(warehouseWeekStart,-7),addDaysIso(warehouseWeekEnd,-7))
   const warehouseExcelMonth = warehouseExcelModel.period(warehouseMonthStart, todayIso)
+  const warehouseReceivedItemQuantity = useMemo(() => warehouseMonthlyReceivedItemQuantity(warehouseExcel.rows, warehouseExcel.batch, todayIso), [warehouseExcel.rows, warehouseExcel.batch, todayIso])
   // Distinct PO numbers with Simplix goods-receipt events in the month.
   // This never treats PO purchase value as verified received value.
   const warehouseMonthlyReceivedPOCount = useMemo(() => {
@@ -4176,13 +4178,13 @@ export default function App() {
           </div>
           <div className="meeting-metrics warehouse-summary-metrics">
             <MetricCard icon="receipt" label="PRs Received This Month" value={fmt(receiptMonthDisplay.prs)} helper="Simplix: distinct PRs with ERP receipt events dated this month" />
-            <MetricCard icon="cart" label="POs Received This Month" value={warehouseMonthlyReceivedPOCount === null ? "Unavailable" : fmt(warehouseMonthlyReceivedPOCount)} helper="Distinct purchase orders with goods-receipt events this month (Simplix)" />
+            <MetricCard icon="cart" label="Received Item Quantity This Month" value={warehouseReceivedItemQuantity ? fmt(warehouseReceivedItemQuantity.receivedQuantity) : "Unavailable"} helper={warehouseReceivedItemQuantity ? fmt(warehouseReceivedItemQuantity.lineCount) + " item lines received as of " + new Date(warehouseReceivedItemQuantity.asOf + "T12:00:00").toLocaleDateString("en-GB", {day:"numeric",month:"short",year:"numeric"}) : "No dated Excel item receipt quantities available for this month"} />
             <MetricCard icon="coins" label="Matched PO Purchase Value (MVR)" value={warehousePoAmounts.loaded && !warehouseExcel.linkError ? mvr(warehouseValueCoverage.amountMVR) : "Unavailable"} helper={warehousePoAmounts.error ? "PO value source unavailable: " + warehousePoAmounts.error : warehouseExcel.linkError ? "Simplix receipt links unavailable" : warehousePoAmounts.loaded ? fmt(warehouseValueCoverage.matchedPOs) + " of " + fmt(warehouseValueCoverage.totalPOs) + " receipt-dated POs matched (" + warehouseValueCoverage.coveragePct + "%). Purchase order values only—not actual goods received. Source: pending-payment upload, " + warehouseFreshDate(warehousePoAmounts.updatedAt) : "Loading available PO purchase values"} />
             <MetricCard icon="package" label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
             <MetricCard icon="caution" label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
             <MetricCard icon="delivery" label="SR Issue Export Lines This Month" value={fmt(warehouseIssueMonth.total)} helper={warehouseIssueMonth.openOrder === warehouseIssueMonth.total ? "All imported lines marked Open order · delivered/invoiced coverage not confirmed" : fmt(warehouseIssueMonth.openOrder) + " marked Open order · verify source status coverage"} />
           </div>
-          <div className="warehouse-summary-sourcenote">Simplix provides PR/PO receipt dates and counts. Matched MVR amounts reflect only available PO purchase values, not the actual value of received goods; item-level received quantities remain in the PR/PO tracker.</div>
+          <div className="warehouse-summary-sourcenote">Simplix verifies PR/PO receipt events. Received item quantity is the sum of Excel Received Qty across mixed units, shown with its source as-of date; matched MVR figures remain PO purchase values, not actual goods-received value.</div>
           <style>{`
             .warehouse-summary-metrics .metric-card.warehouse-metric-with-icon{min-height:165px!important;border-radius:15px!important;display:flex!important;flex-direction:row!important;align-items:flex-start!important;gap:16px!important;padding:22px 20px!important}
             .warehouse-summary-metrics .metric-card .warehouse-metric-icon{position:static!important;top:auto!important;left:auto!important;flex:0 0 42px!important;width:42px;height:42px;color:#1683d9}
