@@ -1,6 +1,7 @@
 import { ATOMIC_FILE_SOURCES, uploadSourceFile } from './lib/fileImports.js'
 import { parseNumber } from './lib/numbers.js'
 import { requestedQty, receivedQty } from './lib/receipts.js'
+import { makeWarehouseExcelReceiptModel, formatWarehouseUnitQuantities } from './lib/warehouseExcelReceipts.js'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { clearSupabaseReadCache, supabase } from './lib/supabase'
 import { buildPrSubmissionWeeks, maldivesDateIso, submissionDateIso, submissionWeekStart } from './lib/prSubmissionActivity'
@@ -1487,6 +1488,8 @@ export default function App() {
   const warehouseRequestId = useRef(0)
   const [warehouseLoadState, setWarehouseLoadState] = useState('loading')
   const [warehouseReceiptRecovery, setWarehouseReceiptRecovery] = useState([])
+  const [warehouseExcel, setWarehouseExcel] = useState({ batch: null, rows: [], error: '', loaded: false })
+  const [warehouseSourceUpdates, setWarehouseSourceUpdates] = useState([])
   const [warehouseFast, setWarehouseFast] = useState({
     mrnWeeks: [],
     mrnMonth: null,
@@ -1910,7 +1913,7 @@ export default function App() {
       const today = maldivesDateIso()
       const signal = AbortSignal.timeout(20000)
       const monthStart = today.slice(0, 7) + '-01'
-      const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult, receiptsResult, recoveryResult] = await Promise.all([
+      const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult, receiptsResult, recoveryResult, excelBatchResult, sourceUpdatesResult] = await Promise.all([
         supabase
           .from('warehouse_mrn_weekly_summary')
           .select('*')
@@ -1933,6 +1936,8 @@ export default function App() {
           .limit(1).abortSignal(signal),
         supabase.rpc('warehouse_receipt_summary', { p_today: today }).abortSignal(signal),
         supabase.from('warehouse_receipt_recovery').select('*').order('period_start', { ascending: false }).limit(24).abortSignal(signal),
+        supabase.from('erp_po_excel_batches').select('id,source_file,completed_at').eq('status', 'complete').order('completed_at', { ascending: false }).limit(1).maybeSingle().abortSignal(signal),
+        supabase.from('source_updates').select('source_type,imported_at,file_name').order('imported_at', { ascending: false }).limit(80).abortSignal(signal),
       ])
 
       if ((receiptsResult.error || !receiptsResult.data?.periods) && (recoveryResult.error || !recoveryResult.data?.length)) {
@@ -1943,7 +1948,25 @@ export default function App() {
       if (issueWeeksResult.error) throw issueWeeksResult.error
       if (issueMonthResult.error) throw issueMonthResult.error
 
+      // Item-level receipts come ONLY from the latest completed Excel batch.
+      // If the batch predates Received Date import, show a clear re-upload prompt;
+      // never substitute the old receipt-recovery snapshot as live quantities.
+      const batch = excelBatchResult.error ? null : excelBatchResult.data
+      const excelRows = []
+      let excelError = excelBatchResult.error?.message || ''
+      if (batch) {
+        for (let start = 0; start < 100000; start += 1000) {
+          const part = await supabase.from('erp_po_excel_rows')
+            .select('pr_no,po_no,item_code,unit,source_qty,received_qty,balance_qty,excel_delivery_status,excel_po_status,excel_received_date')
+            .eq('batch_id', batch.id).order('source_row').range(start, start + 999).abortSignal(signal)
+          if (part.error) { excelError = part.error.message; break }
+          excelRows.push(...(part.data || []))
+          if ((part.data || []).length < 1000) break
+        }
+      }
       if (requestId !== warehouseRequestId.current) return
+      setWarehouseExcel({ batch:excelError ? null : batch, rows:excelError ? [] : excelRows, error:excelError, loaded:true })
+      setWarehouseSourceUpdates(sourceUpdatesResult.error ? [] : (sourceUpdatesResult.data || []))
       if (recoveryResult.error) console.warn('Receipt recovery summary unavailable', recoveryResult.error)
       setWarehouseReceiptRecovery(recoveryResult.error ? [] : (recoveryResult.data || []))
       setWarehouseFast({
@@ -4023,10 +4046,17 @@ export default function App() {
   const recoveredWeeklyCurrent = warehouseReceiptRecovery.find((row) => row.period_type === 'week' && row.period_start === warehouseWeekStart)
   const recoveredWeeklyPrevious = warehouseReceiptRecovery.find((row) => row.period_type === 'week' && row.period_start === addDaysIso(warehouseWeekStart, -7))
   const recoveredMonthly = warehouseReceiptRecovery.find((row) => row.period_type === 'month' && row.period_start === todayIso.slice(0, 7) + '-01' && row.period_end <= todayIso)
-  const receiptCurrentDisplay = recoveredWeeklyCurrent || warehouseReceiptCurrent
-  const receiptPreviousDisplay = recoveredWeeklyPrevious || warehouseReceiptPrevious
-  const receiptMonthDisplay = recoveredMonthly || warehouseReceiptMonth
+  const receiptCurrentDisplay = warehouseReceiptCurrent
+  const receiptPreviousDisplay = warehouseReceiptPrevious
+  const receiptMonthDisplay = warehouseReceiptMonth
   const warehouseMonthStart = todayIso.slice(0, 7) + '-01'
+  const warehouseExcelModel = useMemo(() => makeWarehouseExcelReceiptModel(warehouseExcel.rows, warehouseExcel.batch), [warehouseExcel])
+  const warehouseExcelWeek = warehouseExcelModel.period(warehouseWeekStart, warehouseWeekEnd)
+  const warehouseExcelPrevWeek = warehouseExcelModel.period(addDaysIso(warehouseWeekStart,-7),addDaysIso(warehouseWeekEnd,-7))
+  const warehouseExcelMonth = warehouseExcelModel.period(warehouseMonthStart, todayIso)
+  const warehouseLatestSource = (source) => warehouseSourceUpdates.find(r => r.source_type === source)?.imported_at || ''
+  const warehouseFreshDate = (value) => value ? new Date(value).toLocaleString('en-GB',{timeZone:'Indian/Maldives',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : 'not available'
+  const warehouseExcelReceiptHelp = warehouseExcel.error ? 'Excel receipt data could not load: '+warehouseExcel.error : !warehouseExcel.batch ? 'No completed PO-to-item Excel batch' : !warehouseExcelModel.available ? 'Excel re-upload required: Received Date (Y) missing from current batch' : 'Excel recorded receipt date; cumulative item quantities grouped by unit'
   const warehouseMonthLabel = new Date(todayIso + 'T12:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
 
   const warehouseMrnMonth = useMemo(() => ({
