@@ -80,6 +80,12 @@ function LineIcon({ name, className = 'h-5 w-5' }) {
     refresh: <><path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M18.5 9A7 7 0 0 0 6 6.5L4 11"/><path d="M5.5 15A7 7 0 0 0 18 17.5L20 13"/></>,
     upload: <><path d="M12 21V9"/><path d="m8 13 4-4 4 4"/><path d="M5 3h14"/></>,
     arrow: <><path d="M5 12h14"/><path d="m15 8 4 4-4 4"/></>,
+    receipt: <><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h5"/><path d="M9 12h7M9 16h5"/></>,
+    cart: <><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M2 3h3l3 13h12l2-10H6"/></>,
+    coins: <><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></>,
+    package: <><path d="m12 2 9 5-9 5-9-5 9-5ZM3 7v10l9 5 9-5V7M12 12v10"/></>,
+    caution: <><path d="m12 3 10 18H2L12 3Z"/><path d="M12 9v5M12 18h.01"/></>,
+    delivery: <><path d="M3 5h12v12H3zM15 9h4l3 4v4h-7z"/><circle cx="7" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></>,
   }
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
@@ -577,7 +583,7 @@ function AccessDenied({ email }) {
   )
 }
 
-function MetricCard({ label, value, helper, tone = 'default', onClick, active = false }) {
+function MetricCard({ label, value, helper, tone = 'default', onClick, active = false, icon = null }) {
   const className = [
     'metric-card',
     '!min-h-[108px] !rounded-xl !border !border-slate-200 !bg-white !p-4 !shadow-sm',
@@ -602,6 +608,7 @@ function MetricCard({ label, value, helper, tone = 'default', onClick, active = 
 
   return (
     <article className={className}>
+      {icon && <div className="warehouse-metric-icon" aria-hidden="true"><LineIcon name={icon} className="h-10 w-10" /></div>}
       <span>{label}</span>
       <strong>{value}</strong>
       {helper && <small>{helper}</small>}
@@ -4148,14 +4155,24 @@ export default function App() {
             </div>
             <small>{formatShortDate(warehouseMonthStart)} – {formatShortDate(todayIso)} · Simplix PR/PO goods-receipt events</small>
           </div>
-          <div className="meeting-metrics">
-            <MetricCard label="PRs Received This Month" value={fmt(receiptMonthDisplay.prs)} helper="Simplix: distinct PRs with ERP receipt events dated this month" />
-            <MetricCard label="POs Received This Month" value={warehouseMonthlyReceivedPOCount === null ? "Unavailable" : fmt(warehouseMonthlyReceivedPOCount)} helper="Distinct purchase orders with goods-receipt events this month (Simplix)" />
-            <MetricCard label="Received PO Total (MVR)" value="Not verified" helper="Simplix receipt records have no actual received-item value; PO purchase amounts are not counted as goods received." />
-            <MetricCard label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
-            <MetricCard label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
-            <MetricCard label="SR Issue Export Lines This Month" value={fmt(warehouseIssueMonth.total)} helper={warehouseIssueMonth.openOrder === warehouseIssueMonth.total ? "All imported lines marked Open order · delivered/invoiced coverage not confirmed" : fmt(warehouseIssueMonth.openOrder) + " marked Open order · verify source status coverage"} />
+          <div className="meeting-metrics warehouse-summary-metrics">
+            <MetricCard icon="receipt" label="PRs Received This Month" value={fmt(receiptMonthDisplay.prs)} helper="Simplix: distinct PRs with ERP receipt events dated this month" />
+            <MetricCard icon="cart" label="POs Received This Month" value={warehouseMonthlyReceivedPOCount === null ? "Unavailable" : fmt(warehouseMonthlyReceivedPOCount)} helper="Distinct purchase orders with goods-receipt events this month (Simplix)" />
+            <MetricCard icon="coins" label="Received PO Total (MVR)" value="Not verified" helper="Simplix receipt records have no actual received-item value; PO purchase amounts are not counted as goods received." />
+            <MetricCard icon="package" label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
+            <MetricCard icon="caution" label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
+            <MetricCard icon="delivery" label="SR Issue Export Lines This Month" value={fmt(warehouseIssueMonth.total)} helper={warehouseIssueMonth.openOrder === warehouseIssueMonth.total ? "All imported lines marked Open order · delivered/invoiced coverage not confirmed" : fmt(warehouseIssueMonth.openOrder) + " marked Open order · verify source status coverage"} />
           </div>
+          <div className="warehouse-summary-sourcenote">Simplix provides PR/PO receipt dates and counts. Item-level received quantities remain in the PR/PO tracker. Received monetary value is not verified.</div>
+          <style>{`
+            .warehouse-summary-metrics .metric-card{position:relative;min-height:165px!important;padding:22px 16px 20px 82px!important;border-radius:15px!important}
+            .warehouse-summary-metrics .warehouse-metric-icon{position:absolute;left:22px;top:30px;color:#1683d9}
+            .warehouse-summary-metrics .metric-card>span{display:block;font-size:11px!important;color:#17345e!important;font-weight:800!important;letter-spacing:.01em!important}
+            .warehouse-summary-metrics .metric-card>strong{display:block;font-size:29px!important;line-height:1.2!important;margin-top:16px!important;overflow-wrap:anywhere}
+            .warehouse-summary-metrics .metric-card>small{display:block;margin-top:10px!important;line-height:1.5!important}
+            .warehouse-summary-sourcenote{margin-top:17px;color:#bfdbfe;font-size:11px;text-align:center;line-height:1.5}
+            @media(max-width:900px){.warehouse-summary-metrics .metric-card{padding-left:64px!important}.warehouse-summary-metrics .warehouse-metric-icon{left:13px}}
+          `}</style>
         </>
       ),
     },
