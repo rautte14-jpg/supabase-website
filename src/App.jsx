@@ -1935,7 +1935,7 @@ export default function App() {
       const today = maldivesDateIso()
       const signal = AbortSignal.timeout(20000)
       const monthStart = today.slice(0, 7) + '-01'
-      const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult, receiptsResult, receiptLinksResult, excelBatchResult, sourceUpdatesResult, poAmountResult] = await Promise.all([
+      const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult, receiptsResult, receiptLinksResult, excelBatchResult, sourceUpdatesResult] = await Promise.all([
         supabase
           .from('warehouse_mrn_weekly_summary')
           .select('*')
@@ -1960,7 +1960,6 @@ export default function App() {
         supabase.rpc('warehouse_po_receipt_links', { p_today: today }).abortSignal(signal),
         supabase.from('erp_po_excel_batches').select('id,source_file,completed_at').eq('status', 'complete').order('completed_at', { ascending: false }).limit(1).maybeSingle().abortSignal(signal),
         supabase.from('source_updates').select('source_type,imported_at,file_name').order('imported_at', { ascending: false }).limit(80).abortSignal(signal),
-        supabase.from('pending_payment_records').select('po_no,po_value,raw_source,source_updated_at').limit(1000).abortSignal(signal),
       ])
 
       if (receiptsResult.error || !receiptsResult.data?.periods) {
@@ -1980,7 +1979,7 @@ export default function App() {
       if (batch) {
         for (let start = 0; start < 100000; start += 1000) {
           const part = await supabase.from('erp_po_excel_rows')
-            .select('pr_no,po_no,item_code,unit,source_qty,received_qty,balance_qty,excel_delivery_status,excel_po_status,excel_received_date')
+            .select('pr_no,po_no,item_code,unit,source_qty,received_qty,balance_qty,excel_delivery_status,excel_po_status,excel_received_date,source_raw')
             .eq('batch_id', batch.id).order('source_row').range(start, start + 999).abortSignal(signal)
           if (part.error) { excelError = part.error.message; break }
           excelRows.push(...(part.data || []))
@@ -1990,7 +1989,7 @@ export default function App() {
       if (requestId !== warehouseRequestId.current) return
       setWarehouseExcel({ batch:excelError ? null : batch, rows:excelError ? [] : excelRows, links:receiptLinksResult.error ? [] : receiptLinksResult.data || [], error:excelError, linkError:receiptLinksResult.error?.message || '', loaded:true })
       setWarehouseSourceUpdates(sourceUpdatesResult.error ? [] : (sourceUpdatesResult.data || []))
-      setWarehousePoAmounts({ records:poAmountResult.error ? [] : (poAmountResult.data || []), error:poAmountResult.error?.message || '', loaded:!poAmountResult.error, updatedAt:!poAmountResult.error ? (poAmountResult.data || []).map(x=>x.source_updated_at).filter(Boolean).sort().at(-1) || '' : '' })
+      setWarehousePoAmounts({ records:excelRows.map(row => ({ po_no:row.po_no, po_value:row.source_raw?.po_value, raw_source:{ Currency:row.source_raw?.currency }, excel_po_status:row.excel_po_status })), error:excelError, loaded:!excelError && Boolean(batch), updatedAt:batch?.completed_at || '' })
       setWarehouseFast({
         receipts: receiptsResult.data?.periods ? receiptsResult.data : { periods: { current: {}, previous: {}, month: {} }, rows: [] },
         mrnWeeks: mrnWeeksResult.data || [],
@@ -4171,12 +4170,12 @@ export default function App() {
           <div className="meeting-metrics warehouse-summary-metrics">
             <MetricCard icon="receipt" label="PRs Received This Month" value={fmt(receiptMonthDisplay.prs)} helper="Simplix: distinct PRs with ERP receipt events dated this month" />
             <MetricCard icon="cart" label="Received Item Quantity This Month" value={!warehouseExcel.loaded || warehouseExcel.error || !warehouseMonthlyItems.available ? "Unavailable" : fmt(warehouseMonthlyItemQuantity)} helper={warehouseExcel.error ? "Excel receipt data could not load" : !warehouseExcel.loaded ? "Loading received item quantities" : !warehouseMonthlyItems.available ? "No dated item receipts in the uploaded tracker" : fmt(warehouseMonthlyItems.lines) + " item lines received as of " + warehouseReceiptAsOf} />
-            <MetricCard icon="coins" label="Matched PO Purchase Value (MVR)" value={warehousePoAmounts.loaded && !warehouseExcel.linkError ? mvr(warehouseValueCoverage.amountMVR) : "Unavailable"} helper={warehousePoAmounts.error ? "PO value source unavailable: " + warehousePoAmounts.error : warehouseExcel.linkError ? "Simplix receipt links unavailable" : warehousePoAmounts.loaded ? fmt(warehouseValueCoverage.matchedPOs) + " of " + fmt(warehouseValueCoverage.totalPOs) + " receipt-dated POs matched (" + warehouseValueCoverage.coveragePct + "%). Purchase order values only—not actual goods received. Source: pending-payment upload, " + warehouseFreshDate(warehousePoAmounts.updatedAt) : "Loading available PO purchase values"} />
+            <MetricCard icon="coins" label="Purchase Order Total Value (MVR)" value={warehousePoAmounts.loaded && !warehouseExcel.linkError ? mvr(warehouseValueCoverage.amountMVR) : "Unavailable"} helper={warehousePoAmounts.error ? "PO value source unavailable: " + warehousePoAmounts.error : warehouseExcel.linkError ? "Simplix receipt links unavailable" : warehousePoAmounts.loaded ? fmt(warehouseValueCoverage.matchedPOs) + " POs with receipts this month · as of " + warehouseReceiptAsOf + (warehouseValueCoverage.unmatchedPOs ? " · " + fmt(warehouseValueCoverage.unmatchedPOs) + " PO values unavailable" : "") : "Loading available PO purchase values"} />
             <MetricCard icon="package" label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
             <MetricCard icon="caution" label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
             <MetricCard icon="delivery" label="SR Issue Export Lines This Month" value={fmt(warehouseIssueMonth.total)} helper={warehouseIssueMonth.openOrder === warehouseIssueMonth.total ? "All imported lines marked Open order · delivered/invoiced coverage not confirmed" : fmt(warehouseIssueMonth.openOrder) + " marked Open order · verify source status coverage"} />
           </div>
-          <div className="warehouse-summary-sourcenote">Simplix provides PR/PO receipt dates and counts. Matched MVR amounts reflect only available PO purchase values, not the actual value of received goods; item-level received quantities remain in the PR/PO tracker.</div>
+          <div className="warehouse-summary-sourcenote">PO totals come from the PR/PO tracker, counted once per PO with a Simplix receipt this month. Cancelled POs are excluded. Values represent full purchase orders; item receipt quantities come from the tracker.</div>
           <style>{`
             .warehouse-summary-metrics .metric-card.warehouse-metric-with-icon{min-height:165px!important;border-radius:15px!important;display:flex!important;flex-direction:row!important;align-items:flex-start!important;gap:16px!important;padding:22px 20px!important}
             .warehouse-summary-metrics .metric-card .warehouse-metric-icon{position:static!important;top:auto!important;left:auto!important;flex:0 0 42px!important;width:42px;height:42px;color:#1683d9}
