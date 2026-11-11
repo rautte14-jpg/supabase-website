@@ -606,9 +606,23 @@ function MetricCard({ label, value, helper, tone = 'default', onClick, active = 
     )
   }
 
+  if (icon) {
+    return (
+      <article className={className + ' warehouse-metric-with-icon'} style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 16, minWidth: 0 }}>
+        <div className="warehouse-metric-icon" aria-hidden="true" style={{ position: 'static', flex: '0 0 42px', width: 42, height: 42, color: '#1683d9' }}>
+          <LineIcon name={icon} className="h-10 w-10" />
+        </div>
+        <div className="warehouse-metric-body" style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          <span style={{ color: '#17345e', fontSize: 11, fontWeight: 800, letterSpacing: '.01em', textTransform: 'uppercase', lineHeight: 1.35 }}>{label}</span>
+          <strong style={{ display: 'block', color: '#14233f', fontSize: 29, fontWeight: 700, marginTop: 14, lineHeight: 1.2, overflowWrap: 'anywhere' }}>{value}</strong>
+          {helper && <small style={{ display: 'block', fontSize: 11, color: '#64748b', lineHeight: 1.5, marginTop: 10 }}>{helper}</small>}
+        </div>
+      </article>
+    )
+  }
+
   return (
     <article className={className}>
-      {icon && <div className="warehouse-metric-icon" aria-hidden="true"><LineIcon name={icon} className="h-10 w-10" /></div>}
       <span>{label}</span>
       <strong>{value}</strong>
       {helper && <small>{helper}</small>}
@@ -4165,13 +4179,13 @@ export default function App() {
           </div>
           <div className="warehouse-summary-sourcenote">Simplix provides PR/PO receipt dates and counts. Item-level received quantities remain in the PR/PO tracker. Received monetary value is not verified.</div>
           <style>{`
-            .warehouse-summary-metrics .metric-card{position:relative;min-height:165px!important;padding:22px 16px 20px 82px!important;border-radius:15px!important}
-            .warehouse-summary-metrics .warehouse-metric-icon{position:absolute;left:22px;top:30px;color:#1683d9}
-            .warehouse-summary-metrics .metric-card>span{display:block;font-size:11px!important;color:#17345e!important;font-weight:800!important;letter-spacing:.01em!important}
-            .warehouse-summary-metrics .metric-card>strong{display:block;font-size:29px!important;line-height:1.2!important;margin-top:16px!important;overflow-wrap:anywhere}
-            .warehouse-summary-metrics .metric-card>small{display:block;margin-top:10px!important;line-height:1.5!important}
+            .warehouse-summary-metrics .metric-card.warehouse-metric-with-icon{min-height:165px!important;border-radius:15px!important;display:flex!important;flex-direction:row!important;align-items:flex-start!important;gap:16px!important;padding:22px 20px!important}
+            .warehouse-summary-metrics .metric-card .warehouse-metric-icon{position:static!important;top:auto!important;left:auto!important;flex:0 0 42px!important;width:42px;height:42px;color:#1683d9}
+            .warehouse-summary-metrics .metric-card .warehouse-metric-body{display:flex;min-width:0;flex:1 1 auto;flex-direction:column;align-items:flex-start}
+            .warehouse-summary-metrics .metric-card .warehouse-metric-body>strong{margin-top:14px!important;line-height:1.2!important;font-size:29px!important}
+            .warehouse-summary-metrics .metric-card .warehouse-metric-body>small{margin-top:10px!important;line-height:1.5!important}
             .warehouse-summary-sourcenote{margin-top:17px;color:#bfdbfe;font-size:11px;text-align:center;line-height:1.5}
-            @media(max-width:900px){.warehouse-summary-metrics .metric-card{padding-left:64px!important}.warehouse-summary-metrics .warehouse-metric-icon{left:13px}}
+            @media(max-width:900px){.warehouse-summary-metrics .metric-card.warehouse-metric-with-icon{gap:10px!important;padding:16px 13px!important}.warehouse-summary-metrics .metric-card .warehouse-metric-icon{flex-basis:32px!important;width:32px;height:32px}.warehouse-summary-metrics .metric-card .warehouse-metric-icon svg{width:32px;height:32px}.warehouse-summary-metrics .metric-card .warehouse-metric-body>strong{font-size:25px!important}}
           `}</style>
         </>
       ),
