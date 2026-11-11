@@ -6969,11 +6969,12 @@ export default function App() {
                 .inventory-presentation-shell .meeting-exception-metrics>div,.inventory-presentation-shell .inventory-ppt-click{min-height:96px;padding:15px;min-width:0}
                 .inventory-presentation-shell .meeting-exception-metrics b{font-size:clamp(22px,2vw,30px);overflow-wrap:anywhere}
                 .inventory-presentation-shell .meeting-exception-metrics small{display:block;font-size:10px;color:#9fb1cc;margin-top:6px;line-height:1.5}
+                .inventory-presentation-shell .meeting-change-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
                 .inventory-presentation-shell .meeting-change-card{min-width:0;min-height:120px}
                 .inventory-presentation-shell .inventory-risk-table .warehouse-receipt-row{grid-template-columns:45px 120px minmax(180px,2fr) minmax(120px,1fr) 85px 110px}
                 .inventory-presentation-shell .inventory-source-note{font-size:11px;line-height:1.6;color:#9fb1cc;margin:14px 0}
                 .inventory-presentation-shell .meeting-period-banner b{overflow-wrap:anywhere}
-                @media(max-width:900px){.inventory-presentation-shell .meeting-metrics,.inventory-presentation-shell .meeting-exception-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.inventory-presentation-shell .inventory-risk-table{overflow-x:auto}.inventory-presentation-shell .inventory-risk-table .warehouse-receipt-row{min-width:800px}}
+                @media(max-width:900px){.inventory-presentation-shell .meeting-metrics,.inventory-presentation-shell .meeting-exception-metrics,.inventory-presentation-shell .meeting-change-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.inventory-presentation-shell .inventory-risk-table{overflow-x:auto}.inventory-presentation-shell .inventory-risk-table .warehouse-receipt-row{min-width:800px}}
                 @media(max-width:600px){.inventory-presentation-shell .meeting-metrics,.inventory-presentation-shell .meeting-exception-metrics,.inventory-presentation-shell .meeting-change-grid{grid-template-columns:1fr}}
               `}</style>
               <section id="inventory-presentation-shell" className="meeting-shell warehouse-presentation-shell inventory-presentation-shell">
