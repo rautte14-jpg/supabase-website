@@ -1940,8 +1940,8 @@ export default function App() {
         supabase.from('source_updates').select('source_type,imported_at,file_name').order('imported_at', { ascending: false }).limit(80).abortSignal(signal),
       ])
 
-      if ((receiptsResult.error || !receiptsResult.data?.periods) && (recoveryResult.error || !recoveryResult.data?.length)) {
-        throw receiptsResult.error || new Error('Receipt summaries unavailable')
+      if (receiptsResult.error || !receiptsResult.data?.periods) {
+        throw receiptsResult.error || new Error('Simplix receipt summary unavailable')
       }
       if (mrnWeeksResult.error) throw mrnWeeksResult.error
       if (mrnMonthResult.error) throw mrnMonthResult.error
@@ -6981,6 +6981,18 @@ export default function App() {
                   </aside>
 
                   <div className="meeting-stage">
+                    <div role="status" aria-label="Warehouse data source freshness" style={{ display:'flex',flexWrap:'wrap',gap:7,marginBottom:10,fontSize:10,color:'#475569' }}>
+                      {[
+                        ['Simplix ERP receipts', warehouseFast.receipts?.synced_at],
+                        ['Excel item receipts', warehouseExcel.batch?.completed_at],
+                        ['MRN register', warehouseLatestSource('MRN')],
+                        ['SR issues', warehouseLatestSource('SR_ISSUES')],
+                        ['Stock', warehouseLatestSource('STOCK')],
+                      ].map(([label, updated]) => <span key={label} style={{ padding:'5px 9px',border:'1px solid #dbe5f0',borderRadius:8,background:'#f8fafc' }}><strong>{label}</strong>: {warehouseFreshDate(updated)}</span>)}
+                    </div>
+                    {!warehouseExcelModel.available && warehouseLoadState === 'ready' && <div role="status" style={{ background:'#fffbeb',border:'1px solid #fbbf24',borderRadius:8,color:'#92400e',fontSize:11,padding:'8px 11px',marginBottom:10 }}>
+                      Excel received-date reporting needs attention: {warehouseExcelReceiptHelp}. Re-upload the latest PR / PO Excel tracker under PO Tracker to include Received Date (column Y), Received Qty (Z) and Balance Qty (AA).
+                    </div>}
                     <div className="meeting-slide-topline">
                       <span>Slide {Math.min(slide + 1, warehouseSlides.length)} of {warehouseSlides.length}</span>
                       <div><i style={{ width: ((Math.min(slide, warehouseSlides.length - 1) + 1) / warehouseSlides.length * 100) + '%' }} /></div>
