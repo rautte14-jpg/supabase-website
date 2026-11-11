@@ -4137,7 +4137,7 @@ export default function App() {
           </div>
           <div className="meeting-metrics">
             <MetricCard label="PRs Received This Month" value={fmt(receiptMonthDisplay.prs)} helper="Simplix: distinct PRs with ERP receipt events dated this month" />
-            <MetricCard label="PO-linked Excel Received Qty This Month" value={formatWarehouseUnitQuantities(warehouseExcelMonth)} helper={warehouseExcelMonth.available ? fmt(warehouseExcelMonth.lines) + " PO-linked Excel item rows · " + fmt(warehouseExcelMonth.simplixLinkedLines) + " dated using Simplix; cumulative quantities, not receipt-event quantities" : warehouseExcelReceiptHelp} />
+            <MetricCard label="ERP Receipt Records This Month" value={fmt(receiptMonthDisplay.entries)} helper="Simplix goods-receipt events dated this month; not item quantities" />
             <MetricCard label="Received Value This Month" value="Not verified" helper="No verified per-item receipt values/currencies. Old partial-value estimates intentionally suppressed." />
             <MetricCard label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
             <MetricCard label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
@@ -4156,7 +4156,7 @@ export default function App() {
               <span>REPORTING PERIOD RECEIPTS</span>
               <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
             </div>
-            <small>Simplix PO receipt dates · Excel cumulative item quantities (not ERP receipt-line quantities)</small>
+            <small>Simplix ERP receipt counts and dates · item-level quantities remain in PR / PO details</small>
           </div>
 
           <div className="meeting-change-grid warehouse-receipt-cards">
@@ -4174,10 +4174,10 @@ export default function App() {
 
             <div className="meeting-change-card"><span>Fully received PRs (PO-linked Excel)</span><b>{warehouseExcelWeek.available ? fmt(warehouseExcelWeek.fullPrs) : "Re-upload needed"}</b><small>{warehouseExcelWeek.available ? "All active Excel item rows received; linked PO has receipt date in period" : warehouseExcelReceiptHelp}</small></div>
             <div className="meeting-change-card"><span>Other PRs with PO-linked receipts</span><b>{warehouseExcelWeek.available ? fmt(warehouseExcelWeek.partialPrs) : "Re-upload needed"}</b><small>Part received or Excel line position requiring review; not necessarily an ERP partial receipt</small></div>
-            <div className="meeting-change-card"><span>PO-linked Excel received qty</span><b>{formatWarehouseUnitQuantities(warehouseExcelWeek)}</b><small>{warehouseExcelWeek.available ? "Previous: " + formatWarehouseUnitQuantities(warehouseExcelPrevWeek) + " · cumulative quantity associated with receipt-dated POs, units separated" : warehouseExcelReceiptHelp}</small></div>
+            <div className="meeting-change-card"><span>ERP Receipt Records</span><b>{fmt(warehouseReceiptCurrent.entries)}</b><small>Previous: {fmt(warehouseReceiptPrevious.entries)} · Simplix PO goods-receipt events, not item quantities</small></div>
             <div className="meeting-change-card"><span>Received value</span><b>Not verified</b><small>No validated received-item value or currency basis in available data</small></div>
           </div>
-          <p>{fmt(warehouseReceiptCurrent.entries)} PR-linked Simplix ERP receipt events in this period. {warehouseExcelWeek.available ? fmt(warehouseExcelWeek.lines) + ' Excel item rows linked to PO-level receipt dates; these reflect cumulative received quantities, NOT receipt-specific item movements. ' : warehouseExcelReceiptHelp + '. '}
+          <p>{fmt(warehouseReceiptCurrent.entries)} PR-linked Simplix ERP receipt events in this period. Item-level received quantities are available within each PR / PO detail; no cross-unit or date-inferred quantities are reported here. 
             {warehouseExcelWeek.duplicateExcluded > 0 && <> {warehouseExcelWeek.duplicateExcluded} duplicate-key Excel rows excluded from quantity totals. </>}
             {warehouseExcelModel.undatedReceived > 0 && <> {warehouseExcelModel.undatedReceived} received Excel item rows have no unambiguous Simplix PO receipt event or Excel received date. </>}
             {warehouseFast.receipts?.synced_at && <> Last ERP detail sync: {new Date(warehouseFast.receipts.synced_at).toLocaleString()}.</>}
