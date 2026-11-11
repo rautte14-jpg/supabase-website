@@ -4139,15 +4139,15 @@ export default function App() {
               <span>MONTH-TO-DATE</span>
               <b>{warehouseMonthLabel}</b>
             </div>
-            <small>{recoveredMonthly ? "Receipts snapshot: " + formatShortDate(warehouseMonthStart) + " – " + formatShortDate(recoveredMonthly.period_end) + " (other cards are live)" : formatShortDate(warehouseMonthStart) + " – " + formatShortDate(todayIso)}</small>
+            <small>{formatShortDate(warehouseMonthStart)} – {formatShortDate(todayIso)} · Simplix receipts and Excel item receipt dates reported separately</small>
           </div>
           <div className="meeting-metrics">
-            <MetricCard label="PRs Received This Month" value={fmt(receiptMonthDisplay.prs)} helper={recoveredMonthly ? "PR & PO Tracker · as of " + recoveredMonthly.source_date : "Distinct PRs with ERP receipt activity this month"} />
-            <MetricCard label="Received Quantity This Month" value={recoveredMonthly ? fmt(recoveredMonthly.qty, 2) : "Unavailable"} helper={recoveredMonthly ? "Tracker quantity · as of " + recoveredMonthly.source_date : "ERP receipt events have no item quantities"} />
-            <MetricCard label="Received Value This Month" value={recoveredMonthly ? fmt(recoveredMonthly.value, 2) : "Unavailable"} helper={recoveredMonthly ? "Partial PO-value estimate; currencies not converted · as of " + recoveredMonthly.source_date : "ERP receipt events have no received values"} />
+            <MetricCard label="PRs Received This Month" value={fmt(receiptMonthDisplay.prs)} helper="Simplix: distinct PRs with ERP receipt events dated this month" />
+            <MetricCard label="Excel Received Quantity This Month" value={formatWarehouseUnitQuantities(warehouseExcelMonth)} helper={warehouseExcelMonth.available ? fmt(warehouseExcelMonth.lines) + " dated Excel item rows · cumulative item receipts, not ERP movement volume" : warehouseExcelReceiptHelp} />
+            <MetricCard label="Received Value This Month" value="Not verified" helper="No verified per-item receipt values/currencies. Old partial-value estimates intentionally suppressed." />
             <MetricCard label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
             <MetricCard label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
-            <MetricCard label="SR Issues This Month" value={fmt(warehouseIssueMonth.total)} helper={mvr(warehouseIssueMonth.value) + ' issue value · ' + fmt(warehouseIssueMonth.openOrder) + ' open'} />
+            <MetricCard label="SR Issue Export Lines This Month" value={fmt(warehouseIssueMonth.total)} helper={warehouseIssueMonth.openOrder === warehouseIssueMonth.total ? "All imported lines marked Open order · delivered/invoiced coverage not confirmed" : fmt(warehouseIssueMonth.openOrder) + " marked Open order · verify source status coverage"} />
           </div>
         </>
       ),
@@ -4162,7 +4162,7 @@ export default function App() {
               <span>REPORTING PERIOD RECEIPTS</span>
               <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
             </div>
-            <small>{recoveredWeeklyCurrent ? "PR & PO Tracker recovery · snapshot " + recoveredWeeklyCurrent.source_date : "Based on synced ERP product receipt dates"}</small>
+            <small>Simplix receipt dates · Excel tracker item quantities (date-based, cumulative)</small>
           </div>
 
           <div className="meeting-change-grid warehouse-receipt-cards">
@@ -4174,16 +4174,18 @@ export default function App() {
               <b>{fmt(receiptCurrentDisplay.prs)}</b>
               <div>
                 <small>Previous period: {fmt(receiptPreviousDisplay.prs)}</small>
-                <strong>{recoveredWeeklyCurrent ? "View ERP-synced events (different source)" : "Click to list receipt records"}</strong>
+                <strong>Click to list Simplix receipt events</strong>
               </div>
             </button>
 
-            <div className="meeting-change-card"><span>Fully received PRs</span><b>{recoveredWeeklyCurrent ? fmt(recoveredWeeklyCurrent.full_prs) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "PR status across tracker lines" : "Requires item-level received quantities"}</small></div>
-            <div className="meeting-change-card"><span>Part received PRs</span><b>{recoveredWeeklyCurrent ? fmt(recoveredWeeklyCurrent.partial_prs) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "PRs with remaining quantities" : "Requires item-level received quantities"}</small></div>
-            <div className="meeting-change-card"><span>Received quantity</span><b>{recoveredWeeklyCurrent ? fmt(recoveredWeeklyCurrent.qty, 2) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "Previous: " + fmt(receiptPreviousDisplay.qty, 2) + " · Tracker snapshot" : "Not supplied in synced ERP receipt details"}</small></div>
-            <div className="meeting-change-card"><span>Received value</span><b>{recoveredWeeklyCurrent ? mvr(recoveredWeeklyCurrent.value) : "Unavailable"}</b><small>{recoveredWeeklyCurrent ? "Partial estimate: 3 of 28 lines had PO values · " + recoveredWeeklyCurrent.source_date : "Not supplied in synced ERP receipt details"}</small></div>
+            <div className="meeting-change-card"><span>Fully received PRs (Excel dated)</span><b>{warehouseExcelWeek.available ? fmt(warehouseExcelWeek.fullPrs) : "Re-upload needed"}</b><small>{warehouseExcelWeek.available ? "All active item rows marked received; PR had dated Excel receipt in period" : warehouseExcelReceiptHelp}</small></div>
+            <div className="meeting-change-card"><span>Other PRs with Excel dated receipts</span><b>{warehouseExcelWeek.available ? fmt(warehouseExcelWeek.partialPrs) : "Re-upload needed"}</b><small>Part received or Excel line position requiring review; not necessarily an ERP partial receipt</small></div>
+            <div className="meeting-change-card"><span>Excel dated received quantity</span><b>{formatWarehouseUnitQuantities(warehouseExcelWeek)}</b><small>{warehouseExcelWeek.available ? "Previous: " + formatWarehouseUnitQuantities(warehouseExcelPrevWeek) + " · cumulative quantity per dated item, units separated" : warehouseExcelReceiptHelp}</small></div>
+            <div className="meeting-change-card"><span>Received value</span><b>Not verified</b><small>No validated received-item value or currency basis in available data</small></div>
           </div>
-          <p>{recoveredWeeklyCurrent ? fmt(recoveredWeeklyCurrent.lines) + " tracker receipt lines in this period. Snapshot: " + recoveredWeeklyCurrent.source_date + ". " : fmt(warehouseReceiptCurrent.entries) + " PR-linked ERP receipt records in this period. " }
+          <p>{fmt(warehouseReceiptCurrent.entries)} PR-linked Simplix ERP receipt events in this period. {warehouseExcelWeek.available ? fmt(warehouseExcelWeek.lines) + ' distinct, dated Excel item rows; these reflect recorded cumulative received quantities and should not be interpreted as movement-only quantities. ' : warehouseExcelReceiptHelp + '. '}
+            {warehouseExcelWeek.duplicateExcluded > 0 && <> {warehouseExcelWeek.duplicateExcluded} duplicate-key Excel rows excluded from quantity totals. </>}
+            {warehouseExcelModel.undatedReceived > 0 && <> {warehouseExcelModel.undatedReceived} received Excel item rows have no usable received date. </>}
             {warehouseFast.receipts?.synced_at && <> Last ERP detail sync: {new Date(warehouseFast.receipts.synced_at).toLocaleString()}.</>}
           </p>
           {warehouseFast.receipts?.invalid_dates > 0 && <p role="status">{warehouseFast.receipts.invalid_dates} receipt records have missing or invalid dates and are excluded from period totals.</p>}
@@ -4191,7 +4193,7 @@ export default function App() {
             <section className="warehouse-receipt-detail">
               <div className="warehouse-receipt-detail-head">
                 <h4>ERP Receipt Records</h4>
-                <span>{recoveredWeeklyCurrent ? "ERP event detail only — tracker item-level detail is not yet restored" : "Showing " + (warehouseFast.receipts?.rows?.length || 0) + " of " + warehouseReceiptCurrent.entries + " records"}</span>
+                <span>{"Showing " + (warehouseFast.receipts?.rows?.length || 0) + " of " + warehouseReceiptCurrent.entries + " Simplix receipt records"}</span>
                 <button onClick={() => setWarehouseReceiptDetail('NONE')}>Close</button>
               </div>
               <div style={{ overflowX: 'auto', maxHeight: 360 }}>
@@ -4262,7 +4264,7 @@ export default function App() {
             <div>
               <span className="eyebrow">ISSUE REPORTING WEEK</span>
               <strong>{formatShortDate(warehouseIssueWeekFilter)} – {formatShortDate(addDaysIso(warehouseIssueWeekFilter, 6))}</strong>
-              <small>Issue activity and item details below follow the selected week.</small>
+              <small>Source-reported issue lines in selected week; ERP Delivered/Invoiced coverage has not been confirmed.</small>
             </div>
             <select
               value={warehouseIssueWeekFilter}
@@ -4291,13 +4293,18 @@ export default function App() {
               <small>Click to list issue items</small>
             </button>
             <div><span>Invoiced</span><b>{fmt(warehouseIssueWeek.invoiced)}</b></div>
-            <div><span>Open Order</span><b>{fmt(warehouseIssueWeek.openOrder)}</b><small>Includes Delivered</small></div>
-            <div><span>Issue value</span><b>{mvr(warehouseIssueWeek.issueValue)}</b></div>
-            <div><span>Pending value</span><b>{mvr(warehouseIssueWeek.pendingValue)}</b></div>
+            <div><span>Open Order (source status)</span><b>{fmt(warehouseIssueWeek.openOrder)}</b><small>Not proof that all other lines have been delivered or invoiced</small></div>
+            <div><span>Mapped issue line value</span><b>{mvr(warehouseIssueWeek.issueValue)}</b><small>Export-based estimate; not confirmed posted issue value</small></div>
+            <div><span>Open-order value (source)</span><b>{mvr(warehouseIssueWeek.pendingValue)}</b><small>Export-based exposure; status validation pending</small></div>
             <div><span>Sales orders</span><b>{fmt(warehouseIssueWeek.salesOrders)}</b></div>
             <div><span>Service requests</span><b>{fmt(warehouseIssueWeek.srs)}</b></div>
           </div>
 
+          {warehouseIssueWeek.total > 0 && warehouseIssueWeek.openOrder === warehouseIssueWeek.total && warehouseIssueWeek.invoiced === 0 && warehouseIssueWeek.delivered === 0 && (
+            <div role="status" style={{ border: '1px solid #fbbf24', background:'#fffbeb', color:'#92400e', borderRadius:9, padding:'10px 13px', margin:'12px 0', fontSize:12 }}>
+              Source status coverage requires validation: every line in this period is marked Open order. The export does not establish completed delivery, invoicing, or posted issue totals.
+            </div>
+          )}
           {warehouseIssueDetailOpen && (
             <section className="warehouse-receipt-detail warehouse-issue-detail">
               <div className="warehouse-receipt-detail-head">
