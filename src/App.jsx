@@ -4074,9 +4074,11 @@ export default function App() {
   const warehouseExcelMonth = warehouseExcelModel.period(warehouseMonthStart, todayIso)
   // Use item-level Excel receipt dates for the monthly quantity card.
   // PO receipt events alone cannot date individual item quantities.
-  const warehouseMonthlyItems = useMemo(() =>
-    makeWarehouseExcelReceiptModel(warehouseExcel.rows, warehouseExcel.batch).period(warehouseMonthStart, todayIso),
-    [warehouseExcel.rows, warehouseExcel.batch, warehouseMonthStart, todayIso])
+  const warehouseDatedItemModel = useMemo(() => makeWarehouseExcelReceiptModel(warehouseExcel.rows, warehouseExcel.batch), [warehouseExcel.rows, warehouseExcel.batch])
+  const warehouseMonthlyItems = warehouseDatedItemModel.period(warehouseMonthStart, todayIso)
+  const warehouseWeeklyItems = warehouseDatedItemModel.period(warehouseWeekStart, warehouseWeekEnd)
+  const warehouseWeeklyItemQuantity = warehouseWeeklyItems.quantityByUnit.reduce((total, [, quantity]) => total + quantity, 0)
+  const warehouseWeeklyPOValue = useMemo(() => warehousePoValueCoverage(warehouseExcel.links, warehousePoAmounts.records, warehouseWeekStart, warehouseWeekEnd), [warehouseExcel.links, warehousePoAmounts.records, warehouseWeekStart, warehouseWeekEnd])
   const warehouseMonthlyItemQuantity = warehouseMonthlyItems.quantityByUnit.reduce((total, [, quantity]) => total + quantity, 0)
   const warehouseReceiptAsOf = new Date(todayIso + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
   const warehouseValueCoverage = useMemo(() => warehousePoValueCoverage(warehouseExcel.links, warehousePoAmounts.records, warehouseMonthStart, todayIso), [warehouseExcel.links, warehousePoAmounts.records, warehouseMonthStart, todayIso])
@@ -4198,7 +4200,7 @@ export default function App() {
               <span>REPORTING PERIOD RECEIPTS</span>
               <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
             </div>
-            <small>Simplix ERP receipt dates and counts · item-level quantities remain in PR/PO details</small>
+            <small>Weekly receipts · Wednesday to Tuesday</small>
           </div>
 
           <div className="meeting-change-grid warehouse-receipt-cards">
@@ -4214,16 +4216,18 @@ export default function App() {
               </div>
             </button>
 
-            <div className="meeting-change-card"><span>Fully received PRs (PO-linked Excel)</span><b>{warehouseExcelWeek.available ? fmt(warehouseExcelWeek.fullPrs) : "Re-upload needed"}</b><small>{warehouseExcelWeek.available ? "All active Excel item rows received; linked PO has receipt date in period" : warehouseExcelReceiptHelp}</small></div>
-            <div className="meeting-change-card"><span>Other PRs with PO-linked receipts</span><b>{warehouseExcelWeek.available ? fmt(warehouseExcelWeek.partialPrs) : "Re-upload needed"}</b><small>Part received or Excel line position requiring review; not necessarily an ERP partial receipt</small></div>
-            <div className="meeting-change-card"><span>ERP Receipt Events</span><b>{fmt(warehouseReceiptCurrent.entries)}</b><small>Previous: {fmt(warehouseReceiptPrevious.entries)} · Simplix receipt events, not received units</small></div>
-            <div className="meeting-change-card"><span>Received value</span><b>Not verified</b><small>No validated received-item value or currency basis in available data</small></div>
+            <div className="meeting-change-card"><span>Fully Received PRs</span><b>{warehouseWeeklyItems.available && !warehouseExcel.error ? fmt(warehouseWeeklyItems.fullPrs) : "Unavailable"}</b><small>All active tracker items received · current status of PRs with item receipts this week</small></div>
+            <div className="meeting-change-card"><span>Other PRs with Item Receipts</span><b>{warehouseWeeklyItems.available && !warehouseExcel.error ? fmt(warehouseWeeklyItems.partialPrs) : "Unavailable"}</b><small>Tracker PRs with outstanding items or a status requiring review</small></div>
+            <div className="meeting-change-card"><span>Received Item Quantity</span><b>{warehouseWeeklyItems.available && !warehouseExcel.error ? fmt(warehouseWeeklyItemQuantity) : "Unavailable"}</b><small>{warehouseWeeklyItems.available && !warehouseExcel.error ? fmt(warehouseWeeklyItems.lines) + " item lines received during the reporting week" : "Dated item receipts unavailable in the tracker"}</small></div>
+            <div className="meeting-change-card"><span>Purchase Order Total Value (MVR)</span><b>{warehousePoAmounts.loaded && !warehouseExcel.linkError ? mvr(warehouseWeeklyPOValue.amountMVR) : "Unavailable"}</b><small>{fmt(warehouseWeeklyPOValue.matchedPOs) + " POs with receipts this week" + (warehouseWeeklyPOValue.unmatchedPOs ? " · " + fmt(warehouseWeeklyPOValue.unmatchedPOs) + " PO values unavailable" : "")}</small></div>
+            <div className="meeting-change-card"><span>Receipt Records</span><b>{fmt(warehouseReceiptCurrent.entries)}</b><small>Previous week: {fmt(warehouseReceiptPrevious.entries)} · Simplix receipt records</small></div>
           </div>
-          <p>{fmt(warehouseReceiptCurrent.entries)} PR-linked Simplix ERP receipt events in this period. Item-level quantities remain available in each PR/PO detail; mixed units are not added together here. 
-            {warehouseExcelWeek.duplicateExcluded > 0 && <> {warehouseExcelWeek.duplicateExcluded} duplicate-key Excel rows excluded from quantity totals. </>}
-            {warehouseExcelModel.undatedReceived > 0 && <> {warehouseExcelModel.undatedReceived} received Excel item rows have no unambiguous Simplix PO receipt event or Excel received date. </>}
-            {warehouseFast.receipts?.synced_at && <> Last ERP detail sync: {new Date(warehouseFast.receipts.synced_at).toLocaleString()}.</>}
-          </p>
+          <p className="warehouse-receipt-source-note">PR receipt counts come from Simplix. Item quantities and PR status counts use dated tracker items and may cover different PRs. PO totals count each purchase order once and exclude cancelled POs.</p>
+          <style>{`
+            .warehouse-receipt-source-note{color:#9fb1cc;font-size:11px;line-height:1.6;margin:16px 0 0}
+            .warehouse-receipt-cards .meeting-change-card{min-height:126px}
+            .warehouse-receipt-cards .meeting-change-card>small{line-height:1.5;display:block}
+          `}</style>
           {warehouseFast.receipts?.invalid_dates > 0 && <p role="status">{warehouseFast.receipts.invalid_dates} receipt records have missing or invalid dates and are excluded from period totals.</p>}
           {warehouseReceiptDetail !== 'NONE' && (
             <section className="warehouse-receipt-detail">
