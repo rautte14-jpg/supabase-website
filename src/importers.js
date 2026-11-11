@@ -176,8 +176,6 @@ export function detectSource(rows, fileName = '', sheetName = '') {
 
 export const SOURCE_OPTIONS = [
   ['PRF', 'PRF / IPF Register'],
-  ['PR', 'ERP PR Lines'],
-  ['PO', 'ERP PO List'],
   ['PENDING_PAYMENTS', 'Pending Payment List'],
   ['MTR', 'MTR Register'],
   ['MRN', 'MRN / Material Request Register'],

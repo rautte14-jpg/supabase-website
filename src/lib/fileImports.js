@@ -1,4 +1,4 @@
-export const ATOMIC_FILE_SOURCES = new Set(['PRF', 'PR', 'PO', 'MTR', 'MRN', 'PENDING_PAYMENTS', 'TRANSACTIONS'])
+export const ATOMIC_FILE_SOURCES = new Set(['PRF', 'MTR', 'MRN', 'PENDING_PAYMENTS', 'TRANSACTIONS'])
 
 // Staging is private to the uploader; only the final RPC can replace live data.
 export async function uploadSourceFile(client, {

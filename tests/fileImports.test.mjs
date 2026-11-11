@@ -39,9 +39,9 @@ function fakeClient({failedBatch = -1, finalizeError = false, lostResponse = fal
   }
   return {client,state}
 }
-const input={source:'PR',records:[{pr_no:'PR1'},{pr_no:'PR2'},{pr_no:'PR3'}],importId:'test',batchSize:1,concurrency:3}
+const input={source:'MTR',records:[{document_no:'MTR1'},{document_no:'MTR2'},{document_no:'MTR3'}],importId:'test',batchSize:1,concurrency:3}
 test('all remaining sources use the staged importer',()=>{
-  assert.deepEqual([...ATOMIC_FILE_SOURCES],['PRF','PR','PO','MTR','MRN','PENDING_PAYMENTS','TRANSACTIONS'])
+  assert.deepEqual([...ATOMIC_FILE_SOURCES],['PRF','MTR','MRN','PENDING_PAYMENTS','TRANSACTIONS'])
 })
 test('successful upload commits only after all batches complete',async()=>{
   const {client,state}=fakeClient()
@@ -74,5 +74,7 @@ test('empty and unsupported uploads never reach the server',async()=>{
   const {client,state}=fakeClient()
   await assert.rejects(uploadSourceFile(client,{...input,records:[]}),/usable rows/)
   await assert.rejects(uploadSourceFile(client,{...input,source:'AGEING'}),/supported source/)
+  await assert.rejects(uploadSourceFile(client,{...input,source:'PR'}),/supported source/)
+  await assert.rejects(uploadSourceFile(client,{...input,source:'PO'}),/supported source/)
   assert.deepEqual(state.calls,[])
 })

@@ -996,6 +996,14 @@ function ImportPanel({ onApplied, email }) {
       const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false })
       const json = normalizeSheetRows(matrix)
       const detected = detectSource(json, next.name, name)
+      // PR/PO legacy source uploads are retired. Use Simplix and the separate Excel PO-to-item mapping instead.
+      if (detected === 'PR' || detected === 'PO') {
+        setRows([])
+        setMapped([])
+        setSheetName(name)
+        setMessage('Legacy ERP PR Lines and ERP PO List uploads are retired. Use the daily Simplix sync for PR/PO records, or Upload PR / PO Excel in the PO Tracker tab for item receipt quantities.')
+        return
+      }
       const sourceToUse = detected || source
 
       if (detected && detected !== source) setSource(detected)
@@ -1022,6 +1030,10 @@ function ImportPanel({ onApplied, email }) {
   }, [source])
 
   async function applyFile() {
+    if (source === 'PR' || source === 'PO') {
+      setMessage('This legacy upload is retired. Use Simplix for PR and PO information and the separate PR / PO Excel mapping upload for receipt quantities.')
+      return
+    }
     if (!mapped.length) {
       setMessage('No usable rows were mapped from this file.')
       return
