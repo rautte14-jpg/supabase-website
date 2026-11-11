@@ -4073,19 +4073,13 @@ export default function App() {
   const warehouseExcelWeek = warehouseExcelModel.period(warehouseWeekStart, warehouseWeekEnd)
   const warehouseExcelPrevWeek = warehouseExcelModel.period(addDaysIso(warehouseWeekStart,-7),addDaysIso(warehouseWeekEnd,-7))
   const warehouseExcelMonth = warehouseExcelModel.period(warehouseMonthStart, todayIso)
-  // Distinct PO numbers with Simplix goods-receipt events in the month.
-  // This never treats PO purchase value as verified received value.
-  const warehouseMonthlyReceivedPOCount = useMemo(() => {
-    if (!warehouseExcel.loaded || warehouseExcel.linkError) return null
-    const poNumbers = new Set()
-    for (const link of warehouseExcel.links || []) {
-      const po = String(link?.po_no || '').trim().toUpperCase()
-      if (!po) continue
-      const dates = Array.isArray(link.receipt_dates) ? link.receipt_dates : []
-      if (dates.some(date => typeof date === 'string' && date >= warehouseMonthStart && date <= todayIso)) poNumbers.add(po)
-    }
-    return poNumbers.size
-  }, [warehouseExcel, warehouseMonthStart, todayIso])
+  // Use item-level Excel receipt dates for the monthly quantity card.
+  // PO receipt events alone cannot date individual item quantities.
+  const warehouseMonthlyItems = useMemo(() =>
+    makeWarehouseExcelReceiptModel(warehouseExcel.rows, warehouseExcel.batch).period(warehouseMonthStart, todayIso),
+    [warehouseExcel.rows, warehouseExcel.batch, warehouseMonthStart, todayIso])
+  const warehouseMonthlyItemQuantity = warehouseMonthlyItems.quantityByUnit.reduce((total, [, quantity]) => total + quantity, 0)
+  const warehouseReceiptAsOf = new Date(todayIso + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
   const warehouseValueCoverage = useMemo(() => warehousePoValueCoverage(warehouseExcel.links, warehousePoAmounts.records, warehouseMonthStart, todayIso), [warehouseExcel.links, warehousePoAmounts.records, warehouseMonthStart, todayIso])
   const warehouseLatestSource = (source) => warehouseSourceUpdates.find(r => r.source_type === source)?.imported_at || ''
   const warehouseFreshDate = (value) => value ? new Date(value).toLocaleString('en-GB',{timeZone:'Indian/Maldives',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : 'not available'
@@ -4176,7 +4170,7 @@ export default function App() {
           </div>
           <div className="meeting-metrics warehouse-summary-metrics">
             <MetricCard icon="receipt" label="PRs Received This Month" value={fmt(receiptMonthDisplay.prs)} helper="Simplix: distinct PRs with ERP receipt events dated this month" />
-            <MetricCard icon="cart" label="POs Received This Month" value={warehouseMonthlyReceivedPOCount === null ? "Unavailable" : fmt(warehouseMonthlyReceivedPOCount)} helper="Distinct purchase orders with goods-receipt events this month (Simplix)" />
+            <MetricCard icon="cart" label="Received Item Quantity This Month" value={!warehouseExcel.loaded || warehouseExcel.error || !warehouseMonthlyItems.available ? "Unavailable" : fmt(warehouseMonthlyItemQuantity)} helper={warehouseExcel.error ? "Excel receipt data could not load" : !warehouseExcel.loaded ? "Loading received item quantities" : !warehouseMonthlyItems.available ? "No dated item receipts in the uploaded tracker" : fmt(warehouseMonthlyItems.lines) + " item lines received as of " + warehouseReceiptAsOf} />
             <MetricCard icon="coins" label="Matched PO Purchase Value (MVR)" value={warehousePoAmounts.loaded && !warehouseExcel.linkError ? mvr(warehouseValueCoverage.amountMVR) : "Unavailable"} helper={warehousePoAmounts.error ? "PO value source unavailable: " + warehousePoAmounts.error : warehouseExcel.linkError ? "Simplix receipt links unavailable" : warehousePoAmounts.loaded ? fmt(warehouseValueCoverage.matchedPOs) + " of " + fmt(warehouseValueCoverage.totalPOs) + " receipt-dated POs matched (" + warehouseValueCoverage.coveragePct + "%). Purchase order values only—not actual goods received. Source: pending-payment upload, " + warehouseFreshDate(warehousePoAmounts.updatedAt) : "Loading available PO purchase values"} />
             <MetricCard icon="package" label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
             <MetricCard icon="caution" label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
