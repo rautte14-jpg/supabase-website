@@ -1487,7 +1487,7 @@ export default function App() {
   const [warehouseIssueDetailError, setWarehouseIssueDetailError] = useState('')
   const warehouseRequestId = useRef(0)
   const [warehouseLoadState, setWarehouseLoadState] = useState('loading')
-  const [warehouseExcel, setWarehouseExcel] = useState({ batch: null, rows: [], error: '', loaded: false })
+  const [warehouseExcel, setWarehouseExcel] = useState({ batch: null, rows: [], links: [], error: '', linkError:'', loaded: false })
   const [warehouseSourceUpdates, setWarehouseSourceUpdates] = useState([])
   const [warehouseFast, setWarehouseFast] = useState({
     mrnWeeks: [],
@@ -1912,7 +1912,7 @@ export default function App() {
       const today = maldivesDateIso()
       const signal = AbortSignal.timeout(20000)
       const monthStart = today.slice(0, 7) + '-01'
-      const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult, receiptsResult, excelBatchResult, sourceUpdatesResult] = await Promise.all([
+      const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult, receiptsResult, receiptLinksResult, excelBatchResult, sourceUpdatesResult] = await Promise.all([
         supabase
           .from('warehouse_mrn_weekly_summary')
           .select('*')
@@ -1934,6 +1934,7 @@ export default function App() {
           .eq('month_start', monthStart)
           .limit(1).abortSignal(signal),
         supabase.rpc('warehouse_receipt_summary', { p_today: today }).abortSignal(signal),
+        supabase.rpc('warehouse_po_receipt_links', { p_today: today }).abortSignal(signal),
         supabase.from('erp_po_excel_batches').select('id,source_file,completed_at').eq('status', 'complete').order('completed_at', { ascending: false }).limit(1).maybeSingle().abortSignal(signal),
         supabase.from('source_updates').select('source_type,imported_at,file_name').order('imported_at', { ascending: false }).limit(80).abortSignal(signal),
       ])
@@ -1963,7 +1964,7 @@ export default function App() {
         }
       }
       if (requestId !== warehouseRequestId.current) return
-      setWarehouseExcel({ batch:excelError ? null : batch, rows:excelError ? [] : excelRows, error:excelError, loaded:true })
+      setWarehouseExcel({ batch:excelError ? null : batch, rows:excelError ? [] : excelRows, links:receiptLinksResult.error ? [] : receiptLinksResult.data || [], error:excelError, linkError:receiptLinksResult.error?.message || '', loaded:true })
       setWarehouseSourceUpdates(sourceUpdatesResult.error ? [] : (sourceUpdatesResult.data || []))
       setWarehouseFast({
         receipts: receiptsResult.data?.periods ? receiptsResult.data : { periods: { current: {}, previous: {}, month: {} }, rows: [] },
@@ -4043,13 +4044,13 @@ export default function App() {
   const receiptPreviousDisplay = warehouseReceiptPrevious
   const receiptMonthDisplay = warehouseReceiptMonth
   const warehouseMonthStart = todayIso.slice(0, 7) + '-01'
-  const warehouseExcelModel = useMemo(() => makeWarehouseExcelReceiptModel(warehouseExcel.rows, warehouseExcel.batch), [warehouseExcel])
+  const warehouseExcelModel = useMemo(() => makeWarehouseExcelReceiptModel(warehouseExcel.rows, warehouseExcel.batch, warehouseExcel.links), [warehouseExcel])
   const warehouseExcelWeek = warehouseExcelModel.period(warehouseWeekStart, warehouseWeekEnd)
   const warehouseExcelPrevWeek = warehouseExcelModel.period(addDaysIso(warehouseWeekStart,-7),addDaysIso(warehouseWeekEnd,-7))
   const warehouseExcelMonth = warehouseExcelModel.period(warehouseMonthStart, todayIso)
   const warehouseLatestSource = (source) => warehouseSourceUpdates.find(r => r.source_type === source)?.imported_at || ''
   const warehouseFreshDate = (value) => value ? new Date(value).toLocaleString('en-GB',{timeZone:'Indian/Maldives',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : 'not available'
-  const warehouseExcelReceiptHelp = warehouseExcel.error ? 'Excel receipt data could not load: '+warehouseExcel.error : !warehouseExcel.batch ? 'No completed PO-to-item Excel batch' : !warehouseExcelModel.available ? 'Excel re-upload required: Received Date (Y) missing from current batch' : 'Excel recorded receipt date; cumulative item quantities grouped by unit'
+  const warehouseExcelReceiptHelp = warehouseExcel.error ? 'Excel receipt data could not load: '+warehouseExcel.error : !warehouseExcel.batch ? 'No completed PO-to-item Excel batch' : warehouseExcel.linkError ? 'Simplix PO receipt dates could not load: '+warehouseExcel.linkError : !warehouseExcelModel.available ? 'No PO-linked receipt dates found in Simplix or Excel; item quantities cannot be assigned to a reporting period' : 'Excel cumulative received quantities matched to Simplix PO receipt dates where one ERP receipt event exists; not verified per-event item movements'
   const warehouseMonthLabel = new Date(todayIso + 'T12:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
 
   const warehouseMrnMonth = useMemo(() => ({
@@ -4132,11 +4133,11 @@ export default function App() {
               <span>MONTH-TO-DATE</span>
               <b>{warehouseMonthLabel}</b>
             </div>
-            <small>{formatShortDate(warehouseMonthStart)} – {formatShortDate(todayIso)} · Simplix receipts and Excel item receipt dates reported separately</small>
+            <small>{formatShortDate(warehouseMonthStart)} – {formatShortDate(todayIso)} · Simplix PO receipt dates linked to Excel item receipt positions</small>
           </div>
           <div className="meeting-metrics">
             <MetricCard label="PRs Received This Month" value={fmt(receiptMonthDisplay.prs)} helper="Simplix: distinct PRs with ERP receipt events dated this month" />
-            <MetricCard label="Excel Received Quantity This Month" value={formatWarehouseUnitQuantities(warehouseExcelMonth)} helper={warehouseExcelMonth.available ? fmt(warehouseExcelMonth.lines) + " dated Excel item rows · cumulative item receipts, not ERP movement volume" : warehouseExcelReceiptHelp} />
+            <MetricCard label="PO-linked Excel Received Qty This Month" value={formatWarehouseUnitQuantities(warehouseExcelMonth)} helper={warehouseExcelMonth.available ? fmt(warehouseExcelMonth.lines) + " PO-linked Excel item rows · " + fmt(warehouseExcelMonth.simplixLinkedLines) + " dated using Simplix; cumulative quantities, not receipt-event quantities" : warehouseExcelReceiptHelp} />
             <MetricCard label="Received Value This Month" value="Not verified" helper="No verified per-item receipt values/currencies. Old partial-value estimates intentionally suppressed." />
             <MetricCard label="MRNs Created This Month" value={fmt(warehouseMrnMonth.created)} helper="MRN records created this month" />
             <MetricCard label="Pending / Not Issued This Month" value={fmt(warehouseMrnMonth.pending)} tone="bad" helper="MRNs created this month that remain pending / not issued" />
@@ -4155,7 +4156,7 @@ export default function App() {
               <span>REPORTING PERIOD RECEIPTS</span>
               <b>{formatShortDate(warehouseWeekStart)} – {formatShortDate(warehouseWeekEnd)}</b>
             </div>
-            <small>Simplix receipt dates · Excel tracker item quantities (date-based, cumulative)</small>
+            <small>Simplix PO receipt dates · Excel cumulative item quantities (not ERP receipt-line quantities)</small>
           </div>
 
           <div className="meeting-change-grid warehouse-receipt-cards">
@@ -4171,14 +4172,14 @@ export default function App() {
               </div>
             </button>
 
-            <div className="meeting-change-card"><span>Fully received PRs (Excel dated)</span><b>{warehouseExcelWeek.available ? fmt(warehouseExcelWeek.fullPrs) : "Re-upload needed"}</b><small>{warehouseExcelWeek.available ? "All active item rows marked received; PR had dated Excel receipt in period" : warehouseExcelReceiptHelp}</small></div>
-            <div className="meeting-change-card"><span>Other PRs with Excel dated receipts</span><b>{warehouseExcelWeek.available ? fmt(warehouseExcelWeek.partialPrs) : "Re-upload needed"}</b><small>Part received or Excel line position requiring review; not necessarily an ERP partial receipt</small></div>
-            <div className="meeting-change-card"><span>Excel dated received quantity</span><b>{formatWarehouseUnitQuantities(warehouseExcelWeek)}</b><small>{warehouseExcelWeek.available ? "Previous: " + formatWarehouseUnitQuantities(warehouseExcelPrevWeek) + " · cumulative quantity per dated item, units separated" : warehouseExcelReceiptHelp}</small></div>
+            <div className="meeting-change-card"><span>Fully received PRs (PO-linked Excel)</span><b>{warehouseExcelWeek.available ? fmt(warehouseExcelWeek.fullPrs) : "Re-upload needed"}</b><small>{warehouseExcelWeek.available ? "All active Excel item rows received; linked PO has receipt date in period" : warehouseExcelReceiptHelp}</small></div>
+            <div className="meeting-change-card"><span>Other PRs with PO-linked receipts</span><b>{warehouseExcelWeek.available ? fmt(warehouseExcelWeek.partialPrs) : "Re-upload needed"}</b><small>Part received or Excel line position requiring review; not necessarily an ERP partial receipt</small></div>
+            <div className="meeting-change-card"><span>PO-linked Excel received qty</span><b>{formatWarehouseUnitQuantities(warehouseExcelWeek)}</b><small>{warehouseExcelWeek.available ? "Previous: " + formatWarehouseUnitQuantities(warehouseExcelPrevWeek) + " · cumulative quantity associated with receipt-dated POs, units separated" : warehouseExcelReceiptHelp}</small></div>
             <div className="meeting-change-card"><span>Received value</span><b>Not verified</b><small>No validated received-item value or currency basis in available data</small></div>
           </div>
-          <p>{fmt(warehouseReceiptCurrent.entries)} PR-linked Simplix ERP receipt events in this period. {warehouseExcelWeek.available ? fmt(warehouseExcelWeek.lines) + ' distinct, dated Excel item rows; these reflect recorded cumulative received quantities and should not be interpreted as movement-only quantities. ' : warehouseExcelReceiptHelp + '. '}
+          <p>{fmt(warehouseReceiptCurrent.entries)} PR-linked Simplix ERP receipt events in this period. {warehouseExcelWeek.available ? fmt(warehouseExcelWeek.lines) + ' Excel item rows linked to PO-level receipt dates; these reflect cumulative received quantities, NOT receipt-specific item movements. ' : warehouseExcelReceiptHelp + '. '}
             {warehouseExcelWeek.duplicateExcluded > 0 && <> {warehouseExcelWeek.duplicateExcluded} duplicate-key Excel rows excluded from quantity totals. </>}
-            {warehouseExcelModel.undatedReceived > 0 && <> {warehouseExcelModel.undatedReceived} received Excel item rows have no usable received date. </>}
+            {warehouseExcelModel.undatedReceived > 0 && <> {warehouseExcelModel.undatedReceived} received Excel item rows have no unambiguous Simplix PO receipt event or Excel received date. </>}
             {warehouseFast.receipts?.synced_at && <> Last ERP detail sync: {new Date(warehouseFast.receipts.synced_at).toLocaleString()}.</>}
           </p>
           {warehouseFast.receipts?.invalid_dates > 0 && <p role="status">{warehouseFast.receipts.invalid_dates} receipt records have missing or invalid dates and are excluded from period totals.</p>}
@@ -6977,14 +6978,14 @@ export default function App() {
                     <div role="status" aria-label="Warehouse data source freshness" style={{ display:'flex',flexWrap:'wrap',gap:7,marginBottom:10,fontSize:10,color:'#475569' }}>
                       {[
                         ['Simplix ERP receipts', warehouseFast.receipts?.synced_at],
-                        ['Excel item receipts', warehouseExcel.batch?.completed_at],
+                        ['Excel received quantities', warehouseExcel.batch?.completed_at],
                         ['MRN register', warehouseLatestSource('MRN')],
                         ['SR issues', warehouseLatestSource('SR_ISSUES')],
                         ['Stock', warehouseLatestSource('STOCK')],
                       ].map(([label, updated]) => <span key={label} style={{ padding:'5px 9px',border:'1px solid #dbe5f0',borderRadius:8,background:'#f8fafc' }}><strong>{label}</strong>: {warehouseFreshDate(updated)}</span>)}
                     </div>
                     {!warehouseExcelModel.available && warehouseLoadState === 'ready' && <div role="status" style={{ background:'#fffbeb',border:'1px solid #fbbf24',borderRadius:8,color:'#92400e',fontSize:11,padding:'8px 11px',marginBottom:10 }}>
-                      Excel received-date reporting needs attention: {warehouseExcelReceiptHelp}. Re-upload the latest PR / PO Excel tracker under PO Tracker to include Received Date (column Y), Received Qty (Z) and Balance Qty (AA).
+                      PO-linked received quantity coverage needs attention: {warehouseExcelReceiptHelp}. Simplix receipt dates are used automatically where there is one PO receipt event; Excel Received Date (Y) is optional additional item-date evidence.
                     </div>}
                     <div className="meeting-slide-topline">
                       <span>Slide {Math.min(slide + 1, warehouseSlides.length)} of {warehouseSlides.length}</span>

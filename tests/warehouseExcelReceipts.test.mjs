@@ -48,3 +48,32 @@ test('does not double count duplicate PR PO item rows; distinguishes partially r
   assert.equal(week.prs,1)
   assert.equal(week.partialPrs,1)
 })
+
+test('uses Simplix single PO receipt date when Excel item date is absent',()=>{
+  const rows=[row('PR10','PO20','A','NOS',null,7),row('PR10','PO20','B','KG',null,3)]
+  const links=[{pr_no:'PR10',po_no:'PO20',receipt_events:1,receipt_dates:['2026-11-10']}]
+  const m=makeWarehouseExcelReceiptModel(rows,{id:'batch'},links)
+  assert.equal(m.available,true)
+  assert.equal(m.datedSimplix,2)
+  const week=m.period('2026-11-04','2026-11-10')
+  assert.equal(week.simplixLinkedLines,2)
+  assert.equal(week.fullPrs,1)
+  assert.deepEqual(week.quantityByUnit,[['KG',3],['NOS',7]])
+})
+
+test('does not assign cumulative Excel item quantities to ambiguous multi-receipt PO dates',()=>{
+  const rows=[row('PR10','PO20','A','NOS',null,7)]
+  const links=[{pr_no:'PR10',po_no:'PO20',receipt_events:2,receipt_dates:['2026-11-04','2026-11-10']}]
+  const m=makeWarehouseExcelReceiptModel(rows,{id:'batch'},links)
+  assert.equal(m.available,false)
+  assert.equal(m.undatedReceived,1)
+})
+
+test('Excel item received date is used when present, even if PO has multiple ERP receipt events',()=>{
+  const rows=[row('PR10','PO20','A','NOS','2026-11-06',7)]
+  const links=[{pr_no:'PR10',po_no:'PO20',receipt_events:2,receipt_dates:['2026-11-04','2026-11-10']}]
+  const m=makeWarehouseExcelReceiptModel(rows,{id:'batch'},links)
+  const week=m.period('2026-11-04','2026-11-10')
+  assert.equal(week.excelDatedLines,1)
+  assert.equal(week.simplixLinkedLines,0)
+})
