@@ -20,7 +20,7 @@ export function warehouseMonthlyReceivedItemQuantity(rows = [], batch = null, to
       Number.isFinite(Number(row.received_qty)) && Number(row.received_qty) > 0
   })
   // Prefer fresh uploads with usable Excel item-level received dates.
-  if (batch && datedRows.length > 0 && String(batch.completed_at || '').slice(0, 10) > NOVEMBER_11_RECEIVED_ITEM_SNAPSHOT.asOf) {
+  if (batch && datedRows.length > 0 && String(batch.completed_at || '').slice(0, 10) >= NOVEMBER_11_RECEIVED_ITEM_SNAPSHOT.asOf) {
     return {
       receivedQuantity: Number(datedRows.reduce((sum, row) => sum + Number(row.received_qty), 0).toFixed(2)),
       lineCount: datedRows.length,
