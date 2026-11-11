@@ -1487,7 +1487,6 @@ export default function App() {
   const [warehouseIssueDetailError, setWarehouseIssueDetailError] = useState('')
   const warehouseRequestId = useRef(0)
   const [warehouseLoadState, setWarehouseLoadState] = useState('loading')
-  const [warehouseReceiptRecovery, setWarehouseReceiptRecovery] = useState([])
   const [warehouseExcel, setWarehouseExcel] = useState({ batch: null, rows: [], error: '', loaded: false })
   const [warehouseSourceUpdates, setWarehouseSourceUpdates] = useState([])
   const [warehouseFast, setWarehouseFast] = useState({
@@ -1913,7 +1912,7 @@ export default function App() {
       const today = maldivesDateIso()
       const signal = AbortSignal.timeout(20000)
       const monthStart = today.slice(0, 7) + '-01'
-      const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult, receiptsResult, recoveryResult, excelBatchResult, sourceUpdatesResult] = await Promise.all([
+      const [mrnWeeksResult, mrnMonthResult, issueWeeksResult, issueMonthResult, receiptsResult, excelBatchResult, sourceUpdatesResult] = await Promise.all([
         supabase
           .from('warehouse_mrn_weekly_summary')
           .select('*')
@@ -1935,7 +1934,6 @@ export default function App() {
           .eq('month_start', monthStart)
           .limit(1).abortSignal(signal),
         supabase.rpc('warehouse_receipt_summary', { p_today: today }).abortSignal(signal),
-        supabase.from('warehouse_receipt_recovery').select('*').order('period_start', { ascending: false }).limit(24).abortSignal(signal),
         supabase.from('erp_po_excel_batches').select('id,source_file,completed_at').eq('status', 'complete').order('completed_at', { ascending: false }).limit(1).maybeSingle().abortSignal(signal),
         supabase.from('source_updates').select('source_type,imported_at,file_name').order('imported_at', { ascending: false }).limit(80).abortSignal(signal),
       ])
@@ -1967,8 +1965,6 @@ export default function App() {
       if (requestId !== warehouseRequestId.current) return
       setWarehouseExcel({ batch:excelError ? null : batch, rows:excelError ? [] : excelRows, error:excelError, loaded:true })
       setWarehouseSourceUpdates(sourceUpdatesResult.error ? [] : (sourceUpdatesResult.data || []))
-      if (recoveryResult.error) console.warn('Receipt recovery summary unavailable', recoveryResult.error)
-      setWarehouseReceiptRecovery(recoveryResult.error ? [] : (recoveryResult.data || []))
       setWarehouseFast({
         receipts: receiptsResult.data?.periods ? receiptsResult.data : { periods: { current: {}, previous: {}, month: {} }, rows: [] },
         mrnWeeks: mrnWeeksResult.data || [],
@@ -4043,9 +4039,6 @@ export default function App() {
   const warehouseReceiptCurrent = warehouseFast.receipts?.periods?.current || {}
   const warehouseReceiptPrevious = warehouseFast.receipts?.periods?.previous || {}
   const warehouseReceiptMonth = warehouseFast.receipts?.periods?.month || {}
-  const recoveredWeeklyCurrent = warehouseReceiptRecovery.find((row) => row.period_type === 'week' && row.period_start === warehouseWeekStart)
-  const recoveredWeeklyPrevious = warehouseReceiptRecovery.find((row) => row.period_type === 'week' && row.period_start === addDaysIso(warehouseWeekStart, -7))
-  const recoveredMonthly = warehouseReceiptRecovery.find((row) => row.period_type === 'month' && row.period_start === todayIso.slice(0, 7) + '-01' && row.period_end <= todayIso)
   const receiptCurrentDisplay = warehouseReceiptCurrent
   const receiptPreviousDisplay = warehouseReceiptPrevious
   const receiptMonthDisplay = warehouseReceiptMonth
