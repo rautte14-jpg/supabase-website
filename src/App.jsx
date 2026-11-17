@@ -4,6 +4,7 @@ import { requestedQty, receivedQty } from './lib/receipts.js'
 import { makeWarehouseExcelReceiptModel, formatWarehouseUnitQuantities } from './lib/warehouseExcelReceipts.js'
 import { warehousePoValueCoverage } from './lib/warehousePoValueCoverage.js'
 import { inventoryProcurementPosition } from './lib/inventoryProcurement.js'
+import { loadHomeProcurement } from './lib/homeProcurement.js'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { clearSupabaseReadCache, supabase } from './lib/supabase'
 import { buildPrSubmissionWeeks, maldivesDateIso, submissionDateIso, submissionWeekStart } from './lib/prSubmissionActivity'
@@ -1386,7 +1387,7 @@ export default function App() {
   const [homeSummary, setHomeSummary] = useState({
     prf_count: 0,
     mrn_count: 0,
-    pending_count: 0,
+    pending_count: null,
     stock_value: 0,
     aged_value: 0,
   })
@@ -1617,6 +1618,7 @@ export default function App() {
       lowStockCountResult,
       outOfStockCountResult,
       submittedCountResult,
+      openProcurement,
     ] = await Promise.all([
       supabase.from('portal_home_summary').select('*').limit(1),
       supabase
@@ -1677,11 +1679,12 @@ export default function App() {
       supabase.from('erp_pr_headers').select('purch_req_id', { count: 'exact', head: true })
         .gte('created_at', monthStart + 'T00:00:00+05:00')
         .lt('created_at', today + 'T23:59:59.999999+05:00'),
+      loadHomeProcurement(supabase),
     ])
 
     const failedHome = [summaryResult,paymentsResult,stockValueResult,stockQtyResult,lowStockResult,updatesResult,issuesResult,ageingResult,homePrResult,totalItemsResult,lowStockCountResult,outOfStockCountResult,submittedCountResult].find(result => result.error)
     if (failedHome) throw failedHome.error
-    if (summaryResult.data?.[0]) setHomeSummary(summaryResult.data[0])
+    if (summaryResult.data?.[0]) setHomeSummary({ ...summaryResult.data[0], pending_count:openProcurement.count })
 
     const activityUpdates = updatesResult.data || []
     const homePrRows = homePrResult.data || []
@@ -5275,8 +5278,8 @@ export default function App() {
                   },
                   {
                     label: 'Open PR / PO',
-                    value: fmt(homeSummary.pending_count),
-                    helper: 'Current pending procurement records',
+                    value: homeSummary.pending_count === null ? 'Unavailable' : fmt(homeSummary.pending_count),
+                    helper: 'All years · distinct PRs awaiting approval, PO or receipt follow-up',
                     icon: 'prpo',
                     tone: 'violet',
                     target: 'prpo',
@@ -5323,7 +5326,7 @@ export default function App() {
                     {[
                       ['PRF Register', Number(homeSummary.prf_count || 0), 'prf'],
                       ['MRN Register', Number(homeSummary.mrn_count || 0), 'mrn'],
-                      ['Pending PR / PO', Number(homeSummary.pending_count || 0), 'prpo'],
+                      ['Pending PR / PO', homeSummary.pending_count, 'prpo'],
                     ].map(([label, value, target]) => {
                       const maxValue = Math.max(
                         Number(homeSummary.prf_count || 0),
@@ -5338,7 +5341,7 @@ export default function App() {
                           <span className="home-snapshot-track">
                             <span className="home-snapshot-fill" style={{ width: width + '%' }} />
                           </span>
-                          <strong>{fmt(value)}</strong>
+                          <strong>{value === null ? 'Unavailable' : fmt(value)}</strong>
                         </button>
                       )
                     })}
@@ -5717,9 +5720,9 @@ export default function App() {
                   <button className="home-attention-row" onClick={() => setView('prpo')}>
                     <div>
                       <span>Pending PR / PO</span>
-                      <small>Open procurement position</small>
+                      <small>Distinct PRs · Simplix and latest Excel tracker</small>
                     </div>
-                    <strong>{fmt(homeSummary.pending_count)}</strong>
+                    <strong>{homeSummary.pending_count === null ? 'Unavailable' : fmt(homeSummary.pending_count)}</strong>
                   </button>
 
                   <button className="home-attention-row" onClick={() => setView('stock')}>
