@@ -6713,3 +6713,9 @@ body.srd-sidebar-open{overflow:hidden}
   .warehouse-presentation-shell:fullscreen .warehouse-receipt-source-note { margin-top:10px; }
   .warehouse-presentation-shell:fullscreen .meeting-slide footer { margin-top:10px; padding-top:8px; }
 }
+
+.warehouse-weekly-receipt-cards .receipt-card.active {
+  background: rgba(59,130,246,.18);
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgba(147,197,253,.12);
+}
