@@ -1987,7 +1987,7 @@ export default function App() {
       if (batch) {
         for (let start = 0; start < 100000; start += 1000) {
           const part = await supabase.from('erp_po_excel_rows')
-            .select('pr_no,po_no,item_code,unit,source_qty,received_qty,balance_qty,excel_delivery_status,excel_po_status,excel_received_date,source_raw')
+            .select('pr_no,po_no,item_code,item_description,unit,source_qty,received_qty,balance_qty,excel_delivery_status,excel_po_status,excel_received_date,source_raw')
             .eq('batch_id', batch.id).order('source_row').range(start, start + 999).abortSignal(signal)
           if (part.error) { excelError = part.error.message; break }
           excelRows.push(...(part.data || []))
@@ -4064,9 +4064,10 @@ export default function App() {
   // PO receipt events alone cannot date individual item quantities.
   const warehouseDatedItemModel = useMemo(() => makeWarehouseExcelReceiptModel(warehouseExcel.rows, warehouseExcel.batch), [warehouseExcel.rows, warehouseExcel.batch])
   const warehouseMonthlyItems = warehouseDatedItemModel.period(warehouseMonthStart, todayIso)
-  const warehouseWeeklyItems = warehouseDatedItemModel.period(warehouseWeekStart, warehouseWeekEnd)
+  const warehouseWeeklyItems = useMemo(() => warehouseDatedItemModel.period(warehouseWeekStart, warehouseWeekEnd), [warehouseDatedItemModel, warehouseWeekStart, warehouseWeekEnd])
+  const warehousePreviousWeeklyItems = warehouseDatedItemModel.period(addDaysIso(warehouseWeekStart,-7), addDaysIso(warehouseWeekEnd,-7))
   const warehouseWeeklyItemQuantity = warehouseWeeklyItems.quantityByUnit.reduce((total, [, quantity]) => total + quantity, 0)
-  const warehouseWeeklyPOValue = useMemo(() => warehousePoValueCoverage(warehouseExcel.links, warehousePoAmounts.records, warehouseWeekStart, warehouseWeekEnd), [warehouseExcel.links, warehousePoAmounts.records, warehouseWeekStart, warehouseWeekEnd])
+  const warehouseWeeklyPOValue = useMemo(() => warehousePoValueCoverage(warehouseWeeklyItems.receiptRows.map(row => ({po_no:row.po_no,receipt_dates:[row.receipt_date]})), warehousePoAmounts.records, warehouseWeekStart, warehouseWeekEnd), [warehouseWeeklyItems, warehousePoAmounts.records, warehouseWeekStart, warehouseWeekEnd])
   const warehouseMonthlyItemQuantity = warehouseMonthlyItems.quantityByUnit.reduce((total, [, quantity]) => total + quantity, 0)
   const warehouseReceiptAsOf = new Date(todayIso + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
   const warehouseValueCoverage = useMemo(() => warehousePoValueCoverage(warehouseExcel.links, warehousePoAmounts.records, warehouseMonthStart, todayIso), [warehouseExcel.links, warehousePoAmounts.records, warehouseMonthStart, todayIso])
@@ -4191,26 +4192,26 @@ export default function App() {
             <small>Weekly receipts · Wednesday to Tuesday</small>
           </div>
 
-          <div className="meeting-change-grid warehouse-receipt-cards">
+          <div className="meeting-change-grid warehouse-receipt-cards warehouse-weekly-receipt-cards">
             <button
-              className={warehouseReceiptDetail === 'ALL' ? 'meeting-change-card receipt-card active' : 'meeting-change-card receipt-card'}
-              onClick={() => setWarehouseReceiptDetail((current) => current === 'ALL' ? 'NONE' : 'ALL')}
+              className={warehouseReceiptDetail === 'EXCEL' ? 'meeting-change-card receipt-card active' : 'meeting-change-card receipt-card'}
+              onClick={() => setWarehouseReceiptDetail((current) => current === 'EXCEL' ? 'NONE' : 'EXCEL')}
             >
-              <span>PRs received</span>
-              <b>{fmt(receiptCurrentDisplay.prs)}</b>
+              <span>PRs with Item Receipts</span>
+              <b>{warehouseWeeklyItems.available && !warehouseExcel.error ? fmt(warehouseWeeklyItems.prs) : 'Unavailable'}</b>
               <div>
-                <small>Previous period: {fmt(receiptPreviousDisplay.prs)}</small>
-                <strong>Click to list Simplix receipt events</strong>
+                <small>Tracker · previous week: {warehousePreviousWeeklyItems.available ? fmt(warehousePreviousWeeklyItems.prs) : 'Unavailable'}</small>
+                <strong>Click to list received tracker items</strong>
               </div>
             </button>
 
-            <div className="meeting-change-card"><span>Fully Received PRs</span><b>{warehouseWeeklyItems.available && !warehouseExcel.error ? fmt(warehouseWeeklyItems.fullPrs) : "Unavailable"}</b><small>All active tracker items received · current status of PRs with item receipts this week</small></div>
-            <div className="meeting-change-card"><span>Other PRs with Item Receipts</span><b>{warehouseWeeklyItems.available && !warehouseExcel.error ? fmt(warehouseWeeklyItems.partialPrs) : "Unavailable"}</b><small>Tracker PRs with outstanding items or a status requiring review</small></div>
+            <div className="meeting-change-card"><span>Fully Received PRs (Tracker)</span><b>{warehouseWeeklyItems.available && !warehouseExcel.error ? fmt(warehouseWeeklyItems.fullPrs) : "Unavailable"}</b><small>All active tracker items received · current status of PRs with item receipts this week</small></div>
+            <div className="meeting-change-card"><span>Other PRs with Receipts (Tracker)</span><b>{warehouseWeeklyItems.available && !warehouseExcel.error ? fmt(warehouseWeeklyItems.partialPrs) : "Unavailable"}</b><small>Tracker PRs with outstanding items or a status requiring review</small></div>
             <div className="meeting-change-card"><span>Received Item Quantity</span><b>{warehouseWeeklyItems.available && !warehouseExcel.error ? fmt(warehouseWeeklyItemQuantity) : "Unavailable"}</b><small>{warehouseWeeklyItems.available && !warehouseExcel.error ? fmt(warehouseWeeklyItems.lines) + " item lines received during the reporting week" : "Dated item receipts unavailable in the tracker"}</small></div>
             <div className="meeting-change-card"><span>Purchase Order Total Value (MVR)</span><b>{warehousePoAmounts.loaded && !warehouseExcel.linkError ? mvr(warehouseWeeklyPOValue.amountMVR) : "Unavailable"}</b><small>{fmt(warehouseWeeklyPOValue.matchedPOs) + " POs with receipts this week" + (warehouseWeeklyPOValue.unmatchedPOs ? " · " + fmt(warehouseWeeklyPOValue.unmatchedPOs) + " PO values unavailable" : "")}</small></div>
-            <div className="meeting-change-card"><span>Receipt Records</span><b>{fmt(warehouseReceiptCurrent.entries)}</b><small>Previous week: {fmt(warehouseReceiptPrevious.entries)} · Simplix receipt records</small></div>
+            <button className={warehouseReceiptDetail === 'ERP' ? 'meeting-change-card receipt-card active' : 'meeting-change-card receipt-card'} onClick={() => setWarehouseReceiptDetail(current => current === 'ERP' ? 'NONE' : 'ERP')}><span>ERP Receipt Records (Simplix)</span><b>{fmt(warehouseReceiptCurrent.entries)}</b><small>{fmt(warehouseReceiptCurrent.prs)} PRs in ERP · click to list records</small></button>
           </div>
-          <p className="warehouse-receipt-source-note">PR receipt counts come from Simplix. Item quantities and PR status counts use dated tracker items and may cover different PRs. PO totals count each purchase order once and exclude cancelled POs.</p>
+          <p className="warehouse-receipt-source-note">PRs, item quantities and PO values use the same dated tracker items for this week. The full and other PR counts add up to the tracker PR total. ERP receipt records are shown separately; their coverage may differ.</p>
           <style>{`
             .warehouse-receipt-source-note{color:#9fb1cc;font-size:11px;line-height:1.6;margin:16px 0 0}
             .warehouse-receipt-cards .meeting-change-card{min-height:126px}
@@ -4220,17 +4221,22 @@ export default function App() {
           {warehouseReceiptDetail !== 'NONE' && (
             <section className="warehouse-receipt-detail">
               <div className="warehouse-receipt-detail-head">
-                <h4>ERP Receipt Records</h4>
-                <span>{"Showing " + (warehouseFast.receipts?.rows?.length || 0) + " of " + warehouseReceiptCurrent.entries + " Simplix receipt records"}</span>
+                <h4>{warehouseReceiptDetail === 'EXCEL' ? 'Received Tracker Items' : 'ERP Receipt Records'}</h4>
+                <span>{warehouseReceiptDetail === 'EXCEL' ? fmt(warehouseWeeklyItems.lines) + " item lines · " + fmt(warehouseWeeklyItems.prs) + " PRs" : "Showing " + (warehouseFast.receipts?.rows?.length || 0) + " of " + warehouseReceiptCurrent.entries + " ERP receipt records"}</span>
                 <button onClick={() => setWarehouseReceiptDetail('NONE')}>Close</button>
               </div>
               <div style={{ overflowX: 'auto', maxHeight: 360 }}>
-                <table><thead><tr><th>PR</th><th>PO</th><th>Receipt number</th><th>Received date</th></tr></thead>
-                  <tbody>{(warehouseFast.receipts?.rows || []).map((row, index) => (
-                    <tr key={index}><td>{row.pr_no}</td><td>{row.po_no || '—'}</td><td>{row.receipt_no || '—'}</td><td>{row.received_date}</td></tr>
-                  ))}</tbody>
-                </table>
-                {!warehouseFast.receipts?.rows?.length && <p>No synced receipt records in this period.</p>}
+                {warehouseReceiptDetail === 'EXCEL' ? (
+                  <table><thead><tr><th>PR</th><th>PO</th><th>Item</th><th>Description</th><th>Received Qty</th><th>Unit</th><th>Receipt Date</th></tr></thead>
+                    <tbody>{warehouseWeeklyItems.receiptRows.map((row,index) => <tr key={index}><td>{row.pr_no}</td><td>{row.po_no || '—'}</td><td>{row.item_code}</td><td>{row.item_description || '—'}</td><td>{fmt(row.received_qty,2)}</td><td>{row.unit || '—'}</td><td>{row.receipt_date}</td></tr>)}</tbody>
+                  </table>
+                ) : (
+                  <table><thead><tr><th>PR</th><th>PO</th><th>Receipt number</th><th>Received date</th></tr></thead>
+                    <tbody>{(warehouseFast.receipts?.rows || []).map((row,index) => <tr key={index}><td>{row.pr_no}</td><td>{row.po_no || '—'}</td><td>{row.receipt_no || '—'}</td><td>{row.received_date}</td></tr>)}</tbody>
+                  </table>
+                )}
+                {warehouseReceiptDetail === 'EXCEL' && !warehouseWeeklyItems.lines && <p>No dated tracker items received in this period.</p>}
+                {warehouseReceiptDetail !== 'EXCEL' && !warehouseFast.receipts?.rows?.length && <p>No synced ERP receipt records in this period.</p>}
               </div>
             </section>
           )}

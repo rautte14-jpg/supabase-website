@@ -59,6 +59,8 @@ export function makeWarehouseExcelReceiptModel(rows = [], batch = null, receiptL
   function period(start,end) {
     const unitQuantities = new Map()
     const touched = new Set()
+    const receiptRows = []
+    const poNumbers = new Set()
     let lines = 0, duplicateExcluded = 0, simplixLinkedLines = 0, excelDatedLines = 0
     for (const row of input) {
       const link = dateInfo(row)
@@ -70,6 +72,8 @@ export function makeWarehouseExcelReceiptModel(rows = [], batch = null, receiptL
       const key = [pr, norm(row.po_no), norm(row.item_code)].join('|')
       if (duplicateKeys.has(key)) { duplicateExcluded++; continue }
       touched.add(pr)
+      if (norm(row.po_no)) poNumbers.add(norm(row.po_no))
+      receiptRows.push({ ...row, received_qty:p.received, receipt_date:link.date })
       lines++
       if (link.source === 'simplix-po') simplixLinkedLines++
       else excelDatedLines++
@@ -86,6 +90,7 @@ export function makeWarehouseExcelReceiptModel(rows = [], batch = null, receiptL
     return {
       available: Boolean(batch) && (datedExcel + datedSimplix) > 0,
       prs:touched.size, lines, fullPrs:full, partialPrs:partial,
+      receiptRows, poNumbers:[...poNumbers].sort(),
       quantityByUnit:[...unitQuantities].sort(([a],[b])=>a.localeCompare(b)),
       duplicateExcluded, undatedInBatch:undatedReceived, simplixLinkedLines, excelDatedLines,
     }

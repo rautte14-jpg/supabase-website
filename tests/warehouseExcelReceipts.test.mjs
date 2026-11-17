@@ -2,6 +2,22 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { excelReceivedIso, makeWarehouseExcelReceiptModel, formatWarehouseUnitQuantities } from '../src/lib/warehouseExcelReceipts.js'
 
+test('weekly tracker drilldown and PO coverage use exactly the counted item receipts', () => {
+  const m=makeWarehouseExcelReceiptModel([
+    {pr_no:'PR1',po_no:'PO1',item_code:'A',source_qty:2,received_qty:2,balance_qty:0,unit:'NOS',excel_received_date:'2026-11-11'},
+    {pr_no:'PR1',po_no:'PO2',item_code:'B',source_qty:5,received_qty:3,balance_qty:2,unit:'KG',excel_received_date:'2026-11-12'},
+    {pr_no:'PR2',po_no:'PO3',item_code:'C',source_qty:4,received_qty:4,excel_po_status:'Cancelled',excel_received_date:'2026-11-12'},
+    {pr_no:'PR3',po_no:'PO4',item_code:'D',source_qty:4,received_qty:4,excel_received_date:'2026-11-04'},
+  ],{id:'batch'})
+  const p=m.period('2026-11-11','2026-11-17')
+  assert.equal(p.prs,1)
+  assert.equal(p.fullPrs+p.partialPrs,p.prs)
+  assert.equal(p.receiptRows.length,p.lines)
+  assert.equal(p.lines,2)
+  assert.deepEqual(p.poNumbers,['PO1','PO2'])
+  assert.deepEqual(p.receiptRows.map(r=>r.receipt_date),['2026-11-11','2026-11-12'])
+})
+
 const row = (pr,po,item,unit,date,qty,status='Received All',requested=qty,balance=0) => ({
   pr_no:pr,po_no:po,item_code:item,unit,excel_received_date:date,
   source_qty:requested,received_qty:qty,balance_qty:balance,excel_delivery_status:status

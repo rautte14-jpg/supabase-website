@@ -6668,3 +6668,48 @@ body.srd-sidebar-open{overflow:hidden}
     break-inside: avoid;
   }
 }
+
+/* Let receipt cards and their drilldowns determine slide height. */
+.warehouse-presentation-shell .meeting-slide {
+  aspect-ratio: auto;
+  display: flex;
+  flex-direction: column;
+}
+.warehouse-presentation-shell .meeting-body {
+  flex: 1 0 auto;
+  min-height: auto;
+}
+.warehouse-presentation-shell .meeting-slide footer {
+  position: static;
+  flex: 0 0 auto;
+  clear: both;
+}
+.warehouse-presentation-shell:fullscreen .meeting-slide {
+  flex: 1 0 auto;
+}
+.warehouse-weekly-receipt-cards {
+  grid-template-columns: repeat(3, minmax(0,1fr));
+}
+.warehouse-weekly-receipt-cards .meeting-change-card {
+  min-width: 0;
+  min-height: 116px;
+  padding: 15px;
+}
+.warehouse-weekly-receipt-cards .meeting-change-card > b {
+  font-size: clamp(23px,2.5vw,32px);
+  overflow-wrap: anywhere;
+}
+@media(max-width:899px) {
+  .warehouse-weekly-receipt-cards { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:599px) {
+  .warehouse-weekly-receipt-cards { grid-template-columns: minmax(0,1fr); }
+}
+@media (min-width:900px) and (max-height:750px) {
+  .warehouse-presentation-shell:fullscreen { padding:10px; }
+  .warehouse-presentation-shell:fullscreen .meeting-slide { padding:18px 22px; }
+  .warehouse-presentation-shell:fullscreen .meeting-slide h2 { margin:6px 0 16px; font-size:34px; }
+  .warehouse-presentation-shell:fullscreen .warehouse-weekly-receipt-cards .meeting-change-card { min-height:108px; padding:12px; }
+  .warehouse-presentation-shell:fullscreen .warehouse-receipt-source-note { margin-top:10px; }
+  .warehouse-presentation-shell:fullscreen .meeting-slide footer { margin-top:10px; padding-top:8px; }
+}
