@@ -1026,7 +1026,7 @@ function ImportPanel({ onApplied, email }) {
         setRows([])
         setMapped([])
         setSheetName(name)
-        setMessage('Legacy ERP PR Lines and ERP PO List uploads are retired. Use the daily Simplix sync for PR/PO records, or Upload PR / PO Excel in the PO Tracker tab for item receipt quantities.')
+        setMessage('Legacy ERP PR Lines and ERP PO List uploads are retired. Use the daily Simplix sync for PR/PO records, or the PR / PO Excel Tracker upload above for item receipt quantities.')
         return
       }
       const sourceToUse = detected || source
@@ -1236,6 +1236,11 @@ function ImportPanel({ onApplied, email }) {
 
   return (
     <div className="updates-grid">
+      <div className="span-all">
+        <Suspense fallback={<p role="status">Loading PR / PO Excel tracker upload…</p>}>
+          <PrPoExcelUpload onApplied={onApplied} />
+        </Suspense>
+      </div>
       <section className="panel">
         <div className="panel-head">
           <div>

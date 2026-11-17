@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
-import { supabase } from './lib/supabase'
+import { supabase, clearSupabaseReadCache } from './lib/supabase'
 
 const trim = value => String(value ?? '').trim()
 const number = value => {
@@ -79,7 +79,7 @@ function extractRows(workbook) {
 }
 
 const boxStyle = { padding: '12px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }
-export default function PrPoExcelUpload() {
+export default function PrPoExcelUpload({ onApplied } = {}) {
   const input = useRef(null)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
@@ -127,8 +127,11 @@ export default function PrPoExcelUpload() {
       }
       const { error: finishError, data: count } = await supabase.rpc('complete_po_excel_batch', { p_batch: id })
       if (finishError) throw finishError
-      setStatus('Import complete: ' + count + ' Excel item rows. Open a PR to see its PO item mapping.')
+      setStatus('Import complete: ' + count + ' Excel item rows. Receipt quantities, PO values and follow-up counts will use this workbook.')
+      clearSupabaseReadCache()
       await loadCurrent()
+      try { await onApplied?.() }
+      catch { setWarning('The tracker was saved. Refresh the page to reload the dashboard figures.') }
     } catch (err) {
       setWarning('Upload not activated: ' + (err?.message || String(err)) + '. Previous completed workbook is unchanged.')
       setStatus('')
@@ -140,7 +143,7 @@ export default function PrPoExcelUpload() {
 
   return <section style={boxStyle}>
     <div style={{ flex: 1, minWidth: 240 }}>
-      <strong style={{ fontSize: 13, color: '#0f172a' }}>Excel PO-to-item mapping</strong>
+      <strong style={{ fontSize: 13, color: '#0f172a' }}>PR / PO Excel Tracker</strong>
       <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
         {current ? 'Active: ' + current.source_file + ' · ' + current.source_row_count.toLocaleString() + ' rows · ' + new Date(current.completed_at).toLocaleString()
           : 'No completed PO-to-item workbook imported yet.'}
@@ -154,7 +157,7 @@ export default function PrPoExcelUpload() {
     </div>
     <input ref={input} type="file" accept=".xlsx,.xls" disabled={busy} style={{ display: 'none' }} onChange={e => upload(e.target.files?.[0])} />
     <button type="button" disabled={busy} onClick={() => input.current?.click()} style={{ border: '1px solid #2563eb', background: busy ? '#e2e8f0' : '#eff6ff', color: '#1d4ed8', padding: '9px 14px', borderRadius: 9, fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>
-      {busy ? 'Importing...' : 'Upload PR / PO Excel'}
+      {busy ? 'Importing...' : 'Upload PR / PO Excel Tracker'}
     </button>
   </section>
 }
