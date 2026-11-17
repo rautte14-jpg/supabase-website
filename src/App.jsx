@@ -4830,7 +4830,7 @@ export default function App() {
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_LOW')}><span>High-Use Low Stock</span><b>{fmt(inventoryHighUseLowStock.length)}</b><small>View list</small></button>
             <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_OOS')}><span>High-Use Out of Stock</span><b>{fmt(inventoryHighUseOutOfStock.length)}</b><small>View list</small></button>
             <div><span>YTD Consumption Value</span><b>{mvr(Number(inventoryFast.stock?.ytd_consumption_value || 0))}</b></div>
-            <div><span>High-Use Items Reviewed</span><b>{fmt(inventoryHighUseTop100.length)}</b><small>Ranked by consumption value</small></div>
+            <div><span>{Number(inventoryFast.stock?.current_inventory_value || 0) > 0 ? 'Inventory Value (MVR)' : 'High-Use Items Reviewed'}</span><b>{Number(inventoryFast.stock?.current_inventory_value || 0) > 0 ? mvr(inventoryFast.stock.current_inventory_value) : fmt(inventoryHighUseTop100.length)}</b><small>{Number(inventoryFast.stock?.current_inventory_value || 0) > 0 ? 'On-hand value from the latest supplied stock / ageing report' : 'Ranked by consumption value'}</small></div>
           </div>
           <div className="warehouse-receipt-table inventory-risk-table" style={{ marginTop: 18 }}>
             <div className="warehouse-receipt-row warehouse-receipt-head">
@@ -4851,7 +4851,7 @@ export default function App() {
               ))}
             {!inventoryHighUseLowStock.length && !inventoryHighUseOutOfStock.length && <p className="inventory-source-note">No low-stock or out-of-stock items among the reviewed items.</p>}
           </div>
-          <p className="inventory-source-note">Showing up to 10 items; click the stock cards for the full lists. The current on-hand upload supplies quantities only, so inventory valuation is not shown.</p>
+          <p className="inventory-source-note">Showing up to 10 items; click the stock cards for the full lists. {Number(inventoryFast.stock?.current_inventory_value || 0) > 0 ? 'Inventory valuation uses the latest supplied stock / ageing report.' : 'The current on-hand upload supplies quantities only, so inventory valuation is not shown.'}</p>
         </>
       ),
     },
