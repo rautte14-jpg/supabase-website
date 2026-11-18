@@ -1,6 +1,6 @@
 // Mechanic-team standard overhaul list supplied 18 November 2026. Quantities are for ONE engine.
 export const RTL_STANDARD_ENGINES_PER_VESSEL = 2
-export const RTL_STANDARD_REQUIREMENTS = [
+const MECHANIC_STANDARD_SOURCE = [
   {
     "sourceNo": 1,
     "item": "1-0027879",
@@ -1458,5 +1458,9 @@ export const RTL_STANDARD_REQUIREMENTS = [
     "perEngine": 1
   }
 ]
+
+// Keep the user's explicit exclusion even when the mechanic source lists this item.
+export const RTL_STANDARD_EXCLUDED_ITEMS = ['1-0018347']
+export const RTL_STANDARD_REQUIREMENTS = MECHANIC_STANDARD_SOURCE.filter(row => !RTL_STANDARD_EXCLUDED_ITEMS.includes(row.item))
 
 export const rtlStandardRequirementRows = () => RTL_STANDARD_REQUIREMENTS.map(row => ['S', row.item, row.perEngine * RTL_STANDARD_ENGINES_PER_VESSEL, null])

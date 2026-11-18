@@ -15,7 +15,7 @@ const TYPES = [
   { key: 'PM2', group: '2', label: 'PM2 Service', short: 'PM2', description: 'Routine PM2 spare-parts set' },
   { key: 'PM3', group: '3', label: 'PM3 Service', short: 'PM3', description: 'Routine PM3 spare-parts set' },
   { key: 'PM4', group: '4', label: 'PM4 Service', short: 'PM4', description: 'Routine PM4 spare-parts set' },
-  { key: 'STANDARD', group: 'S', label: 'Standard Overhaul', short: 'Standard', description: 'Mechanic-team standard: 182 item lines per engine; 2 engines per vessel' },
+  { key: 'STANDARD', group: 'S', label: 'Standard Overhaul', short: 'Standard', description: `Mechanic-team standard: ${RTL_STANDARD_REQUIREMENTS.length} active item lines per engine; 2 engines per vessel` },
   { key: 'FULL', group: 'FULL', label: 'Extended Overhaul (Earlier List)', short: 'Extended', description: 'Earlier 263-item reference; separate scope from the new mechanic-team standard' },
 ]
 // Metadata is retained from the original PM and overhaul requirement sheets.
@@ -181,7 +181,7 @@ export default function RTLReadiness({refreshKey=0}) {
     </div>
     {showNotes && <div className="rtl-method">
       <p><b>Independent coverage:</b> For each category, complete-vessel coverage is the smallest floor(available physical ÷ quantity required per two-engine vessel), capped at 28. Each category is calculated separately; the same item can appear in PM and overhaul sets, and stock is not double-allocated.</p>
-      <p><b>Overhaul definitions:</b> Standard uses the mechanic-team list supplied on 18 November: 182 lines, with quantities for one engine doubled for one two-engine vessel. The source numbering skips 92–95; only supplied lines are included. Extended Overhaul retains the earlier 263-item reference as a separate scope; it is not the new standard plus additional parts.</p>
+      <p><b>Overhaul definitions:</b> Standard uses the mechanic-team list supplied on 18 November: {RTL_STANDARD_REQUIREMENTS.length} active lines after excluding item 1-0018347, with quantities for one engine doubled for one two-engine vessel. The source numbering skips 92–95; only supplied lines are included. Extended Overhaul retains the earlier 263-item reference as a separate scope; it is not the new standard plus additional parts.</p>
       <p><b>Missing vs zero:</b> An item missing from the supplied on-hand report is unavailable (zero usable stock) for planning. It remains marked as not listed, distinguishing it from a confirmed zero balance.</p>
       <p><b>Uploaded stock:</b> On-hand Stock uploads in Update Centre update saved RTL readiness quantities only. The comparison upload below is temporary to this browser session. Warehouse figures use Inventory Ageing.</p>
     </div>}
