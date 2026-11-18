@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { rtlStockFromRecords } from './lib/rtlStockSource.js'
+import { RTL_STANDARD_REQUIREMENTS, rtlStandardRequirementRows } from './rtlMechanicStandard.js'
+import { evaluateRequirementRows } from './lib/rtlCoverage.js'
 import { RTL_ROWS, RTL_SOURCE } from './rtlSpareSnapshot.js'
 import { RTL_PM_METADATA } from './rtlPartMetadataPm.js'
 import { RTL_STANDARD_METADATA } from './rtlPartMetadataStandard.js'
@@ -13,8 +15,8 @@ const TYPES = [
   { key: 'PM2', group: '2', label: 'PM2 Service', short: 'PM2', description: 'Routine PM2 spare-parts set' },
   { key: 'PM3', group: '3', label: 'PM3 Service', short: 'PM3', description: 'Routine PM3 spare-parts set' },
   { key: 'PM4', group: '4', label: 'PM4 Service', short: 'PM4', description: 'Routine PM4 spare-parts set' },
-  { key: 'STANDARD', group: 'S', label: 'Standard Overhaul', short: 'Standard', description: 'Only items classified Over Haul spare' },
-  { key: 'FULL', group: 'FULL', label: 'Full Overhaul Coverage', short: 'Full Coverage', description: 'All 263 items in the major overhaul requirement list' },
+  { key: 'STANDARD', group: 'S', label: 'Standard Overhaul', short: 'Standard', description: 'Mechanic-team standard: 182 item lines per engine; 2 engines per vessel' },
+  { key: 'FULL', group: 'FULL', label: 'Extended Overhaul (Earlier List)', short: 'Extended', description: 'Earlier 263-item reference; separate scope from the new mechanic-team standard' },
 ]
 // Metadata is retained from the original PM and overhaul requirement sheets.
 const RTL_ITEM_INFO = new Map()
@@ -32,29 +34,18 @@ for (const [item, partNumber, description] of RTL_CONDITIONAL_METADATA) {
   RTL_ITEM_INFO.set('C|' + item, { partNumber, description })
 }
 const fmt = (n) => Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
-const targetRows = (type) => RTL_ROWS.filter(([g]) => type === 'FULL' ? (g === 'S' || g === 'C') : g === type)
-const checkedQty = (v) => v === null || v === undefined ? null : Number.isFinite(Number(v)) ? Math.max(0, Number(v)) : null
+for (const row of RTL_STANDARD_REQUIREMENTS) {
+  RTL_ITEM_INFO.set('S|' + row.item, {partNumber:row.partNumber, description:row.description})
+}
+const targetRows = type => type === 'S' ? rtlStandardRequirementRows() : RTL_ROWS.filter(([g]) => type === 'FULL' ? (g === 'S' || g === 'C') : g === type)
 
-// Groups are evaluated independently: stock is not allocated to a specific RTL vessel.
+// Every category uses per-vessel quantities; the mechanic standard is supplied per engine.
 export function evaluateRtlGroup(group, stockByItem, fleetSize = 28, target = 1) {
-  const rows = targetRows(group).map(([g, item, perVessel, original]) => {
-    const available = Object.hasOwn(stockByItem, item) ? checkedQty(stockByItem[item]) : checkedQty(original)
-    const missing = available === null
-    const cover = missing ? 0 : Math.floor(available / perVessel)
-    const shortage = Math.max(0, perVessel * target - (available ?? 0))
-    return { group: g, item, perVessel, available, missing, cover, shortage,
-      provisionalNeed: Math.max(0, perVessel * target - (available ?? 0)),
-      name: RTL_ITEM_INFO.get(g + '|' + item)?.description || '',
-      partNumber: RTL_ITEM_INFO.get(g + '|' + item)?.partNumber || '' }
-  })
-  const coverage = rows.length ? Math.min(fleetSize, ...rows.map(r => r.cover)) : 0
-  return {
-    coverage, rows,
-    missing: rows.filter(r => r.missing).length,
-    belowOne: rows.filter(r => !r.missing && r.available < r.perVessel).length,
-    blocked: rows.filter(r => r.missing || r.available < r.perVessel).length,
-    confirmedShortage: rows.filter(r => r.shortage > 0).reduce((s, r) => s + r.shortage, 0),
-  }
+  const result = evaluateRequirementRows(targetRows(group), stockByItem, fleetSize, target)
+  return {...result, rows:result.rows.map(row => ({...row,
+    name:RTL_ITEM_INFO.get(row.group + '|' + row.item)?.description || '',
+    partNumber:RTL_ITEM_INFO.get(row.group + '|' + row.item)?.partNumber || '',
+  }))}
 }
 
 function readStockImport(rows) {
@@ -76,7 +67,7 @@ function readStockImport(rows) {
   return data
 }
 
-const REQUIRED_ITEMS=[...new Set(RTL_ROWS.map(row=>row[1]))]
+const REQUIRED_ITEMS=[...new Set([...RTL_ROWS.map(row=>row[1]), ...RTL_STANDARD_REQUIREMENTS.map(row=>row.item)])]
 const EMPTY_STOCK=Object.fromEntries(REQUIRED_ITEMS.map(item=>[item,null]))
 
 export default function RTLReadiness({refreshKey=0}) {
@@ -141,7 +132,7 @@ export default function RTLReadiness({refreshKey=0}) {
       const rows = XLSX.utils.sheet_to_json(sheet, { defval: null })
       const updated = readStockImport(rows)
       // Override all items in this export. Items omitted from the new source stay missing.
-      const all = Object.fromEntries([...new Set(RTL_ROWS.map(row => row[1]))].map(item => [item, Object.hasOwn(updated, item) ? updated[item] : null]))
+      const all = Object.fromEntries(REQUIRED_ITEMS.map(item => [item, Object.hasOwn(updated, item) ? updated[item] : null]))
       setStockOverride(all)
       setImportLabel(file.name)
       setFilter('blockers')
@@ -159,9 +150,9 @@ export default function RTLReadiness({refreshKey=0}) {
   }
   function downloadShortages() {
     const lines = [
-      ['Maintenance type', 'Item number', 'Manufacturer part number', 'Item description', 'Per vessel', 'Available physical', 'Source record', 'Required for target', 'Additional units required (unlisted stock = 0)'].join(','),
+      ['Maintenance type', 'Item number', 'Manufacturer part number', 'Item description', 'Per engine (standard only)', 'Per vessel (2 engines)', 'Available physical', 'Source record', 'Required for target', 'Additional units required (unlisted stock = 0)'].join(','),
       ...current.rows.filter(row => row.missing || row.shortage > 0).map(row =>
-        [current.label, row.item, row.partNumber, row.name, row.perVessel, row.missing ? 0 : row.available,
+        [current.label, row.item, row.partNumber, row.name, selected === 'STANDARD' ? row.perVessel / 2 : '', row.perVessel, row.missing ? 0 : row.available,
           row.missing ? 'NOT IN ON-HAND REPORT - UNAVAILABLE' : 'PRESENT',
           row.perVessel * target, row.shortage]
           .map(value => '"' + String(value).replace(/"/g, '""') + '"').join(',')),
@@ -190,9 +181,9 @@ export default function RTLReadiness({refreshKey=0}) {
     </div>
     {showNotes && <div className="rtl-method">
       <p><b>Independent coverage:</b> For each category, complete-vessel coverage is the smallest floor(available physical ÷ quantity required per two-engine vessel), capped at 28. Each category is calculated separately; the same item can appear in PM and overhaul sets, and stock is not double-allocated.</p>
-      <p><b>Overhaul definitions:</b> Standard uses only the 114 “Over Haul spare” items. Full uses all 263 overhaul items, including condition-based parts. Full listed coverage is not a prediction of what Engineering will actually replace.</p>
+      <p><b>Overhaul definitions:</b> Standard uses the mechanic-team list supplied on 18 November: 182 lines, with quantities for one engine doubled for one two-engine vessel. The source numbering skips 92–95; only supplied lines are included. Extended Overhaul retains the earlier 263-item reference as a separate scope; it is not the new standard plus additional parts.</p>
       <p><b>Missing vs zero:</b> An item missing from the supplied on-hand report is unavailable (zero usable stock) for planning. It remains marked as not listed, distinguishing it from a confirmed zero balance.</p>
-      <p><b>Uploaded stock:</b> A new Dynamics export changes figures in this browser session only. It does not overwrite Supabase, ERP, or other warehouse dashboards.</p>
+      <p><b>Uploaded stock:</b> On-hand Stock uploads in Update Centre update saved RTL readiness quantities only. The comparison upload below is temporary to this browser session. Warehouse figures use Inventory Ageing.</p>
     </div>}
     <div className="rtl-kpis">
       {coverage.map((card) => <button type="button" key={card.key} className={'rtl-kpi' + (selected === card.key ? ' selected' : '')} onClick={() => { setSelected(card.key); setFilter('blockers'); setSearch('') }}>
@@ -242,17 +233,17 @@ export default function RTLReadiness({refreshKey=0}) {
         <input value={search} onChange={event => setSearch(event.target.value)} aria-label="Search item number, part number or description" placeholder="Search item, P/N or description…" />
       </div>
       <div className="rtl-table-scroll"><table><thead><tr>
-        <th>Item number / description</th><th>Part number (P/N)</th><th>Per vessel</th><th>Available</th><th>Coverage</th><th>Need for {target}</th><th>Additional qty</th><th>Record status</th>
+        <th>Item number / description</th><th>Part number (P/N)</th>{selected === 'STANDARD' && <th>Per engine</th>}<th>Per vessel (2 engines)</th><th>Available</th><th>Coverage</th><th>Need for {target}</th><th>Additional qty</th><th>Record status</th>
       </tr></thead><tbody>
         {visibleRows.map(row => <tr key={row.item}>
           <td><b>{row.item}</b>{row.name && <small>{row.name}</small>}</td><td className="rtl-part-number">{row.partNumber || '—'}</td>
-          <td>{fmt(row.perVessel)}</td><td>{row.missing ? '0 (not listed)' : fmt(row.available)}</td>
+          {selected === 'STANDARD' && <td>{fmt(row.perVessel / 2)}</td>}<td>{fmt(row.perVessel)}</td><td>{row.missing ? '0 (not listed)' : fmt(row.available)}</td>
           <td>{fmt(Math.min(28,row.cover))}</td>
           <td>{fmt(row.perVessel * target)}</td>
           <td>{fmt(row.shortage)}</td>
           <td><span className={'rtl-status ' + (row.missing?'missing': row.available < row.perVessel?'short':'ok')}>{row.missing ? 'Not in on-hand report' : row.available < row.perVessel ? 'Below 1 vessel' : row.shortage > 0 ? 'Target shortfall' : 'Recorded'}</span></td>
         </tr>)}
-        {!visibleRows.length && <tr><td colSpan="8" className="rtl-empty">No items match these filters.</td></tr>}
+        {!visibleRows.length && <tr><td colSpan={selected === 'STANDARD' ? 9 : 8} className="rtl-empty">No items match these filters.</td></tr>}
       </tbody></table></div>
       <div className="rtl-table-footer">Showing {visibleRows.length} of {current.rows.length} item lines · Source quantities use the latest saved on-hand upload, not live ERP updates</div>
     </section>
