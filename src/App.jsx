@@ -20,6 +20,7 @@ const PendingPaymentsWorkspace = lazy(() => import('./PendingPaymentsWorkspace.j
 const PrfWorkspace = lazy(() => import('./PrfWorkspace.jsx'))
 const MtrFastUpload = lazy(() => import('./MtrFastUpload.jsx'))
 const RTLReadiness = lazy(() => import('./RTLReadiness.jsx'))
+const WarehouseRtlSlide = lazy(() => import('./WarehouseRtlSlide.jsx'))
 
 const ROUTE_PRELOADERS = {
   prpo: () => Promise.all([
@@ -4259,6 +4260,12 @@ export default function App() {
       ),
     },
     {
+      kicker: 'RTL FLEET UPDATE',
+      title: 'RTL Maintenance Readiness',
+      footerLabel: 'Latest saved RTL on-hand stock',
+      body: <Suspense fallback={<div role="status" className="meeting-no-exceptions">Loading RTL readiness…</div>}><WarehouseRtlSlide key={viewLoadRequestId.current} /></Suspense>,
+    },
+    {
       kicker: 'MRN & ISSUE CONTROL',
       title: 'MRN Operational Position',
       body: (
@@ -6942,10 +6949,10 @@ export default function App() {
                         ['Excel received quantities', warehouseExcel.batch?.completed_at],
                         ['MRN register', warehouseLatestSource('MRN')],
                         ['SR issues', warehouseLatestSource('SR_ISSUES')],
-                        ['Stock', warehouseLatestSource('STOCK')],
+                        ['RTL on-hand', warehouseLatestSource('STOCK')],
                       ].map(([label, updated]) => <span key={label} style={{ padding:'5px 9px',border:'1px solid #dbe5f0',borderRadius:8,background:'#f8fafc' }}><strong>{label}</strong>: {warehouseFreshDate(updated)}</span>)}
                     </div>
-                    {slide !== 0 && !warehouseExcelModel.available && warehouseLoadState === 'ready' && <div role="status" style={{ background:'#fffbeb',border:'1px solid #fbbf24',borderRadius:8,color:'#92400e',fontSize:11,padding:'8px 11px',marginBottom:10 }}>
+                    {slide === 1 && !warehouseExcelModel.available && warehouseLoadState === 'ready' && <div role="status" style={{ background:'#fffbeb',border:'1px solid #fbbf24',borderRadius:8,color:'#92400e',fontSize:11,padding:'8px 11px',marginBottom:10 }}>
                       PO-linked received quantity coverage needs attention: {warehouseExcelReceiptHelp}. Simplix receipt dates are used automatically where there is one PO receipt event; Excel Received Date (Y) is optional additional item-date evidence.
                     </div>}
                     <div className="meeting-slide-topline">
@@ -6969,7 +6976,7 @@ export default function App() {
                           </div>}</div>
                       <footer>
                         <span>Shipbuilding & Repair Division · Materials Management</span>
-                        <span>{slide === 2 ? formatShortDate(warehouseMrnWeekFilter) + ' – ' + formatShortDate(addDaysIso(warehouseMrnWeekFilter, 6)) : slide === 3 ? formatShortDate(warehouseIssueWeekFilter) + ' – ' + formatShortDate(addDaysIso(warehouseIssueWeekFilter, 6)) : formatShortDate(warehouseWeekStart) + ' – ' + formatShortDate(warehouseWeekEnd)}</span>
+                        <span>{warehouseSlides[Math.min(slide, warehouseSlides.length - 1)].footerLabel || (slide === 3 ? formatShortDate(warehouseMrnWeekFilter) + ' – ' + formatShortDate(addDaysIso(warehouseMrnWeekFilter, 6)) : slide === 4 ? formatShortDate(warehouseIssueWeekFilter) + ' – ' + formatShortDate(addDaysIso(warehouseIssueWeekFilter, 6)) : formatShortDate(warehouseWeekStart) + ' – ' + formatShortDate(warehouseWeekEnd))}</span>
                       </footer>
                     </div>
 
