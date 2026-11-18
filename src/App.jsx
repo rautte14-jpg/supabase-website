@@ -1263,7 +1263,7 @@ function ImportPanel({ onApplied, email }) {
         {['STOCK','AGEING'].includes(source) && <label>
           Report as-of date
           <input type="date" value={stockReportDate} max={maldivesDateIso()} disabled={busy} onChange={event => setStockReportDate(event.target.value)} required />
-          <small>Use the stock date covered by the report, which may differ from its generation date. Other uploaded sources are preserved.</small>
+          <small>Use the stock date covered by the report. {source === 'STOCK' ? 'On-hand Stock updates RTL Vessel Readiness only. Warehouse figures use Inventory Ageing.' : 'Inventory Ageing updates warehouse stock, valuation, ageing and rankings. RTL uses its separate On-hand Stock report.'}</small>
         </label>}
 
         <label className="file-drop">
@@ -1680,8 +1680,8 @@ export default function App() {
         .gte('pr_date', monthStart)
         .lte('pr_date', today),
       supabase
-        .from('stock_items_fast')
-        .select('item_code', { count: 'exact', head: true }),
+        .from('stock_ageing_summary')
+        .select('item_count,details_available').limit(1),
       supabase
         .from('home_high_consumption_stock')
         .select('item_code', { count: 'exact', head: true })
@@ -1721,7 +1721,7 @@ export default function App() {
       ageing: (ageingResult.data || []).find((row) => row.metrics?.kind === 'AGEING') || null,
       prsSubmitted: submittedCountResult.count || 0,
       prsReceived: receivedPrs.size,
-      totalItems: totalItemsResult.count || 0,
+      totalItems: Number(totalItemsResult.data?.[0]?.item_count || 0),
       lowStockItems: lowStockCountResult.count || 0,
       outOfStockItems: outOfStockCountResult.count || 0,
     })
@@ -4851,15 +4851,15 @@ export default function App() {
           <div className="meeting-period-banner">
             <div>
               <span>TOP 100 ITEMS BY CONSUMPTION VALUE</span>
-              <b>{fmt(inventoryHighUseLowStock.length + inventoryHighUseOutOfStock.length)} items require attention</b>
+              <b>{inventoryFast.stock?.details_available === false ? 'Ageing item details pending' : fmt(inventoryHighUseLowStock.length + inventoryHighUseOutOfStock.length) + ' items require attention'}</b>
             </div>
             <small>Low stock: 1–5 on hand · out of stock: zero or below</small>
           </div>
           <div className="meeting-exception-metrics">
-            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_LOW')}><span>High-Use Low Stock</span><b>{fmt(inventoryHighUseLowStock.length)}</b><small>View list</small></button>
-            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_OOS')}><span>High-Use Out of Stock</span><b>{fmt(inventoryHighUseOutOfStock.length)}</b><small>View list</small></button>
+            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_LOW')}><span>High-Use Low Stock</span><b>{inventoryFast.stock?.details_available === false ? 'Pending' : fmt(inventoryHighUseLowStock.length)}</b><small>View list</small></button>
+            <button className="inventory-ppt-click" onClick={() => setInventoryDetail('HIGH_USE_OOS')}><span>High-Use Out of Stock</span><b>{inventoryFast.stock?.details_available === false ? 'Pending' : fmt(inventoryHighUseOutOfStock.length)}</b><small>View list</small></button>
             <div><span>YTD Consumption Value</span><b>{mvr(Number(inventoryFast.stock?.ytd_consumption_value || 0))}</b></div>
-            <div><span>{Number(inventoryFast.stock?.current_inventory_value || 0) > 0 ? 'Inventory Value (MVR)' : 'High-Use Items Reviewed'}</span><b>{Number(inventoryFast.stock?.current_inventory_value || 0) > 0 ? mvr(inventoryFast.stock.current_inventory_value) : fmt(inventoryHighUseTop100.length)}</b><small>{Number(inventoryFast.stock?.current_inventory_value || 0) > 0 ? 'On-hand value from the latest supplied stock / ageing report' : 'Ranked by consumption value'}</small></div>
+            <div><span>{Number(inventoryFast.stock?.current_inventory_value || 0) > 0 ? 'Inventory Value (MVR)' : 'High-Use Items Reviewed'}</span><b>{Number(inventoryFast.stock?.current_inventory_value || 0) > 0 ? mvr(inventoryFast.stock.current_inventory_value) : fmt(inventoryHighUseTop100.length)}</b><small>{Number(inventoryFast.stock?.current_inventory_value || 0) > 0 ? 'Valuation from the latest Inventory Ageing report' : 'Ranked by consumption value'}</small></div>
           </div>
           <div className="warehouse-receipt-table inventory-risk-table" style={{ marginTop: 18 }}>
             <div className="warehouse-receipt-row warehouse-receipt-head">
@@ -4878,9 +4878,9 @@ export default function App() {
                   <em>{row.on_hand <= 0 ? 'OUT OF STOCK' : 'LOW STOCK'}</em>
                 </div>
               ))}
-            {!inventoryHighUseLowStock.length && !inventoryHighUseOutOfStock.length && <p className="inventory-source-note">No low-stock or out-of-stock items among the reviewed items.</p>}
+            {!inventoryHighUseLowStock.length && !inventoryHighUseOutOfStock.length && <p className="inventory-source-note">{inventoryFast.stock?.details_available === false ? 'Re-upload Inventory Ageing to restore warehouse stock checks.' : 'No low-stock or out-of-stock items among the reviewed items.'}</p>}
           </div>
-          <p className="inventory-source-note">Showing up to 10 items; click the stock cards for the full lists. {Number(inventoryFast.stock?.current_inventory_value || 0) > 0 ? 'Inventory valuation uses the latest supplied stock / ageing report.' : 'The current on-hand upload supplies quantities only, so inventory valuation is not shown.'}</p>
+          <p className="inventory-source-note">Showing up to 10 items; click the stock cards for the full lists. {Number(inventoryFast.stock?.current_inventory_value || 0) > 0 ? 'Warehouse stock and valuation use Inventory Ageing. On-hand Stock is used only for RTL Vessel Readiness.' : 'Upload Inventory Ageing to supply warehouse stock and valuation.'}</p>
         </>
       ),
     },
@@ -5283,7 +5283,7 @@ export default function App() {
                   {
                     label: 'Total Stock Items',
                     value: fmt(homeDashboard.totalItems),
-                    helper: 'Items in current inventory list',
+                    helper: 'Items in latest Inventory Ageing report',
                     icon: 'stock',
                     tone: 'green',
                     target: 'stock',
@@ -5316,8 +5316,8 @@ export default function App() {
                   },
                   {
                     label: 'High-Use Low Stock',
-                    value: fmt(homeDashboard.lowStockItems),
-                    helper: 'Top 100 high-use items with 5 or fewer units',
+                    value: homeDashboard.ageing?.metrics?.itemDetailsAvailable === false ? 'Details pending' : fmt(homeDashboard.lowStockItems),
+                    helper: homeDashboard.ageing?.metrics?.itemDetailsAvailable === false ? 'Re-upload Inventory Ageing to restore stock checks' : 'Top 100 high-use items with 5 or fewer units',
                     icon: 'stock',
                     tone: 'amber',
                     target: 'stock',
@@ -5669,7 +5669,7 @@ export default function App() {
                         <em>{Number(row.on_hand || 0) <= 2 ? 'Critical' : 'Low'}</em>
                       </button>
                     ))}
-                    {!homeDashboard.lowStock.length && <EmptyState title="No high-use low-stock items" text="None of the top 100 consumption-value items are at 5 units or less." />}
+                    {!homeDashboard.lowStock.length && <EmptyState title={homeDashboard.ageing?.metrics?.itemDetailsAvailable === false ? 'Ageing item details pending' : 'No high-use low-stock items'} text={homeDashboard.ageing?.metrics?.itemDetailsAvailable === false ? 'Re-upload Inventory Ageing to restore warehouse stock checks. On-hand Stock is used only for RTL Vessel Readiness.' : 'None of the top 100 consumption-value items are at 5 units or less.'} />}
                   </div>
                 </section>
 

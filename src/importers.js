@@ -181,7 +181,7 @@ export const SOURCE_OPTIONS = [
   ['MRN', 'MRN / Material Request Register'],
   ['SR_ISSUES', 'SR Issues / Issued Items'],
   ['TRANSACTIONS', 'Inventory Transactions (ERP Receipts & Issues)'],
-  ['STOCK', 'On-hand Stock'],
+  ['STOCK', 'On-hand Stock — RTL Vessel Readiness only'],
   ['AGEING', 'Inventory Ageing'],
 ]
 
