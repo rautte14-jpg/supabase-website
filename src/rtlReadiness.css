@@ -102,3 +102,9 @@
 .rtl-help-dialog .rtl-help-context{font-size:11px;color:#6a818c}
 .rtl-help-done{margin-top:7px;background:#057c85;border:0;border-radius:9px;padding:11px 19px;color:#fff;font-weight:750;cursor:pointer}
 @media(max-width:420px){.rtl-help-dialog{padding:21px}.rtl-help-comparison{grid-template-columns:1fr}}
+
+.rtl-plan-units{display:flex;gap:5px;margin-top:14px;padding:4px;border:1px solid #cbdde4;border-radius:10px;background:#f1f8f9}
+.rtl-plan-units button{flex:1;padding:9px 12px;border:1px solid transparent;border-radius:7px;background:transparent;color:#466777;font-weight:700;cursor:pointer}
+.rtl-plan-units button[aria-pressed="true"]{background:#087e82;color:#fff}
+.rtl-plan-units button:disabled{opacity:.45;cursor:not-allowed}
+.rtl-plan-units button:focus-visible{outline:2px solid #087e82;outline-offset:2px}

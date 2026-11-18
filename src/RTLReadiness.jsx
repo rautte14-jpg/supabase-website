@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { rtlStockFromRecords } from './lib/rtlStockSource.js'
 import { RTL_STANDARD_REQUIREMENTS, rtlStandardRequirementRows } from './rtlMechanicStandard.js'
-import { evaluateRequirementRows } from './lib/rtlCoverage.js'
+import { calculateRtlShortages, evaluateRequirementRows } from './lib/rtlCoverage.js'
 import { RTL_ROWS, RTL_SOURCE } from './rtlSpareSnapshot.js'
 import { RTL_PM_METADATA } from './rtlPartMetadataPm.js'
 import { RTL_STANDARD_METADATA } from './rtlPartMetadataStandard.js'
@@ -73,6 +73,7 @@ const EMPTY_STOCK=Object.fromEntries(REQUIRED_ITEMS.map(item=>[item,null]))
 export default function RTLReadiness({refreshKey=0}) {
   const [selected, setSelected] = useState('STANDARD')
   const [target, setTarget] = useState(1)
+  const [targetUnit, setTargetUnit] = useState('engines')
   const [filter, setFilter] = useState('blockers')
   const [search, setSearch] = useState('')
   const [stockOverride, setStockOverride] = useState({...EMPTY_STOCK})
@@ -106,9 +107,15 @@ export default function RTLReadiness({refreshKey=0}) {
     return()=>{active=false}
   },[refreshKey])
   const coverage = useMemo(() => TYPES.map(type => ({
-    ...type, ...evaluateRtlGroup(type.group, stockOverride, RTL_SOURCE.fleetSize, target),
-  })), [stockOverride, target])
-  const current = coverage.find(row => row.key === selected) || coverage[0]
+    ...type, ...evaluateRtlGroup(type.group, stockOverride, RTL_SOURCE.fleetSize, 1),
+  })), [stockOverride])
+  const vesselCoverage = coverage.find(row => row.key === selected) || coverage[0]
+  const engineModeAvailable = vesselCoverage.rows.every(row => Number.isInteger(row.perVessel / 2))
+  const planUnit = engineModeAvailable ? targetUnit : 'vessels'
+  const maxTarget = planUnit === 'engines' ? 56 : 28
+  const planTarget = Math.min(target, maxTarget)
+  const targetLabel = planTarget === 1 ? planUnit.slice(0, -1) : planUnit
+  const current = useMemo(() => ({...vesselCoverage, ...calculateRtlShortages(vesselCoverage.rows, planTarget, planUnit)}), [vesselCoverage, planTarget, planUnit])
   const itemsBelowTarget = current.rows.filter(row => row.missing || row.shortage > 0).length
   const visibleRows = useMemo(() => current.rows
     .filter(row => {
@@ -150,17 +157,17 @@ export default function RTLReadiness({refreshKey=0}) {
   }
   function downloadShortages() {
     const lines = [
-      ['Maintenance type', 'Item number', 'Manufacturer part number', 'Item description', 'Per engine (standard only)', 'Per vessel (2 engines)', 'Available physical', 'Source record', 'Required for target', 'Additional units required (unlisted stock = 0)'].join(','),
+      ['Maintenance type', 'Item number', 'Manufacturer part number', 'Item description', 'Per engine', 'Per vessel (2 engines)', 'Available physical', 'Source record', 'Target count', 'Target unit', 'Required for target', 'Additional units required (unlisted stock = 0)'].join(','),
       ...current.rows.filter(row => row.missing || row.shortage > 0).map(row =>
-        [current.label, row.item, row.partNumber, row.name, selected === 'STANDARD' ? row.perVessel / 2 : '', row.perVessel, row.missing ? 0 : row.available,
+        [current.label, row.item, row.partNumber, row.name, engineModeAvailable ? row.perVessel / 2 : '', row.perVessel, row.missing ? 0 : row.available,
           row.missing ? 'NOT IN ON-HAND REPORT - UNAVAILABLE' : 'PRESENT',
-          row.perVessel * target, row.shortage]
+          planTarget, planUnit, row.required, row.shortage]
           .map(value => '"' + String(value).replace(/"/g, '""') + '"').join(',')),
     ]
     const url = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' }))
     const link = document.createElement('a')
     link.href = url
-    link.download = 'RTL-' + selected + '-shortages-' + target + '-vessels.csv'
+    link.download = 'RTL-' + selected + '-shortages-' + planTarget + '-' + planUnit + '.csv'
     link.click()
     URL.revokeObjectURL(url)
   }
@@ -210,10 +217,16 @@ export default function RTLReadiness({refreshKey=0}) {
         </div>
       </section>
       <section className="rtl-panel rtl-plan-panel">
-        <div className="rtl-panel-title"><div><small>ADDITIONAL COVERAGE PLAN</small><h2>Shortage calculator</h2><p>Quantities to cover your target vessel count</p></div></div>
-        <label className="rtl-target">Target number of vessels
-          <input type="number" min="1" max="28" step="1" value={target} onChange={event => setTarget(Math.min(28, Math.max(1, Math.round(Number(event.target.value) || 1))))} />
+        <div className="rtl-panel-title"><div><small>ADDITIONAL COVERAGE PLAN</small><h2>Shortage calculator</h2><p>Quantities for your selected engine or vessel count</p></div></div>
+        <div className="rtl-plan-units" role="group" aria-label="Shortage calculation unit">
+          <button type="button" aria-pressed={planUnit === 'engines'} disabled={!engineModeAvailable} onClick={() => setTargetUnit('engines')}>Engines</button>
+          <button type="button" aria-pressed={planUnit === 'vessels'} onClick={() => {setTargetUnit('vessels');setTarget(value => Math.min(28,value))}}>Vessels</button>
+        </div>
+        {!engineModeAvailable && <p className="rtl-calculator-note">This earlier list includes vessel-level requirements. Use vessel mode until per-engine quantities are confirmed.</p>}
+        <label className="rtl-target">Target number of {planUnit}
+          <input type="number" min="1" max={maxTarget} step="1" value={planTarget} onChange={event => setTarget(Math.min(maxTarget, Math.max(1, Math.round(Number(event.target.value) || 1))))} />
         </label>
+        <p className="rtl-calculator-note">Checking {planTarget} {targetLabel}{planUnit === 'vessels' ? ' · ' + (planTarget * 2) + ' engines' : ''}. One RTL vessel has 2 engines. Coverage cards above remain in vessels.</p>
         <div className="rtl-calculator-results">
           <div><small>Additional units required <button type="button" className="rtl-inline-help" aria-label="Explain items versus units" title="Explain items versus units" onClick={() => setShowQuantityHelp(true)}>ⓘ</button></small><strong>{fmt(current.confirmedShortage)}</strong></div>
           <div><small>Not in on-hand report</small><strong>{current.missing}</strong></div>
@@ -223,7 +236,7 @@ export default function RTLReadiness({refreshKey=0}) {
     </div>
     <section className="rtl-panel rtl-table-panel">
       <div className="rtl-table-heading">
-        <div><small>STOCK EXCEPTIONS</small><h2>Limiting spares & item requirements</h2><p><b>Blocking</b> = below one-vessel requirement or unavailable in the on-hand report. Search by item number, part number, or description.</p></div>
+        <div><small>STOCK EXCEPTIONS</small><h2>Limiting spares & item requirements</h2><p><b>Blocking</b> = short for the selected target of {planTarget} {targetLabel}, or unavailable in the on-hand report. Search by item number, part number, or description.</p></div>
         <div className="rtl-table-actions"><button type="button" onClick={downloadShortages}>Export shortages CSV</button></div>
       </div>
       <div className="rtl-controls">
@@ -233,17 +246,17 @@ export default function RTLReadiness({refreshKey=0}) {
         <input value={search} onChange={event => setSearch(event.target.value)} aria-label="Search item number, part number or description" placeholder="Search item, P/N or description…" />
       </div>
       <div className="rtl-table-scroll"><table><thead><tr>
-        <th>Item number / description</th><th>Part number (P/N)</th>{selected === 'STANDARD' && <th>Per engine</th>}<th>Per vessel (2 engines)</th><th>Available</th><th>Coverage</th><th>Need for {target}</th><th>Additional qty</th><th>Record status</th>
+        <th>Item number / description</th><th>Part number (P/N)</th>{engineModeAvailable && <th>Per engine</th>}<th>Per vessel (2 engines)</th><th>Available</th><th>Vessels covered</th><th>Need for {planTarget} {targetLabel}</th><th>Additional qty</th><th>Record status</th>
       </tr></thead><tbody>
         {visibleRows.map(row => <tr key={row.item}>
           <td><b>{row.item}</b>{row.name && <small>{row.name}</small>}</td><td className="rtl-part-number">{row.partNumber || '—'}</td>
-          {selected === 'STANDARD' && <td>{fmt(row.perVessel / 2)}</td>}<td>{fmt(row.perVessel)}</td><td>{row.missing ? '0 (not listed)' : fmt(row.available)}</td>
+          {engineModeAvailable && <td>{fmt(row.perVessel / 2)}</td>}<td>{fmt(row.perVessel)}</td><td>{row.missing ? '0 (not listed)' : fmt(row.available)}</td>
           <td>{fmt(Math.min(28,row.cover))}</td>
-          <td>{fmt(row.perVessel * target)}</td>
+          <td>{fmt(row.required)}</td>
           <td>{fmt(row.shortage)}</td>
-          <td><span className={'rtl-status ' + (row.missing?'missing': row.available < row.perVessel?'short':'ok')}>{row.missing ? 'Not in on-hand report' : row.available < row.perVessel ? 'Below 1 vessel' : row.shortage > 0 ? 'Target shortfall' : 'Recorded'}</span></td>
+          <td><span className={'rtl-status ' + (row.missing?'missing': row.shortage > 0?'short':'ok')}>{row.missing ? 'Not in on-hand report' : row.shortage > 0 ? 'Target shortfall' : 'Recorded'}</span></td>
         </tr>)}
-        {!visibleRows.length && <tr><td colSpan={selected === 'STANDARD' ? 9 : 8} className="rtl-empty">No items match these filters.</td></tr>}
+        {!visibleRows.length && <tr><td colSpan={engineModeAvailable ? 9 : 8} className="rtl-empty">No items match these filters.</td></tr>}
       </tbody></table></div>
       <div className="rtl-table-footer">Showing {visibleRows.length} of {current.rows.length} item lines · Source quantities use the latest saved on-hand upload, not live ERP updates</div>
     </section>
@@ -260,11 +273,11 @@ export default function RTLReadiness({refreshKey=0}) {
         <h2 id="rtl-items-units-title">Spare parts vs. units</h2>
         <p><strong>Items</strong> counts the different spare-part lines that need more stock. <strong>Units</strong> adds up the actual quantities needed across those items.</p>
         <div className="rtl-help-comparison">
-          <div><span>Spare-part items short for {target} {target === 1 ? 'vessel' : 'vessels'}</span><strong>{itemsBelowTarget}</strong><small>Different items with shortages</small></div>
+          <div><span>Spare-part items short for {planTarget} {targetLabel}</span><strong>{itemsBelowTarget}</strong><small>Different items with shortages</small></div>
           <div><span>Additional units needed</span><strong>{fmt(current.confirmedShortage)}</strong><small>Total quantity across those items</small></div>
         </div>
-        <p className="rtl-help-context">{current.label}: For the selected target of {target} {target === 1 ? 'vessel' : 'vessels'}, these figures use the shared on-hand report. Items not listed in that report are treated as unavailable (zero usable stock).</p>
-        {target !== 1 && <p className="rtl-help-context">The “Items below 1 vessel” card always uses a one-vessel requirement; the calculator and the figures above use your selected target of {target} vessels.</p>}
+        <p className="rtl-help-context">{current.label}: For the selected target of {planTarget} {targetLabel}, these figures use the shared on-hand report. Items not listed in that report are treated as unavailable (zero usable stock).</p>
+        {(planTarget !== 1 || planUnit === 'engines') && <p className="rtl-help-context">The “Items below 1 vessel” card always uses a one-vessel requirement; the calculator and the figures above use your selected target of {planTarget} {targetLabel}.</p>}
         <button type="button" className="rtl-help-done" onClick={() => setShowQuantityHelp(false)}>Got it</button>
       </section>
     </div>}
