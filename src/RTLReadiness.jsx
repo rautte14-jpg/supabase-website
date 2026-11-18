@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from './lib/supabase'
+import { rtlStockFromRecords } from './lib/rtlStockSource.js'
 import { RTL_ROWS, RTL_SOURCE } from './rtlSpareSnapshot.js'
 import { RTL_PM_METADATA } from './rtlPartMetadataPm.js'
 import { RTL_STANDARD_METADATA } from './rtlPartMetadataStandard.js'
@@ -74,17 +76,44 @@ function readStockImport(rows) {
   return data
 }
 
-export default function RTLReadiness() {
+const REQUIRED_ITEMS=[...new Set(RTL_ROWS.map(row=>row[1]))]
+const EMPTY_STOCK=Object.fromEntries(REQUIRED_ITEMS.map(item=>[item,null]))
+
+export default function RTLReadiness({refreshKey=0}) {
   const [selected, setSelected] = useState('STANDARD')
   const [target, setTarget] = useState(1)
   const [filter, setFilter] = useState('blockers')
   const [search, setSearch] = useState('')
-  const [stockOverride, setStockOverride] = useState({})
+  const [stockOverride, setStockOverride] = useState({...EMPTY_STOCK})
+  const [savedStock, setSavedStock] = useState({...EMPTY_STOCK})
+  const [savedSource, setSavedSource] = useState(null)
+  const [loadingSaved, setLoadingSaved] = useState(true)
+  const [savedError, setSavedError] = useState('')
   const [importLabel, setImportLabel] = useState('')
   const [importError, setImportError] = useState('')
   const [importing, setImporting] = useState(false)
   const [showNotes, setShowNotes] = useState(false)
   const [showQuantityHelp, setShowQuantityHelp] = useState(false)
+  useEffect(() => {
+    let active=true
+    setLoadingSaved(true)
+    setSavedError('')
+    ;(async()=>{
+      try {
+        const [source,stock]=await Promise.all([
+          supabase.from('inventory_snapshot_archives').select('source_file,snapshot_date,imported_at').eq('source_type','STOCK').order('snapshot_date',{ascending:false}).limit(1).maybeSingle(),
+          supabase.from('stock_items').select('item_code,raw_source').eq('is_current_snapshot',true).in('item_code',REQUIRED_ITEMS),
+        ])
+        if(source.error) throw source.error
+        if(stock.error) throw stock.error
+        if(!source.data) throw new Error('No saved on-hand report is available. Upload On-hand Stock in Update Centre.')
+        const values=rtlStockFromRecords(stock.data || [],REQUIRED_ITEMS)
+        if(active){setSavedStock(values);setStockOverride(values);setSavedSource(source.data);setImportLabel('')}
+      } catch(error) {if(active){setSavedError(error.message || 'Could not load saved on-hand stock');setStockOverride({...EMPTY_STOCK})}}
+      finally {if(active) setLoadingSaved(false)}
+    })()
+    return()=>{active=false}
+  },[refreshKey])
   const coverage = useMemo(() => TYPES.map(type => ({
     ...type, ...evaluateRtlGroup(type.group, stockOverride, RTL_SOURCE.fleetSize, target),
   })), [stockOverride, target])
@@ -124,7 +153,7 @@ export default function RTLReadiness() {
     }
   }
   function reset() {
-    setStockOverride({})
+    setStockOverride(savedStock)
     setImportLabel('')
     setImportError('')
   }
@@ -144,6 +173,7 @@ export default function RTLReadiness() {
     link.click()
     URL.revokeObjectURL(url)
   }
+  if (loadingSaved) return <section className="rtl-shell"><p role="status">Loading the latest saved on-hand stock…</p></section>
   return <section className="rtl-shell">
     <header className="rtl-hero">
       <div>
@@ -153,8 +183,9 @@ export default function RTLReadiness() {
       </div>
       <div className="rtl-hero-mark">RTL <span>MAINTENANCE CONTROL</span></div>
     </header>
+    {savedError && <div role="alert" className="rtl-warning">{savedError}</div>}
     <div className="rtl-warning">
-      <div><strong>Planning snapshot — warehouse scope not verified.</strong><span> Figures use Available physical from {importLabel || RTL_SOURCE.source}. The export does not identify warehouse/site or stock date. Items not listed are treated as unavailable (zero usable stock). Do not treat coverage as confirmed vessel allocation.</span></div>
+      <div><strong>Planning snapshot — warehouse scope not verified.</strong><span> Figures use Available physical from {importLabel || savedSource?.source_file || 'the saved on-hand export'}{importLabel ? ' (temporary comparison)' : savedSource ? ' as of ' + savedSource.snapshot_date : ''}. Warehouse/site scope must be verified. Items not listed are treated as unavailable (zero usable stock). Do not treat coverage as confirmed vessel allocation.</span></div>
       <button type="button" onClick={() => setShowNotes(!showNotes)}>{showNotes ? 'Hide' : 'Method'}</button>
     </div>
     {showNotes && <div className="rtl-method">
@@ -223,11 +254,11 @@ export default function RTLReadiness() {
         </tr>)}
         {!visibleRows.length && <tr><td colSpan="8" className="rtl-empty">No items match these filters.</td></tr>}
       </tbody></table></div>
-      <div className="rtl-table-footer">Showing {visibleRows.length} of {current.rows.length} item lines · Source quantities are a snapshot, not live ERP updates</div>
+      <div className="rtl-table-footer">Showing {visibleRows.length} of {current.rows.length} item lines · Source quantities use the latest saved on-hand upload, not live ERP updates</div>
     </section>
     <section className="rtl-panel rtl-update-panel">
-      <div><small>UPDATE AVAILABLE PHYSICAL</small><h2>Compare with a newer Dynamics export</h2><p>Choose a stock export to recalculate the six categories in your browser. Changes are not saved to the website's database.</p></div>
-      <div className="rtl-upload-actions"><label className="rtl-upload-button">{importing ? 'Reading file…' : 'Choose Excel export'}<input type="file" accept=".xlsx,.xls,.csv" disabled={importing} onChange={uploadStock}/></label>{importLabel && <button type="button" onClick={reset}>Restore original snapshot</button>}</div>
+      <div><small>UPDATE AVAILABLE PHYSICAL</small><h2>Compare with a newer Dynamics export</h2><p>The saved source updates when you upload On-hand Stock in Update Centre. You can also choose a file here for a temporary browser-only comparison.</p></div>
+      <div className="rtl-upload-actions"><label className="rtl-upload-button">{importing ? 'Reading file…' : 'Choose Excel export'}<input type="file" accept=".xlsx,.xls,.csv" disabled={importing} onChange={uploadStock}/></label>{importLabel && <button type="button" onClick={reset}>Restore saved on-hand stock</button>}</div>
       {importLabel && <p className="rtl-upload-success">Temporary stock comparison loaded: {importLabel}</p>}
       {importError && <p role="alert" className="rtl-upload-error">{importError}</p>}
     </section>

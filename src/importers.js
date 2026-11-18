@@ -444,8 +444,8 @@ export function mapRows(source, rows) {
   if (source === 'STOCK') {
     return rows.map((r) => {
       const onHand = number(r, ['On Hand', 'On-hand', 'Physical Inventory', 'Stock'])
-      const reserved = number(r, ['Reserved', 'Reserved Qty'])
-      const available = number(r, ['Available', 'Available Qty'])
+      const reserved = number(r, ['Reserved', 'Reserved Qty', 'Physical reserved'])
+      const available = number(r, ['Available physical', 'Available on-hand quantity', 'Available', 'Available Qty'])
       const onOrder = number(r, ['On Order', 'On Ordered Qty', 'Ordered Qty'])
       const unitCost = number(r, ['Unit Cost', 'Cost Price', 'Cost'])
       return {

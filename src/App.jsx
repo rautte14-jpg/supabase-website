@@ -996,6 +996,7 @@ function AgeingTrend({ snapshots }) {
 
 function ImportPanel({ onApplied, email }) {
   const [source, setSource] = useState('PRF')
+  const [stockReportDate, setStockReportDate] = useState(() => maldivesDateIso())
   const [file, setFile] = useState(null)
   const [rows, setRows] = useState([])
   const [mapped, setMapped] = useState([])
@@ -1059,6 +1060,7 @@ function ImportPanel({ onApplied, email }) {
       setMessage('This legacy upload is retired. Use Simplix for PR and PO information and the separate PR / PO Excel mapping upload for receipt quantities.')
       return
     }
+    if (['STOCK','AGEING'].includes(source) && !stockReportDate) { setMessage('Choose the report as-of date.'); return }
     if (!mapped.length) {
       setMessage('No usable rows were mapped from this file.')
       return
@@ -1111,7 +1113,7 @@ function ImportPanel({ onApplied, email }) {
         }
       } else if (source === 'STOCK') {
         const stockRows = Array.from(new Map(mapped.map(row => [row.item_code, row])).values())
-        const { error } = await supabase.rpc('commit_stock_snapshot', { p_rows: stockRows, p_snapshot: null })
+        const { error } = await supabase.rpc('commit_stock_snapshot', { p_rows: stockRows, p_snapshot: { snapshot_date:stockReportDate, source_file:file?.name || 'On-hand export', metrics:{kind:'STOCK',itemCount:stockRows.length}, created_by:email } })
         if (error) throw error
       } else if (source === 'AGEING') {
         const ageingByItem = new Map()
@@ -1148,11 +1150,12 @@ function ImportPanel({ onApplied, email }) {
         })
         snapshotMetrics.over1 = snapshotMetrics.p2 + snapshotMetrics.p3 + snapshotMetrics.p4 + snapshotMetrics.p5
 
-        const snapshotDate = maldivesDateIso()
+        const snapshotDate = stockReportDate
         const { error: snapshotError } = await supabase.rpc('commit_stock_snapshot', {
           p_rows: ageingRows,
           p_snapshot: {
             snapshot_date: snapshotDate,
+            source_file:file?.name || 'Inventory ageing export',
             label: 'Inventory Ageing — ' + (file?.name || snapshotDate),
             metrics: snapshotMetrics,
             priority_cases: [],
@@ -1166,7 +1169,7 @@ function ImportPanel({ onApplied, email }) {
         const { error: historyError } = await supabase.from('source_updates').insert({
           source_type: source,
           file_name: file?.name || '',
-          source_date: file?.lastModified ? new Date(file.lastModified).toISOString().slice(0, 10) : null,
+          source_date: ['STOCK','AGEING'].includes(source) ? stockReportDate : file?.lastModified ? new Date(file.lastModified).toISOString().slice(0, 10) : null,
           row_count: rows.length,
           new_count: mapped.length,
           changed_count: 0,
@@ -1177,7 +1180,8 @@ function ImportPanel({ onApplied, email }) {
         if (historyError) throw historyError
       }
 
-      setMessage('Update applied successfully.')
+      clearSupabaseReadCache()
+      setMessage(['STOCK','AGEING'].includes(source) ? humanSource(source) + ' saved as of ' + stockReportDate + '. On-hand and ageing reports are stored separately.' : 'Update applied successfully.')
       try { await onApplied() }
       catch { setMessage('Update was saved, but the view could not refresh. Refresh the module to see the latest data.') }
     } catch (error) {
@@ -1255,6 +1259,12 @@ function ImportPanel({ onApplied, email }) {
             {SOURCE_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
           </select>
         </label>
+
+        {['STOCK','AGEING'].includes(source) && <label>
+          Report as-of date
+          <input type="date" value={stockReportDate} max={maldivesDateIso()} disabled={busy} onChange={event => setStockReportDate(event.target.value)} required />
+          <small>Use the stock date covered by the report, which may differ from its generation date. Other uploaded sources are preserved.</small>
+        </label>}
 
         <label className="file-drop">
           <strong>Choose Excel or CSV file</strong>
@@ -1631,7 +1641,7 @@ export default function App() {
         .select('po_no,po_date,supplier,status,priority,po_value')
         .order('po_value', { ascending: false }),
       supabase
-        .from('stock_items_fast')
+        .from('stock_ageing_fast')
         .select('item_code,item_description,on_hand,stock_value')
         .order('stock_value', { ascending: false })
         .limit(6),
@@ -2183,7 +2193,7 @@ export default function App() {
 
   async function loadForView(targetView = view, force = false) {
     if (!session || !access) return
-    if (targetView === 'warehouse' && force) clearSupabaseReadCache()
+    if (force && ['home','stock','inventoryPresentation','warehouse','rtl'].includes(targetView)) clearSupabaseReadCache()
     if (targetView === 'prpo' && force) {
       clearSupabaseReadCache('pr_lifecycle_fast')
       setPrSubmissionRefreshKey((current) => current + 1)
@@ -3242,6 +3252,11 @@ export default function App() {
     : data.stock.filter(matches)
 
   const ageingSummary = useMemo(() => {
+    const saved=[...(data.snapshots || []), ...(homeDashboard.ageing ? [homeDashboard.ageing] : [])].filter(row=>row.metrics?.kind==='AGEING').sort((a,b)=>String(b.snapshot_date).localeCompare(String(a.snapshot_date)))[0]
+    if(saved) {
+      const m=saved.metrics
+      return {onHandQty:Number(m.onHandQty || 0),onHandValue:Number(m.onHandValue || 0),inventoryValueQty:m.inventoryValueQty ?? null,inventoryValue:Number(m.inventoryValue || 0),p1:Number(m.p1 || 0),p2:Number(m.p2 || 0),p3:Number(m.p3 || 0),p4:Number(m.p4 || 0),p5:Number(m.p5 || 0),agedOver365:Number(m.over1 || 0)}
+    }
     const totals = {
       onHandQty: 0,
       onHandValue: 0,
@@ -3268,7 +3283,7 @@ export default function App() {
 
     totals.agedOver365 = totals.p2 + totals.p3 + totals.p4 + totals.p5
     return totals
-  }, [data.stock])
+  }, [data.stock, data.snapshots, homeDashboard.ageing])
 
   const stockAgeingSummary = useMemo(() => {
     if (view !== 'stock') return ageingSummary
@@ -3489,10 +3504,10 @@ export default function App() {
       overdue: overdue.length,
       receipts: receipts.reduce((s, r) => s + Math.abs(Number(r.quantity || 0)), 0),
       issues: issues.reduce((s, r) => s + Math.abs(Number(r.quantity || 0)), 0),
-      stockValue: value,
-      agedValue,
+      stockValue: ageingSummary.onHandValue,
+      agedValue: ageingSummary.agedOver365,
     }
-  }, [data, todayIso])
+  }, [data, todayIso, ageingSummary])
 
   const lastSource = useMemo(() => {
     const map = new Map()
@@ -5214,6 +5229,10 @@ export default function App() {
           )}
           {view === 'home' && (
             <section className="home-dashboard-shell">
+              {homeDashboard.ageing?.metrics?.itemDetailsAvailable === false && <div role="status" className="notice">
+                The {homeDashboard.ageing.snapshot_date} ageing totals are preserved. Re-upload that Inventory Ageing report once to restore its item-level ageing details and value rankings. Your latest on-hand quantities are retained separately.
+              </div>}
+
               <div className="home-dashboard-head">
                 <div>
                   <span className="eyebrow">SHIPBUILDING & REPAIR DIVISION · MATERIALS MANAGEMENT</span>
@@ -5272,7 +5291,7 @@ export default function App() {
                   {
                     label: 'On-Hand Value',
                     value: mvr(homeSummary.stock_value),
-                    helper: 'Current SRD on-hand inventory value',
+                    helper: homeDashboard.ageing ? 'Ageing valuation as of ' + homeDashboard.ageing.snapshot_date : 'No ageing valuation report supplied',
                     icon: 'stock',
                     tone: 'blue',
                     target: 'stock',
@@ -5458,7 +5477,7 @@ export default function App() {
                         </button>
                       )
                     })}
-                    {!homeDashboard.topStock.length && <EmptyState title="No stock data" text="Upload the latest stock or ageing source." />}
+                    {!homeDashboard.topStock.length && <EmptyState title="Ageing item details unavailable" text="Upload the latest Inventory Ageing report to restore item-level value rankings. On-hand quantities are stored separately." />}
                   </div>
                 </section>
 
@@ -5758,7 +5777,7 @@ export default function App() {
 
           {view === 'rtl' && (
             <Suspense fallback={<div className="splash">Loading RTL vessel readiness…</div>}>
-              <RTLReadiness />
+              <RTLReadiness refreshKey={viewLoadRequestId.current} />
             </Suspense>
           )}
 
@@ -6758,11 +6777,14 @@ export default function App() {
                 subtitle="Inventory ageing report with on-hand valuation and age-bucket values."
               />
 
+              {stockFast.summary?.details_available === false && <div role="status" className="notice">
+                Valuation totals for {stockFast.summary.snapshot_date} are restored from the saved ageing snapshot. Re-upload that ageing report once to restore its item rows, ageing filters and Top 100 values. On-hand uploads no longer overwrite ageing data.
+              </div>}
               <div className="metric-grid stock-ageing-metrics">
                 <MetricCard label="Items" value={fmt(stockAgeingSummary.itemCount)} helper="Unique item IDs loaded" />
                 <MetricCard label="On-hand quantity" value={fmt(stockAgeingSummary.onHandQty, 2)} helper="Physical on-hand quantity" />
                 <MetricCard label="On-hand value" value={mvr(stockAgeingSummary.onHandValue)} helper="Value of current on-hand stock" />
-                <MetricCard label="Top 100 High Value Items" value={fmt(stockAgeingSummary.high100Count) + ' Items'} helper={'Combined on-hand value: ' + mvr(top100HighValueTotal)} tone="warn" active={stockAgeFilter === 'HIGH100'} onClick={() => setStockAgeFilter(stockAgeFilter === 'HIGH100' ? 'ALL' : 'HIGH100')} />
+                <MetricCard label="Top 100 High Value Items" value={stockFast.summary?.details_available === false ? 'Details unavailable' : fmt(stockAgeingSummary.high100Count) + ' Items'} helper={stockFast.summary?.details_available === false ? 'Re-upload the latest ageing report to restore value rankings' : 'Combined on-hand value: ' + mvr(top100HighValueTotal)} tone="warn" active={stockAgeFilter === 'HIGH100'} onClick={() => setStockAgeFilter(stockAgeFilter === 'HIGH100' ? 'ALL' : 'HIGH100')} />
                 <MetricCard label="P2 — 1 to 3 Years" value={mvr(stockAgeingSummary.p2)} helper="Stock aged 366–1095 days" active={stockAgeFilter === 'P2'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P2' ? 'ALL' : 'P2')} />
                 <MetricCard label="P3 — 3 to 4 Years" value={mvr(stockAgeingSummary.p3)} helper="Stock aged 1096–1460 days" active={stockAgeFilter === 'P3'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P3' ? 'ALL' : 'P3')} />
                 <MetricCard label="P4 — 4 to 5 Years" value={mvr(stockAgeingSummary.p4)} helper="Stock aged 1461–1825 days" active={stockAgeFilter === 'P4'} onClick={() => setStockAgeFilter(stockAgeFilter === 'P4' ? 'ALL' : 'P4')} />
